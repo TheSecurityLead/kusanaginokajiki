@@ -19,7 +19,9 @@ import type {
 	PacketEvent,
 	CaptureStatsEvent,
 	SignatureSummary,
-	SignatureTestResult
+	SignatureTestResult,
+	DeepParseInfo,
+	FunctionCodeStat
 } from '$lib/types';
 
 // ─── System Commands ──────────────────────────────────────────
@@ -97,6 +99,18 @@ export async function reloadSignatures(): Promise<number> {
 /** Test a YAML signature against loaded PCAP data */
 export async function testSignature(yaml: string): Promise<SignatureTestResult> {
 	return invoke<SignatureTestResult>('test_signature', { yaml });
+}
+
+// ─── Deep Parse (Phase 4) ─────────────────────────────────────
+
+/** Get deep parse details for a specific device */
+export async function getDeepParseInfo(ipAddress: string): Promise<DeepParseInfo | null> {
+	return invoke<DeepParseInfo | null>('get_deep_parse_info', { ipAddress });
+}
+
+/** Get function code distribution across all protocols */
+export async function getFunctionCodeStats(): Promise<Record<string, FunctionCodeStat[]>> {
+	return invoke<Record<string, FunctionCodeStat[]>>('get_function_code_stats');
 }
 
 // ─── Live Capture (Phase 5) ───────────────────────────────────

@@ -5,11 +5,19 @@ use tauri::State;
 use uuid::Uuid;
 
 use gm_capture::PcapReader;
-use gm_parsers::{identify_protocol, IcsProtocol};
+use gm_parsers::{
+    identify_protocol, deep_parse, IcsProtocol, DeepParseResult,
+    ModbusRole, ModbusDeviceId, Dnp3Role,
+    modbus_function_code_name, dnp3_function_code_name,
+};
 use gm_signatures::PacketData;
 use gm_topology::TopologyBuilder;
 
-use super::{AppState, AssetInfo, AssetSignatureMatch, ConnectionInfo, PacketSummary, infer_device_type};
+use super::{
+    AppState, AssetInfo, AssetSignatureMatch, ConnectionInfo, PacketSummary, infer_device_type,
+    DeepParseInfo, ModbusDetail, Dnp3Detail, FunctionCodeStat, RegisterRangeInfo,
+    ModbusDeviceIdInfo, ModbusRelationship, Dnp3Relationship, PollingInterval,
+};
 
 #[derive(Serialize)]
 pub struct ImportResult {
@@ -109,6 +117,25 @@ pub async fn import_pcap(
     let mut all_protocols: HashSet<String> = HashSet::new();
     let mut conn_origin_files: HashMap<String, HashSet<String>> = HashMap::new();
 
+    // Accumulators for deep parse results, keyed by IP
+    // For each IP, track: function codes, unit IDs, register ranges, roles, timestamps per (remote_ip, fc, unit_id)
+    let mut modbus_fc_counts: HashMap<String, HashMap<u8, u64>> = HashMap::new();
+    let mut modbus_unit_ids: HashMap<String, HashSet<u8>> = HashMap::new();
+    let mut modbus_register_ranges: HashMap<String, HashMap<(u16, u16, String), u64>> = HashMap::new();
+    let mut modbus_roles: HashMap<String, HashSet<String>> = HashMap::new();
+    let mut modbus_device_ids: HashMap<String, ModbusDeviceId> = HashMap::new();
+    // (remote_role, unit_ids, packet_count) per remote_ip per local_ip
+    #[allow(clippy::type_complexity)]
+    let mut modbus_relationships: HashMap<String, HashMap<String, (String, HashSet<u8>, u64)>> = HashMap::new();
+    // For polling interval detection: (src_ip, dst_ip, fc, unit_id) → sorted list of timestamps
+    let mut modbus_polling_timestamps: HashMap<(String, String, u8, u8), Vec<f64>> = HashMap::new();
+
+    let mut dnp3_fc_counts: HashMap<String, HashMap<u8, u64>> = HashMap::new();
+    let mut dnp3_addresses: HashMap<String, HashSet<u16>> = HashMap::new();
+    let mut dnp3_roles: HashMap<String, HashSet<String>> = HashMap::new();
+    let mut dnp3_unsolicited: HashMap<String, bool> = HashMap::new();
+    let mut dnp3_relationships: HashMap<String, HashMap<String, (String, u64)>> = HashMap::new();
+
     for packet in &all_packets {
         let protocol = identify_protocol(packet);
         let proto_str = format!("{:?}", protocol);
@@ -207,6 +234,137 @@ pub async fn import_pcap(
             });
         }
 
+        // ── Deep Protocol Parsing ────────────────────────────────
+        // Run deep parser on Modbus/DNP3 packets to extract function codes,
+        // unit IDs, register ranges, device IDs, and master/slave roles.
+        if let Some(deep_result) = deep_parse(packet, protocol) {
+            let ts_epoch = packet.timestamp.timestamp() as f64
+                + packet.timestamp.timestamp_subsec_millis() as f64 / 1000.0;
+
+            match deep_result {
+                DeepParseResult::Modbus(ref info) => {
+                    // Track function codes for both src and dst
+                    let ip_for_fc = match info.role {
+                        ModbusRole::Master => &packet.src_ip,
+                        ModbusRole::Slave => &packet.src_ip,
+                        ModbusRole::Unknown => &packet.src_ip,
+                    };
+                    *modbus_fc_counts
+                        .entry(ip_for_fc.clone())
+                        .or_default()
+                        .entry(info.function_code)
+                        .or_insert(0) += 1;
+
+                    // Track unit IDs
+                    modbus_unit_ids
+                        .entry(ip_for_fc.clone())
+                        .or_default()
+                        .insert(info.unit_id);
+
+                    // Track roles
+                    let role_str = match info.role {
+                        ModbusRole::Master => "master",
+                        ModbusRole::Slave => "slave",
+                        ModbusRole::Unknown => "unknown",
+                    };
+                    modbus_roles
+                        .entry(ip_for_fc.clone())
+                        .or_default()
+                        .insert(role_str.to_string());
+
+                    // Track register ranges (from master requests)
+                    if let Some(ref range) = info.register_range {
+                        let reg_type = format!("{:?}", range.register_type).to_lowercase();
+                        *modbus_register_ranges
+                            .entry(ip_for_fc.clone())
+                            .or_default()
+                            .entry((range.start, range.count, reg_type))
+                            .or_insert(0) += 1;
+                    }
+
+                    // Track device identification from FC 43/14
+                    if let Some(ref dev_id) = info.device_id {
+                        modbus_device_ids.insert(packet.src_ip.clone(), dev_id.clone());
+                    }
+
+                    // Track master↔slave relationships
+                    let (local_ip, remote_ip, remote_role) = match info.role {
+                        ModbusRole::Master => (&packet.src_ip, &packet.dst_ip, "slave"),
+                        ModbusRole::Slave => (&packet.src_ip, &packet.dst_ip, "master"),
+                        ModbusRole::Unknown => (&packet.src_ip, &packet.dst_ip, "unknown"),
+                    };
+                    let rel = modbus_relationships
+                        .entry(local_ip.clone())
+                        .or_default()
+                        .entry(remote_ip.clone())
+                        .or_insert_with(|| (remote_role.to_string(), HashSet::new(), 0));
+                    rel.1.insert(info.unit_id);
+                    rel.2 += 1;
+
+                    // Track polling timestamps for master requests (for interval detection)
+                    if info.role == ModbusRole::Master && !info.is_exception {
+                        let key = (
+                            packet.src_ip.clone(),
+                            packet.dst_ip.clone(),
+                            info.function_code,
+                            info.unit_id,
+                        );
+                        modbus_polling_timestamps
+                            .entry(key)
+                            .or_default()
+                            .push(ts_epoch);
+                    }
+                }
+                DeepParseResult::Dnp3(ref info) => {
+                    let ip_for_fc = &packet.src_ip;
+
+                    // Track function codes
+                    if let Some(fc) = info.function_code {
+                        *dnp3_fc_counts
+                            .entry(ip_for_fc.clone())
+                            .or_default()
+                            .entry(fc)
+                            .or_insert(0) += 1;
+                    }
+
+                    // Track DNP3 addresses
+                    dnp3_addresses
+                        .entry(ip_for_fc.clone())
+                        .or_default()
+                        .insert(info.source_address);
+
+                    // Track roles
+                    let role_str = match info.role {
+                        Dnp3Role::Master => "master",
+                        Dnp3Role::Outstation => "outstation",
+                        Dnp3Role::Unknown => "unknown",
+                    };
+                    dnp3_roles
+                        .entry(ip_for_fc.clone())
+                        .or_default()
+                        .insert(role_str.to_string());
+
+                    // Track unsolicited responses
+                    if info.is_unsolicited {
+                        dnp3_unsolicited.insert(ip_for_fc.clone(), true);
+                    }
+
+                    // Track relationships
+                    let remote_role = match info.role {
+                        Dnp3Role::Master => "outstation",
+                        Dnp3Role::Outstation => "master",
+                        Dnp3Role::Unknown => "unknown",
+                    };
+                    let rel = dnp3_relationships
+                        .entry(ip_for_fc.clone())
+                        .or_default()
+                        .entry(packet.dst_ip.clone())
+                        .or_insert_with(|| (remote_role.to_string(), 0));
+                    rel.1 += 1;
+                }
+            }
+        }
+
         // Feed into topology builder
         topo_builder.add_connection(
             &packet.src_ip,
@@ -224,6 +382,212 @@ pub async fn import_pcap(
             conn.origin_files = files.iter().cloned().collect();
             conn.origin_files.sort();
         }
+    }
+
+    // ── Deep Parse Aggregation ──────────────────────────────────────
+    // Build per-IP DeepParseInfo from accumulated deep parse data.
+    let mut deep_parse_info: HashMap<String, DeepParseInfo> = HashMap::new();
+
+    // Aggregate Modbus data
+    let all_modbus_ips: HashSet<String> = modbus_fc_counts
+        .keys()
+        .chain(modbus_roles.keys())
+        .cloned()
+        .collect();
+
+    for ip in &all_modbus_ips {
+        let role = modbus_roles.get(ip).map(|roles| {
+            if roles.contains("master") && roles.contains("slave") {
+                "both".to_string()
+            } else if roles.contains("master") {
+                "master".to_string()
+            } else if roles.contains("slave") {
+                "slave".to_string()
+            } else {
+                "unknown".to_string()
+            }
+        }).unwrap_or_else(|| "unknown".to_string());
+
+        let mut unit_ids: Vec<u8> = modbus_unit_ids
+            .get(ip)
+            .map(|s| s.iter().copied().collect())
+            .unwrap_or_default();
+        unit_ids.sort();
+
+        let function_codes: Vec<FunctionCodeStat> = modbus_fc_counts
+            .get(ip)
+            .map(|fc_map| {
+                let mut fcs: Vec<FunctionCodeStat> = fc_map.iter().map(|(&code, &count)| {
+                    FunctionCodeStat {
+                        code,
+                        name: modbus_function_code_name(code).to_string(),
+                        count,
+                        is_write: matches!(code, 5 | 6 | 15 | 16 | 22 | 23),
+                    }
+                }).collect();
+                fcs.sort_by(|a, b| b.count.cmp(&a.count));
+                fcs
+            })
+            .unwrap_or_default();
+
+        let register_ranges: Vec<RegisterRangeInfo> = modbus_register_ranges
+            .get(ip)
+            .map(|range_map| {
+                let mut ranges: Vec<RegisterRangeInfo> = range_map.iter().map(|((start, count, reg_type), &access_count)| {
+                    RegisterRangeInfo {
+                        start: *start,
+                        count: *count,
+                        register_type: reg_type.clone(),
+                        access_count,
+                    }
+                }).collect();
+                ranges.sort_by(|a, b| a.start.cmp(&b.start));
+                ranges
+            })
+            .unwrap_or_default();
+
+        let device_id = modbus_device_ids.get(ip).map(|d| ModbusDeviceIdInfo {
+            vendor_name: d.vendor_name.clone(),
+            product_code: d.product_code.clone(),
+            revision: d.revision.clone(),
+            vendor_url: d.vendor_url.clone(),
+            product_name: d.product_name.clone(),
+            model_name: d.model_name.clone(),
+        });
+
+        let relationships: Vec<ModbusRelationship> = modbus_relationships
+            .get(ip)
+            .map(|rel_map| {
+                rel_map.iter().map(|(remote_ip, (remote_role, unit_id_set, pkt_count))| {
+                    let mut uids: Vec<u8> = unit_id_set.iter().copied().collect();
+                    uids.sort();
+                    ModbusRelationship {
+                        remote_ip: remote_ip.clone(),
+                        remote_role: remote_role.clone(),
+                        unit_ids: uids,
+                        packet_count: *pkt_count,
+                    }
+                }).collect()
+            })
+            .unwrap_or_default();
+
+        // Compute polling intervals from timestamps
+        let mut polling_intervals: Vec<PollingInterval> = Vec::new();
+        for ((src, dst, fc, uid), timestamps) in &modbus_polling_timestamps {
+            if src == ip && timestamps.len() >= 3 {
+                let mut sorted_ts = timestamps.clone();
+                sorted_ts.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+                // Compute intervals between consecutive timestamps
+                let intervals: Vec<f64> = sorted_ts.windows(2)
+                    .map(|w| (w[1] - w[0]) * 1000.0) // convert to ms
+                    .filter(|&i| i > 0.0 && i < 60_000.0) // filter out gaps > 60s
+                    .collect();
+
+                if intervals.len() >= 2 {
+                    let sum: f64 = intervals.iter().sum();
+                    let avg = sum / intervals.len() as f64;
+                    let min = intervals.iter().cloned().fold(f64::MAX, f64::min);
+                    let max = intervals.iter().cloned().fold(f64::MIN, f64::max);
+
+                    polling_intervals.push(PollingInterval {
+                        remote_ip: dst.clone(),
+                        unit_id: Some(*uid),
+                        function_code: *fc,
+                        avg_interval_ms: (avg * 10.0).round() / 10.0,
+                        min_interval_ms: (min * 10.0).round() / 10.0,
+                        max_interval_ms: (max * 10.0).round() / 10.0,
+                        sample_count: intervals.len() as u64,
+                    });
+                }
+            }
+        }
+
+        let modbus_detail = ModbusDetail {
+            role,
+            unit_ids,
+            function_codes,
+            register_ranges,
+            device_id,
+            relationships,
+            polling_intervals,
+        };
+
+        deep_parse_info
+            .entry(ip.clone())
+            .or_default()
+            .modbus = Some(modbus_detail);
+    }
+
+    // Aggregate DNP3 data
+    let all_dnp3_ips: HashSet<String> = dnp3_fc_counts
+        .keys()
+        .chain(dnp3_roles.keys())
+        .cloned()
+        .collect();
+
+    for ip in &all_dnp3_ips {
+        let role = dnp3_roles.get(ip).map(|roles| {
+            if roles.contains("master") && roles.contains("outstation") {
+                "both".to_string()
+            } else if roles.contains("master") {
+                "master".to_string()
+            } else if roles.contains("outstation") {
+                "outstation".to_string()
+            } else {
+                "unknown".to_string()
+            }
+        }).unwrap_or_else(|| "unknown".to_string());
+
+        let mut addresses: Vec<u16> = dnp3_addresses
+            .get(ip)
+            .map(|s| s.iter().copied().collect())
+            .unwrap_or_default();
+        addresses.sort();
+
+        let function_codes: Vec<FunctionCodeStat> = dnp3_fc_counts
+            .get(ip)
+            .map(|fc_map| {
+                let mut fcs: Vec<FunctionCodeStat> = fc_map.iter().map(|(&code, &count)| {
+                    FunctionCodeStat {
+                        code,
+                        name: dnp3_function_code_name(code).to_string(),
+                        count,
+                        is_write: matches!(code, 2..=6),
+                    }
+                }).collect();
+                fcs.sort_by(|a, b| b.count.cmp(&a.count));
+                fcs
+            })
+            .unwrap_or_default();
+
+        let has_unsolicited = dnp3_unsolicited.get(ip).copied().unwrap_or(false);
+
+        let relationships: Vec<Dnp3Relationship> = dnp3_relationships
+            .get(ip)
+            .map(|rel_map| {
+                rel_map.iter().map(|(remote_ip, (remote_role, pkt_count))| {
+                    Dnp3Relationship {
+                        remote_ip: remote_ip.clone(),
+                        remote_role: remote_role.clone(),
+                        packet_count: *pkt_count,
+                    }
+                }).collect()
+            })
+            .unwrap_or_default();
+
+        let dnp3_detail = Dnp3Detail {
+            role,
+            addresses,
+            function_codes,
+            has_unsolicited,
+            relationships,
+        };
+
+        deep_parse_info
+            .entry(ip.clone())
+            .or_default()
+            .dnp3 = Some(dnp3_detail);
     }
 
     // ── Signature Matching ────────────────────────────────────────
@@ -307,7 +671,7 @@ pub async fn import_pcap(
         let best_match = sig_matches.first();
 
         // Highest confidence from any signature match (0 if no matches)
-        let confidence = best_match.map(|m| m.confidence).unwrap_or(
+        let mut confidence = best_match.map(|m| m.confidence).unwrap_or(
             // Default confidence: 1 if we identified a protocol by port, 0 if unknown
             if protocols.iter().any(|p| *p != IcsProtocol::Unknown) {
                 1
@@ -317,8 +681,32 @@ pub async fn import_pcap(
         );
 
         // Use vendor from highest-confidence signature match
-        let vendor = best_match.and_then(|m| m.vendor.clone());
-        let product_family = best_match.and_then(|m| m.product_family.clone());
+        let mut vendor = best_match.and_then(|m| m.vendor.clone());
+        let mut product_family = best_match.and_then(|m| m.product_family.clone());
+
+        // Deep parse Device ID (FC 43/14) overrides with confidence 5
+        if let Some(dp_info) = deep_parse_info.get(ip) {
+            if let Some(ref modbus) = dp_info.modbus {
+                if let Some(ref dev_id) = modbus.device_id {
+                    confidence = 5;
+                    if let Some(ref vn) = dev_id.vendor_name {
+                        vendor = Some(vn.clone());
+                    }
+                    // Build product family from available fields
+                    let pf_parts: Vec<&str> = [
+                        dev_id.product_code.as_deref(),
+                        dev_id.product_name.as_deref(),
+                        dev_id.model_name.as_deref(),
+                    ]
+                    .iter()
+                    .filter_map(|&x| x)
+                    .collect();
+                    if !pf_parts.is_empty() {
+                        product_family = Some(pf_parts.join(" "));
+                    }
+                }
+            }
+        }
 
         // Override device_type if signature provides one with higher confidence
         if let Some(m) = best_match {
@@ -391,6 +779,7 @@ pub async fn import_pcap(
     state_inner.assets = assets;
     state_inner.connections = connection_list;
     state_inner.packet_summaries = packet_summaries;
+    state_inner.deep_parse_info = deep_parse_info;
     state_inner.imported_files.extend(imported_files);
     state_inner.imported_files.sort();
     state_inner.imported_files.dedup();

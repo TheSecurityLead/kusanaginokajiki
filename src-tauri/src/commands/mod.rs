@@ -32,6 +32,8 @@ pub struct AppStateInner {
     pub imported_files: Vec<String>,
     /// Signature engine for device fingerprinting
     pub signature_engine: SignatureEngine,
+    /// Deep parse results grouped by IP address
+    pub deep_parse_info: HashMap<String, DeepParseInfo>,
 }
 
 /// Asset information stored in application state.
@@ -113,6 +115,119 @@ pub struct ProtocolStatInfo {
     pub unique_devices: u64,
 }
 
+/// Aggregated deep parse information for a single device (IP address).
+///
+/// Collects all Modbus/DNP3 details observed across every packet
+/// for a given IP, including function codes, unit IDs, register ranges,
+/// role (master/slave), and polling intervals.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct DeepParseInfo {
+    /// Modbus-specific details (present if device speaks Modbus)
+    pub modbus: Option<ModbusDetail>,
+    /// DNP3-specific details (present if device speaks DNP3)
+    pub dnp3: Option<Dnp3Detail>,
+}
+
+/// Aggregated Modbus details for a device.
+#[derive(Debug, Clone, Serialize)]
+pub struct ModbusDetail {
+    /// Detected role: "master", "slave", or "both"
+    pub role: String,
+    /// Unit IDs seen on this device (slave → responds as; master → polls)
+    pub unit_ids: Vec<u8>,
+    /// Function codes observed (code → count)
+    pub function_codes: Vec<FunctionCodeStat>,
+    /// Register ranges accessed
+    pub register_ranges: Vec<RegisterRangeInfo>,
+    /// Device identification from FC 43/14 (if extracted)
+    pub device_id: Option<ModbusDeviceIdInfo>,
+    /// IPs this device communicates with, with roles
+    pub relationships: Vec<ModbusRelationship>,
+    /// Polling intervals detected (in milliseconds)
+    pub polling_intervals: Vec<PollingInterval>,
+}
+
+/// DNP3 aggregated details for a device.
+#[derive(Debug, Clone, Serialize)]
+pub struct Dnp3Detail {
+    /// Detected role: "master", "outstation", or "both"
+    pub role: String,
+    /// DNP3 addresses used by this device
+    pub addresses: Vec<u16>,
+    /// Function codes observed (code → count)
+    pub function_codes: Vec<FunctionCodeStat>,
+    /// Whether unsolicited responses were detected from this device
+    pub has_unsolicited: bool,
+    /// IPs this device communicates with
+    pub relationships: Vec<Dnp3Relationship>,
+}
+
+/// Function code usage statistics.
+#[derive(Debug, Clone, Serialize)]
+pub struct FunctionCodeStat {
+    pub code: u8,
+    pub name: String,
+    pub count: u64,
+    /// Whether this is a write/control operation (security-relevant)
+    pub is_write: bool,
+}
+
+/// Register range accessed by a Modbus device.
+#[derive(Debug, Clone, Serialize)]
+pub struct RegisterRangeInfo {
+    pub start: u16,
+    pub count: u16,
+    pub register_type: String,
+    /// How many times this range was accessed
+    pub access_count: u64,
+}
+
+/// Modbus device identification from FC 43/14.
+#[derive(Debug, Clone, Serialize)]
+pub struct ModbusDeviceIdInfo {
+    pub vendor_name: Option<String>,
+    pub product_code: Option<String>,
+    pub revision: Option<String>,
+    pub vendor_url: Option<String>,
+    pub product_name: Option<String>,
+    pub model_name: Option<String>,
+}
+
+/// A relationship between Modbus master/slave.
+#[derive(Debug, Clone, Serialize)]
+pub struct ModbusRelationship {
+    pub remote_ip: String,
+    /// "master" or "slave" — what the REMOTE device is
+    pub remote_role: String,
+    pub unit_ids: Vec<u8>,
+    pub packet_count: u64,
+}
+
+/// A relationship between DNP3 master/outstation.
+#[derive(Debug, Clone, Serialize)]
+pub struct Dnp3Relationship {
+    pub remote_ip: String,
+    /// "master" or "outstation"
+    pub remote_role: String,
+    pub packet_count: u64,
+}
+
+/// Detected polling interval for a master→slave relationship.
+#[derive(Debug, Clone, Serialize)]
+pub struct PollingInterval {
+    pub remote_ip: String,
+    pub unit_id: Option<u8>,
+    pub function_code: u8,
+    /// Average interval in milliseconds
+    pub avg_interval_ms: f64,
+    /// Minimum interval observed
+    pub min_interval_ms: f64,
+    /// Maximum interval observed
+    pub max_interval_ms: f64,
+    /// Number of samples used to compute the interval
+    pub sample_count: u64,
+}
+
 impl AppState {
     pub fn new() -> Self {
         let mut engine = SignatureEngine::new();
@@ -148,6 +263,7 @@ impl AppState {
                 packet_summaries: HashMap::new(),
                 imported_files: Vec::new(),
                 signature_engine: engine,
+                deep_parse_info: HashMap::new(),
             }),
         }
     }

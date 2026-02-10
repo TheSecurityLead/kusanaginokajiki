@@ -284,3 +284,83 @@ export interface SignatureTestMatch {
 	dst_port: number;
 	confidence: number;
 }
+
+// ─── Deep Parse (Phase 4) ────────────────────────────────────
+
+/** Aggregated deep parse info for a single device */
+export interface DeepParseInfo {
+	modbus: ModbusDetail | null;
+	dnp3: Dnp3Detail | null;
+}
+
+/** Modbus protocol details for a device */
+export interface ModbusDetail {
+	role: string;
+	unit_ids: number[];
+	function_codes: FunctionCodeStat[];
+	register_ranges: RegisterRangeInfo[];
+	device_id: ModbusDeviceIdInfo | null;
+	relationships: ModbusRelationship[];
+	polling_intervals: PollingInterval[];
+}
+
+/** DNP3 protocol details for a device */
+export interface Dnp3Detail {
+	role: string;
+	addresses: number[];
+	function_codes: FunctionCodeStat[];
+	has_unsolicited: boolean;
+	relationships: Dnp3Relationship[];
+}
+
+/** Function code usage statistics */
+export interface FunctionCodeStat {
+	code: number;
+	name: string;
+	count: number;
+	is_write: boolean;
+}
+
+/** Modbus register range */
+export interface RegisterRangeInfo {
+	start: number;
+	count: number;
+	register_type: string;
+	access_count: number;
+}
+
+/** Modbus device identification from FC 43/14 */
+export interface ModbusDeviceIdInfo {
+	vendor_name: string | null;
+	product_code: string | null;
+	revision: string | null;
+	vendor_url: string | null;
+	product_name: string | null;
+	model_name: string | null;
+}
+
+/** Modbus master/slave relationship */
+export interface ModbusRelationship {
+	remote_ip: string;
+	remote_role: string;
+	unit_ids: number[];
+	packet_count: number;
+}
+
+/** DNP3 master/outstation relationship */
+export interface Dnp3Relationship {
+	remote_ip: string;
+	remote_role: string;
+	packet_count: number;
+}
+
+/** Detected polling interval */
+export interface PollingInterval {
+	remote_ip: string;
+	unit_id: number | null;
+	function_code: number;
+	avg_interval_ms: number;
+	min_interval_ms: number;
+	max_interval_ms: number;
+	sample_count: number;
+}

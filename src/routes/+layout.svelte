@@ -9,6 +9,7 @@
 	const navItems: { id: ViewTab; label: string; icon: string }[] = [
 		{ id: 'topology', label: 'Topology', icon: '⬡' },
 		{ id: 'inventory', label: 'Inventory', icon: '☰' },
+		{ id: 'protocol_stats', label: 'Protocols', icon: '▤' },
 		{ id: 'capture', label: 'Capture', icon: '◉' },
 		{ id: 'signatures', label: 'Signatures', icon: '⌘' },
 		{ id: 'settings', label: 'Settings', icon: '⚙' }

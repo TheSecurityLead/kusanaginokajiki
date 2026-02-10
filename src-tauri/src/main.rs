@@ -30,6 +30,8 @@ fn main() {
             commands::data::get_connections,
             commands::data::get_protocol_stats,
             commands::data::get_connection_packets,
+            commands::data::get_deep_parse_info,
+            commands::data::get_function_code_stats,
             // Signatures
             commands::signatures::get_signatures,
             commands::signatures::reload_signatures,
