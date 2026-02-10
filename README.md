@@ -1,3 +1,5 @@
+<div align="center"><img src="KusanaginoKajikiLogo.jpg"/></div>
+
 # Kusanagi Kajiki 草薙カジキ
 
 **Modern ICS/SCADA passive network discovery and topology visualization tool.**
