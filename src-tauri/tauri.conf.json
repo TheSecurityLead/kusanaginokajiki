@@ -10,7 +10,6 @@
     "beforeBuildCommand": "npm run build"
   },
   "app": {
-    "title": "GRASSMARLIN Reborn",
     "windows": [
       {
         "title": "GRASSMARLIN Reborn — ICS/SCADA Network Discovery",

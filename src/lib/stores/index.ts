@@ -10,6 +10,7 @@ import type {
 	NetworkInterface,
 	Asset,
 	Connection,
+	ConnectionTreeNode,
 	TopologyGraph,
 	ProtocolStats,
 	CaptureStatus,
@@ -110,4 +111,49 @@ export const filteredAssets = derived(
 /** OT-specific assets only (excludes IT devices) */
 export const otAssets = derived(assets, ($assets) =>
 	$assets.filter((a) => a.device_type !== 'it_device' && a.device_type !== 'unknown')
+);
+
+/** Connection tree: groups connections by source IP, with asset metadata */
+export const connectionTree = derived(
+	[assets, connections],
+	([$assets, $connections]): ConnectionTreeNode[] => {
+		if ($connections.length === 0) return [];
+
+		// Build a map of IP → asset info for quick lookup
+		const assetMap = new Map($assets.map((a) => [a.ip_address, a]));
+
+		// Group connections by source IP
+		const grouped = new Map<string, Connection[]>();
+		for (const conn of $connections) {
+			const existing = grouped.get(conn.src_ip);
+			if (existing) {
+				existing.push(conn);
+			} else {
+				grouped.set(conn.src_ip, [conn]);
+			}
+		}
+
+		// Build tree nodes
+		const nodes: ConnectionTreeNode[] = [];
+		for (const [ip, conns] of grouped) {
+			const asset = assetMap.get(ip);
+			nodes.push({
+				ip,
+				device_type: (asset?.device_type as ConnectionTreeNode['device_type']) ?? 'unknown',
+				mac_address: asset?.mac_address ?? null,
+				packet_count: conns.reduce((sum, c) => sum + c.packet_count, 0),
+				connections: conns.sort((a, b) => b.packet_count - a.packet_count)
+			});
+		}
+
+		// Sort: OT devices first, then by packet count
+		nodes.sort((a, b) => {
+			const aOt = a.device_type !== 'it_device' && a.device_type !== 'unknown';
+			const bOt = b.device_type !== 'it_device' && b.device_type !== 'unknown';
+			if (aOt !== bOt) return bOt ? 1 : -1;
+			return b.packet_count - a.packet_count;
+		});
+
+		return nodes;
+	}
 );

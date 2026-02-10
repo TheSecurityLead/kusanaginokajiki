@@ -1,5 +1,5 @@
 /**
- * GRASSMARLIN Reborn — Core Types
+ * Kusanagi Kajiki — Core Types
  *
  * These types define the IPC contract between the Rust backend
  * and the SvelteKit frontend. Keep these in sync with the Rust
@@ -38,11 +38,19 @@ export interface CaptureConfig {
 }
 
 export interface ImportResult {
+	file_count: number;
 	packet_count: number;
 	connection_count: number;
 	asset_count: number;
 	protocols_detected: string[];
 	duration_ms: number;
+	per_file: FileImportResult[];
+}
+
+export interface FileImportResult {
+	filename: string;
+	packet_count: number;
+	status: string;
 }
 
 // ─── Assets ───────────────────────────────────────────────────
@@ -84,9 +92,19 @@ export type IcsProtocol =
 	| 'bacnet'
 	| 's7comm'
 	| 'opc_ua'
+	| 'profinet'
+	| 'iec104'
+	| 'mqtt'
+	| 'hart_ip'
+	| 'foundation_fieldbus'
+	| 'ge_srtp'
+	| 'wonderware_suitelink'
 	| 'http'
 	| 'https'
 	| 'dns'
+	| 'ssh'
+	| 'rdp'
+	| 'snmp'
 	| 'unknown';
 
 export interface ProtocolStats {
@@ -107,12 +125,26 @@ export interface Connection {
 	dst_ip: string;
 	dst_port: number;
 	dst_mac: string | null;
-	protocol: IcsProtocol;
-	transport: 'tcp' | 'udp';
+	protocol: string;
+	transport: string;
 	packet_count: number;
 	byte_count: number;
 	first_seen: string;
 	last_seen: string;
+	origin_files: string[];
+}
+
+// ─── Packet Summary (for connection tree) ─────────────────────
+
+export interface PacketSummary {
+	timestamp: string;
+	src_ip: string;
+	dst_ip: string;
+	src_port: number;
+	dst_port: number;
+	protocol: string;
+	length: number;
+	origin_file: string;
 }
 
 // ─── Topology Graph ───────────────────────────────────────────
@@ -141,6 +173,17 @@ export interface TopologyEdge {
 	packet_count: number;
 	byte_count: number;
 	bidirectional: boolean;
+}
+
+// ─── Connection Tree ──────────────────────────────────────────
+
+/** A node in the connection tree: represents an IP with its connections */
+export interface ConnectionTreeNode {
+	ip: string;
+	device_type: DeviceType;
+	mac_address: string | null;
+	packet_count: number;
+	connections: Connection[];
 }
 
 // ─── Tauri Event Payloads ─────────────────────────────────────

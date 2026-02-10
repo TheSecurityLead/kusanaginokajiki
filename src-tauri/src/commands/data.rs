@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use tauri::State;
 
 use gm_topology::TopologyGraph;
-use super::{AppState, AssetInfo, ConnectionInfo, ProtocolStatInfo};
+use super::{AppState, AssetInfo, ConnectionInfo, PacketSummary, ProtocolStatInfo};
 
 /// Get the current network topology graph for visualization.
 #[tauri::command]
@@ -64,4 +64,18 @@ pub fn get_protocol_stats(state: State<'_, AppState>) -> Result<Vec<ProtocolStat
     result.sort_by(|a, b| b.packet_count.cmp(&a.packet_count));
 
     Ok(result)
+}
+
+/// Get packet summaries for a specific connection (for the connection tree detail view).
+#[tauri::command]
+pub fn get_connection_packets(
+    connection_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<PacketSummary>, String> {
+    let state_inner = state.inner.lock().map_err(|e| e.to_string())?;
+    Ok(state_inner
+        .packet_summaries
+        .get(&connection_id)
+        .cloned()
+        .unwrap_or_default())
 }

@@ -2,33 +2,50 @@
 	import { interfaces, captureStatus, captureStats, assets, connections, topology } from '$lib/stores';
 	import { importPcap, getAssets, getConnections, getTopology, getProtocolStats } from '$lib/utils/tauri';
 	import { protocolStats } from '$lib/stores';
+	import type { FileImportResult } from '$lib/types';
 
 	let importStatus = $state<'idle' | 'importing' | 'done' | 'error'>('idle');
 	let importMessage = $state('');
-	let selectedFile = $state('');
+	let fileResults = $state<FileImportResult[]>([]);
+	let totalStats = $state({ packets: 0, assets: 0, connections: 0, ms: 0, files: 0 });
 
 	async function handleImportPcap() {
 		try {
-			// Use Tauri dialog to pick a file
+			// Use Tauri dialog to pick files (multi-select)
 			const { open } = await import('@tauri-apps/plugin-dialog');
-			const filePath = await open({
-				title: 'Import PCAP File',
+			const selected = await open({
+				title: 'Import PCAP Files',
+				multiple: true,
 				filters: [
 					{ name: 'PCAP Files', extensions: ['pcap', 'pcapng', 'cap'] },
 					{ name: 'All Files', extensions: ['*'] }
 				]
 			});
 
-			if (!filePath) return; // User cancelled
+			if (!selected || selected.length === 0) return; // User cancelled
 
-			selectedFile = typeof filePath === 'string' ? filePath : filePath.path;
+			// open() with multiple:true returns string[] | null
+			const paths: string[] = selected;
+
+			if (paths.length === 0) return;
+
 			importStatus = 'importing';
-			importMessage = `Importing ${selectedFile.split('/').pop() ?? selectedFile}...`;
+			const fileCount = paths.length;
+			importMessage = `Importing ${fileCount} file${fileCount > 1 ? 's' : ''}...`;
+			fileResults = [];
 
-			const result = await importPcap(selectedFile);
+			const result = await importPcap(paths);
 
 			importStatus = 'done';
-			importMessage = `Imported ${result.packet_count.toLocaleString()} packets → ${result.asset_count} assets, ${result.connection_count} connections (${result.duration_ms}ms)`;
+			fileResults = result.per_file;
+			totalStats = {
+				packets: result.packet_count,
+				assets: result.asset_count,
+				connections: result.connection_count,
+				ms: result.duration_ms,
+				files: result.file_count
+			};
+			importMessage = `Imported ${result.packet_count.toLocaleString()} packets from ${result.file_count} file${result.file_count > 1 ? 's' : ''} → ${result.asset_count} assets, ${result.connection_count} connections (${result.duration_ms}ms)`;
 
 			// Refresh all stores with new data
 			const [newAssets, newConnections, newTopology, newStats] = await Promise.all([
@@ -60,12 +77,12 @@
 		<section class="capture-section">
 			<h3 class="section-title">PCAP Import</h3>
 			<p class="section-desc">
-				Import a PCAP or PCAPNG file captured from an OT network. The file will be parsed
-				for ICS protocol traffic and assets will be discovered automatically.
+				Import one or more PCAP/PCAPNG files captured from an OT network. Multiple files can be
+				selected simultaneously — all traffic is merged into a single topology with per-file attribution.
 			</p>
 
 			<button class="action-btn primary" onclick={handleImportPcap} disabled={importStatus === 'importing'}>
-				{importStatus === 'importing' ? '⏳ Importing...' : '📁 Import PCAP File'}
+				{importStatus === 'importing' ? 'Importing...' : 'Import PCAP Files'}
 			</button>
 
 			{#if importMessage}
@@ -76,6 +93,47 @@
 					class:loading={importStatus === 'importing'}
 				>
 					{importMessage}
+				</div>
+			{/if}
+
+			<!-- Per-file breakdown -->
+			{#if fileResults.length > 1}
+				<div class="file-results">
+					<h4 class="subsection-title">Per-File Results</h4>
+					{#each fileResults as file}
+						<div class="file-result-row" class:file-ok={file.status === 'ok'} class:file-err={file.status !== 'ok'}>
+							<span class="file-name">{file.filename}</span>
+							<span class="file-packets">
+								{#if file.status === 'ok'}
+									{file.packet_count.toLocaleString()} packets
+								{:else}
+									{file.status}
+								{/if}
+							</span>
+						</div>
+					{/each}
+				</div>
+			{/if}
+
+			<!-- Import summary stats -->
+			{#if importStatus === 'done'}
+				<div class="import-stats-grid">
+					<div class="import-stat">
+						<span class="import-stat-value">{totalStats.files}</span>
+						<span class="import-stat-label">Files</span>
+					</div>
+					<div class="import-stat">
+						<span class="import-stat-value">{totalStats.packets.toLocaleString()}</span>
+						<span class="import-stat-label">Packets</span>
+					</div>
+					<div class="import-stat">
+						<span class="import-stat-value">{totalStats.assets}</span>
+						<span class="import-stat-label">Assets</span>
+					</div>
+					<div class="import-stat">
+						<span class="import-stat-value">{totalStats.connections}</span>
+						<span class="import-stat-label">Connections</span>
+					</div>
 				</div>
 			{/if}
 		</section>
@@ -118,7 +176,7 @@
 			</div>
 
 			<p class="phase-note">
-				⚠️ Live capture will be available in Phase 4. For now, use PCAP import above.
+				Live capture will be available in Phase 5. For now, use PCAP import above.
 			</p>
 		</section>
 
@@ -253,6 +311,74 @@
 		background: rgba(59, 130, 246, 0.1);
 		border: 1px solid rgba(59, 130, 246, 0.2);
 		color: #3b82f6;
+	}
+
+	/* ── Per-file results ──────────────────────────── */
+
+	.file-results {
+		margin-top: 16px;
+	}
+
+	.file-result-row {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		padding: 6px 10px;
+		font-size: 11px;
+		border-radius: 4px;
+		margin-bottom: 3px;
+	}
+
+	.file-result-row.file-ok {
+		background: rgba(16, 185, 129, 0.05);
+		color: var(--gm-text-secondary);
+	}
+
+	.file-result-row.file-err {
+		background: rgba(239, 68, 68, 0.05);
+		color: #ef4444;
+	}
+
+	.file-name {
+		font-weight: 500;
+	}
+
+	.file-packets {
+		font-variant-numeric: tabular-nums;
+		color: var(--gm-text-muted);
+	}
+
+	/* ── Import stats ──────────────────────────────── */
+
+	.import-stats-grid {
+		display: grid;
+		grid-template-columns: repeat(4, 1fr);
+		gap: 10px;
+		margin-top: 16px;
+	}
+
+	.import-stat {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		padding: 10px;
+		background: var(--gm-bg-panel);
+		border-radius: 6px;
+	}
+
+	.import-stat-value {
+		font-size: 16px;
+		font-weight: 700;
+		color: #10b981;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.import-stat-label {
+		font-size: 9px;
+		color: var(--gm-text-muted);
+		text-transform: uppercase;
+		letter-spacing: 1px;
+		margin-top: 2px;
 	}
 
 	/* ── Interface List ──────────────────────────────── */

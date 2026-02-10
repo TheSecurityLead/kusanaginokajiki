@@ -26,9 +26,16 @@ impl PcapReader {
     /// Read all packets from a PCAP or PCAPNG file.
     ///
     /// Returns a Vec of parsed packets with Layer 2-4 information extracted.
+    /// Each packet is tagged with the origin filename for multi-PCAP tracking.
     /// Packets that fail to parse are silently skipped (logged at debug level).
     pub fn read_file<P: AsRef<Path>>(&self, path: P) -> Result<Vec<ParsedPacket>, CaptureError> {
         let path = path.as_ref();
+
+        // Extract just the filename (not the full path) for origin tracking
+        let origin_file = path
+            .file_name()
+            .map(|f| f.to_string_lossy().into_owned())
+            .unwrap_or_else(|| path.display().to_string());
 
         let mut capture = pcap::Capture::from_file(path)
             .map_err(|e| CaptureError::FileOpen(format!("{}: {}", path.display(), e)))?;
@@ -38,12 +45,12 @@ impl PcapReader {
 
         while let Ok(raw_packet) = capture.next_packet() {
             // Extract timestamp from pcap header
-            let timestamp = timestamp_from_pcap(&raw_packet.header);
+            let timestamp = timestamp_from_pcap(*raw_packet.header);
 
             // Parse with etherparse — zero-copy slicing of packet headers
             match SlicedPacket::from_ethernet(raw_packet.data) {
                 Ok(parsed) => {
-                    if let Some(packet) = extract_packet_info(&parsed, raw_packet.data, timestamp) {
+                    if let Some(packet) = extract_packet_info(&parsed, raw_packet.data, timestamp, &origin_file) {
                         packets.push(packet);
                     } else {
                         skipped += 1;
@@ -76,6 +83,7 @@ fn extract_packet_info(
     parsed: &SlicedPacket,
     raw_data: &[u8],
     timestamp: DateTime<Utc>,
+    origin_file: &str,
 ) -> Option<ParsedPacket> {
     // Extract MAC addresses from Ethernet header
     let (src_mac, dst_mac) = if raw_data.len() >= 14 {
@@ -119,8 +127,12 @@ fn extract_packet_info(
         _ => (TransportProtocol::Other, 0, 0),
     };
 
-    // Extract application-layer payload
-    let payload = parsed.payload.to_vec();
+    // Extract application-layer payload from the transport layer
+    let payload = match &parsed.transport {
+        Some(TransportSlice::Tcp(tcp)) => tcp.payload().to_vec(),
+        Some(TransportSlice::Udp(udp)) => udp.payload().to_vec(),
+        _ => Vec::new(),
+    };
 
     Some(ParsedPacket {
         timestamp,
@@ -133,16 +145,17 @@ fn extract_packet_info(
         dst_port,
         length: raw_data.len(),
         payload,
+        origin_file: origin_file.to_string(),
     })
 }
 
 /// Convert pcap packet header timestamp to chrono DateTime.
-fn timestamp_from_pcap(header: &pcap::PacketHeader) -> DateTime<Utc> {
+fn timestamp_from_pcap(header: pcap::PacketHeader) -> DateTime<Utc> {
     DateTime::from_timestamp(
-        header.ts.tv_sec as i64,
+        header.ts.tv_sec,
         (header.ts.tv_usec as u32) * 1000, // microseconds → nanoseconds
     )
-    .unwrap_or_else(|| Utc::now())
+    .unwrap_or_else(Utc::now)
 }
 
 fn format_ipv4(bytes: [u8; 4]) -> String {

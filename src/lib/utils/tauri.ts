@@ -15,6 +15,7 @@ import type {
 	Asset,
 	Connection,
 	ProtocolStats,
+	PacketSummary,
 	PacketEvent,
 	CaptureStatsEvent
 } from '$lib/types';
@@ -33,9 +34,9 @@ export async function getAppInfo(): Promise<{ version: string; rust_version: str
 
 // ─── PCAP Import ──────────────────────────────────────────────
 
-/** Import a PCAP file and parse its contents */
-export async function importPcap(filePath: string): Promise<ImportResult> {
-	return invoke<ImportResult>('import_pcap', { filePath });
+/** Import one or more PCAP files and parse their contents */
+export async function importPcap(paths: string[]): Promise<ImportResult> {
+	return invoke<ImportResult>('import_pcap', { paths });
 }
 
 // ─── Topology ─────────────────────────────────────────────────
@@ -67,6 +68,11 @@ export async function getConnections(): Promise<Connection[]> {
 	return invoke<Connection[]>('get_connections');
 }
 
+/** Get packet summaries for a specific connection (for connection tree detail) */
+export async function getConnectionPackets(connectionId: string): Promise<PacketSummary[]> {
+	return invoke<PacketSummary[]>('get_connection_packets', { connectionId });
+}
+
 // ─── Statistics ───────────────────────────────────────────────
 
 /** Get protocol breakdown statistics */
@@ -74,7 +80,7 @@ export async function getProtocolStats(): Promise<ProtocolStats[]> {
 	return invoke<ProtocolStats[]>('get_protocol_stats');
 }
 
-// ─── Live Capture (Phase 4) ───────────────────────────────────
+// ─── Live Capture (Phase 5) ───────────────────────────────────
 
 /** Start live packet capture on an interface */
 export async function startCapture(interfaceName: string, bpfFilter?: string): Promise<void> {

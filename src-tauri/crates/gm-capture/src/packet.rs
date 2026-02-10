@@ -47,6 +47,9 @@ pub struct ParsedPacket {
     /// Raw application-layer payload for protocol parsers
     #[serde(skip)]
     pub payload: Vec<u8>,
+
+    /// Which PCAP file this packet came from (filename only, not full path)
+    pub origin_file: String,
 }
 
 impl ParsedPacket {

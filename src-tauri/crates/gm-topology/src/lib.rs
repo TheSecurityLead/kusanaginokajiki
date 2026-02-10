@@ -83,6 +83,10 @@ impl TopologyBuilder {
         let proto_str = format!("{:?}", protocol);
         let key = (src_ip.to_string(), dst_ip.to_string(), proto_str.clone());
 
+        // Check for bidirectional traffic before mutably borrowing
+        let reverse_key = (dst_ip.to_string(), src_ip.to_string(), proto_str.clone());
+        let has_reverse = self.edges.contains_key(&reverse_key);
+
         let edge = self.edges.entry(key).or_insert_with(|| {
             self.edge_counter += 1;
             TopoEdge {
@@ -99,9 +103,7 @@ impl TopologyBuilder {
         edge.packet_count += 1;
         edge.byte_count += bytes;
 
-        // Check for bidirectional traffic
-        let reverse_key = (dst_ip.to_string(), src_ip.to_string(), proto_str);
-        if self.edges.contains_key(&reverse_key) {
+        if has_reverse {
             edge.bidirectional = true;
         }
     }

@@ -29,6 +29,7 @@ fn main() {
             commands::data::get_assets,
             commands::data::get_connections,
             commands::data::get_protocol_stats,
+            commands::data::get_connection_packets,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

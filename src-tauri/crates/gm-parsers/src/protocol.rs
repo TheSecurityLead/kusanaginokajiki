@@ -23,6 +23,14 @@ pub enum IcsProtocol {
     Iec104,
     /// MQTT — IoT/IIoT messaging (port 1883, 8883)
     Mqtt,
+    /// HART-IP — process instrumentation (port 5094)
+    HartIp,
+    /// Foundation Fieldbus HSE (ports 1089-1091)
+    FoundationFieldbus,
+    /// GE SRTP — GE PLCs (ports 18245-18246)
+    GeSrtp,
+    /// Wonderware SuiteLink (port 5007)
+    WonderwareSuitelink,
 
     // Common IT protocols for context
     Http,
@@ -49,6 +57,11 @@ impl IcsProtocol {
                 | IcsProtocol::OpcUa
                 | IcsProtocol::Profinet
                 | IcsProtocol::Iec104
+                | IcsProtocol::Mqtt
+                | IcsProtocol::HartIp
+                | IcsProtocol::FoundationFieldbus
+                | IcsProtocol::GeSrtp
+                | IcsProtocol::WonderwareSuitelink
         )
     }
 
@@ -64,6 +77,10 @@ impl IcsProtocol {
             IcsProtocol::Profinet => "PROFINET",
             IcsProtocol::Iec104 => "IEC 60870-5-104",
             IcsProtocol::Mqtt => "MQTT",
+            IcsProtocol::HartIp => "HART-IP",
+            IcsProtocol::FoundationFieldbus => "Foundation Fieldbus HSE",
+            IcsProtocol::GeSrtp => "GE SRTP",
+            IcsProtocol::WonderwareSuitelink => "Wonderware SuiteLink",
             IcsProtocol::Http => "HTTP",
             IcsProtocol::Https => "HTTPS/TLS",
             IcsProtocol::Dns => "DNS",
@@ -114,9 +131,13 @@ pub fn identify_by_port(src_port: u16, dst_port: u16) -> IcsProtocol {
             47808 => return IcsProtocol::Bacnet,
             102 => return IcsProtocol::S7comm,
             4840 => return IcsProtocol::OpcUa,
-            34962 | 34963 | 34964 => return IcsProtocol::Profinet,
+            34962..=34964 => return IcsProtocol::Profinet,
             2404 => return IcsProtocol::Iec104,
             1883 | 8883 => return IcsProtocol::Mqtt,
+            5094 => return IcsProtocol::HartIp,
+            1089..=1091 => return IcsProtocol::FoundationFieldbus,
+            18245 | 18246 => return IcsProtocol::GeSrtp,
+            5007 => return IcsProtocol::WonderwareSuitelink,
 
             // ─── Common IT Protocols ──────────────────────
             80 | 8080 | 8443 => return IcsProtocol::Http,
@@ -158,8 +179,23 @@ mod tests {
         assert!(IcsProtocol::Modbus.is_ot());
         assert!(IcsProtocol::Dnp3.is_ot());
         assert!(IcsProtocol::EthernetIp.is_ot());
+        assert!(IcsProtocol::HartIp.is_ot());
+        assert!(IcsProtocol::FoundationFieldbus.is_ot());
+        assert!(IcsProtocol::GeSrtp.is_ot());
+        assert!(IcsProtocol::WonderwareSuitelink.is_ot());
+        assert!(IcsProtocol::Mqtt.is_ot());
         assert!(!IcsProtocol::Http.is_ot());
         assert!(!IcsProtocol::Dns.is_ot());
         assert!(!IcsProtocol::Unknown.is_ot());
+    }
+
+    #[test]
+    fn test_new_ot_port_detection() {
+        assert_eq!(identify_by_port(49152, 5094), IcsProtocol::HartIp);
+        assert_eq!(identify_by_port(49152, 1089), IcsProtocol::FoundationFieldbus);
+        assert_eq!(identify_by_port(49152, 18245), IcsProtocol::GeSrtp);
+        assert_eq!(identify_by_port(49152, 5007), IcsProtocol::WonderwareSuitelink);
+        assert_eq!(identify_by_port(49152, 2404), IcsProtocol::Iec104);
+        assert_eq!(identify_by_port(49152, 34962), IcsProtocol::Profinet);
     }
 }
