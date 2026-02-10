@@ -22,10 +22,10 @@
 	<!-- Sidebar Navigation -->
 	<nav class="sidebar">
 		<div class="sidebar-brand">
-			<div class="brand-icon">GM</div>
+			<div class="brand-icon">KK</div>
 			<div class="brand-text">
-				<span class="brand-name">GRASSMARLIN</span>
-				<span class="brand-sub">REBORN</span>
+				<span class="brand-name">KUSANAGI</span>
+				<span class="brand-sub">KAJIKI</span>
 			</div>
 		</div>
 

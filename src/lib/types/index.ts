@@ -203,3 +203,32 @@ export interface CaptureStatsEvent {
 	active_connections: number;
 	elapsed_seconds: number;
 }
+
+// ─── Topology Views (Phase 2) ────────────────────────────────
+
+/** How to group/cluster nodes in the topology graph */
+export type GroupingMode = 'subnet' | 'protocol' | 'device_role' | 'vendor' | 'none';
+
+/** A topology sub-tab (logical, mesh, filtered view, or watch tab) */
+export interface TopologyTab {
+	id: string;
+	type: 'logical' | 'mesh' | 'filtered' | 'watch';
+	label: string;
+	closeable: boolean;
+}
+
+/** Configuration for a filtered view tab */
+export interface FilteredViewConfig extends TopologyTab {
+	type: 'filtered';
+	/** Node IDs that are hidden in this view */
+	hiddenNodeIds: string[];
+}
+
+/** Configuration for a watch tab */
+export interface WatchViewConfig extends TopologyTab {
+	type: 'watch';
+	/** The IP/node ID being watched */
+	targetNodeId: string;
+	/** How many hops from the target to include (1-5) */
+	depth: number;
+}

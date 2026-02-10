@@ -11,7 +11,7 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
-            log::info!("GRASSMARLIN Reborn v{} starting", env!("CARGO_PKG_VERSION"));
+            log::info!("Kusanagi Kajiki v{} starting", env!("CARGO_PKG_VERSION"));
 
             // Initialize application state
             app.manage(commands::AppState::new());
