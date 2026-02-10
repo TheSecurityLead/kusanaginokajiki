@@ -187,8 +187,8 @@ Development follows a phased plan. Phases 0–7 achieve GRASSMARLIN feature pari
 | Phase | Status | Description |
 |-------|--------|-------------|
 | 0 — Foundation | ✅ Done | Project scaffold, interface listing, CI/CD |
-| 1 — PCAP Import | 🔨 Current | Multi-PCAP import, L2-L4 parsing, connection tree |
-| 2 — Topology | ⏳ Planned | Logical/Mesh views, dynamic grouping, filtered views, watch tabs |
+| 1 — PCAP Import | ✅ Done | Multi-PCAP import, L2-L4 parsing, connection tree |
+| 2 — Topology | 🔨 Current | Logical/Mesh views, dynamic grouping, filtered views, watch tabs |
 | 3 — Signatures | ⏳ Planned | YAML fingerprint engine (54+ sigs), confidence scoring, editor |
 | 4 — Deep Parsing | ⏳ Planned | Modbus/DNP3 deep inspection, protocol statistics |
 | 5 — Live Capture | ⏳ Planned | Real-time capture with streaming topology |
