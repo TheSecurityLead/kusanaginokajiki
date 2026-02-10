@@ -1,0 +1,23 @@
+[package]
+name = "gm-capture"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Packet capture
+pcap = "2"
+
+# Low-level packet parsing (Ethernet, IP, TCP, UDP headers)
+etherparse = "0.16"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+
+# Error handling
+thiserror = "2"
+
+# Logging
+log = "0.4"
+
+# Timestamps
+chrono = { version = "0.4", features = ["serde"] }

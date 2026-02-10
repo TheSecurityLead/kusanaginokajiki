@@ -1,0 +1,63 @@
+[package]
+name = "grassmarlin-reborn"
+version = "0.1.0"
+edition = "2021"
+description = "Modern ICS/SCADA passive network discovery tool"
+license = "Apache-2.0"
+authors = ["David"]
+rust-version = "1.77"
+
+[workspace]
+members = [
+    ".",
+    "crates/gm-capture",
+    "crates/gm-parsers",
+    "crates/gm-topology",
+    "crates/gm-db",
+]
+
+[dependencies]
+# Tauri core
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-shell = "2"
+
+# Workspace crates
+gm-capture = { path = "crates/gm-capture" }
+gm-parsers = { path = "crates/gm-parsers" }
+gm-topology = { path = "crates/gm-topology" }
+gm-db = { path = "crates/gm-db" }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Error handling
+thiserror = "2"
+anyhow = "1"
+
+# Logging
+log = "0.4"
+env_logger = "0.11"
+
+# UUID generation for asset IDs
+uuid = { version = "1", features = ["v4"] }
+
+# Timestamp handling
+chrono = { version = "0.4", features = ["serde"] }
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
+panic = "abort"

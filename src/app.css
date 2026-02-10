@@ -1,0 +1,72 @@
+@import 'tailwindcss';
+
+/* GRASSMARLIN Reborn — Design Tokens */
+:root {
+  /* OT/Industrial color palette */
+  --gm-bg-primary: #0a0e17;
+  --gm-bg-secondary: #111827;
+  --gm-bg-panel: #1a2235;
+  --gm-bg-hover: #243044;
+  --gm-border: #2d3a4f;
+  --gm-border-active: #3b82f6;
+
+  /* Text */
+  --gm-text-primary: #e2e8f0;
+  --gm-text-secondary: #94a3b8;
+  --gm-text-muted: #64748b;
+
+  /* Protocol colors — each OT protocol gets a distinct color */
+  --gm-modbus: #f59e0b;
+  --gm-dnp3: #10b981;
+  --gm-ethernet-ip: #8b5cf6;
+  --gm-bacnet: #06b6d4;
+  --gm-s7comm: #ef4444;
+  --gm-opc-ua: #ec4899;
+  --gm-unknown: #64748b;
+
+  /* Device type colors */
+  --gm-plc: #f59e0b;
+  --gm-rtu: #10b981;
+  --gm-hmi: #3b82f6;
+  --gm-historian: #8b5cf6;
+  --gm-eng-ws: #06b6d4;
+  --gm-it-device: #64748b;
+
+  /* Status */
+  --gm-active: #10b981;
+  --gm-warning: #f59e0b;
+  --gm-danger: #ef4444;
+  --gm-info: #3b82f6;
+}
+
+/* Base styles */
+html, body {
+  background-color: var(--gm-bg-primary);
+  color: var(--gm-text-primary);
+  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Scrollbar styling for the industrial look */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--gm-bg-primary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--gm-border);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--gm-text-muted);
+}

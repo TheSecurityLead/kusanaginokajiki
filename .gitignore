@@ -1,0 +1,38 @@
+# ─── Node.js ────────────────────────────────────────
+node_modules/
+.npm
+dist/
+build/
+
+# ─── SvelteKit ──────────────────────────────────────
+.svelte-kit/
+
+# ─── Rust / Cargo ───────────────────────────────────
+src-tauri/target/
+**/*.rs.bk
+Cargo.lock
+
+# ─── Tauri ──────────────────────────────────────────
+src-tauri/gen/
+
+# ─── IDE ────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ─── OS ─────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ─── Environment ────────────────────────────────────
+.env
+.env.local
+.env.*.local
+
+# ─── Test artifacts ─────────────────────────────────
+*.pcap
+*.pcapng
+!tests/pcaps/README.md

@@ -1,0 +1,10 @@
+[package]
+name = "gm-db"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+log = "0.4"
+# SQLite will be added in Phase 5:
+# rusqlite = { version = "0.32", features = ["bundled"] }
