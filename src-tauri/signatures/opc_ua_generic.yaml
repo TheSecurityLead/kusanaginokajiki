@@ -1,0 +1,8 @@
+name: "opc_ua_generic"
+description: "Generic OPC UA (Unified Architecture) device identified by well-known port 4840. OPC UA is the modern, platform-independent successor to OPC Classic, used for secure data exchange between SCADA systems, historians, PLCs, and cloud platforms."
+protocol: opc_ua
+filters:
+  - field: tcp.dst_port
+    value: 4840
+confidence: 1
+payloads: []

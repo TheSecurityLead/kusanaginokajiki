@@ -1,0 +1,9 @@
+name: "siemens_s7_mac"
+description: "Siemens device identified by IEEE OUI 00:0E:8C in the source MAC address. This OUI is registered to Siemens AG and is commonly found on S7-300, S7-400, S7-1200, S7-1500 PLCs, SCALANCE switches, and other Siemens industrial network components."
+vendor: "Siemens"
+filters:
+  - field: mac.src_oui
+    value: "00:0e:8c"
+confidence: 3
+device_type: plc
+payloads: []

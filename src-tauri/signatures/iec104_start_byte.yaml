@@ -1,0 +1,12 @@
+name: "iec104_start_byte"
+description: "IEC 60870-5-104 protocol confirmed by the APCI (Application Protocol Control Information) start byte 0x68 at the beginning of the TCP payload. All IEC 104 APDUs begin with this fixed start byte, providing high-confidence protocol identification for power grid SCADA traffic."
+protocol: iec104
+filters:
+  - field: tcp.dst_port
+    value: 2404
+  - field: payload
+    pattern: "\\x68"
+    offset: 0
+confidence: 4
+device_type: rtu
+payloads: []

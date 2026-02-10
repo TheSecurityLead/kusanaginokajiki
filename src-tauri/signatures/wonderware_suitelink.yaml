@@ -1,0 +1,11 @@
+name: "wonderware_suitelink"
+description: "Wonderware SuiteLink server identified by well-known port 5007. SuiteLink is AVEVA's (formerly Wonderware/Schneider Electric Software) proprietary high-throughput protocol for real-time data exchange between InTouch HMI, Historian, and other ArchestrA platform components."
+protocol: wonderware_suitelink
+vendor: "Wonderware"
+filters:
+  - field: tcp.dst_port
+    value: 5007
+confidence: 1
+role: server
+device_type: scada_server
+payloads: []

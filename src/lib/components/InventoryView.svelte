@@ -26,6 +26,24 @@
 
 	const protocols: IcsProtocol[] = ['modbus', 'dnp3', 'ethernet_ip', 'bacnet', 's7comm', 'opc_ua'];
 
+	const confidenceLabels: Record<number, string> = {
+		0: '—',
+		1: 'Port',
+		2: 'Pattern',
+		3: 'MAC OUI',
+		4: 'Payload',
+		5: 'Deep'
+	};
+
+	const confidenceColors: Record<number, string> = {
+		5: 'var(--gm-confidence-5, #10b981)',
+		4: 'var(--gm-confidence-4, #3b82f6)',
+		3: 'var(--gm-confidence-3, #f59e0b)',
+		2: 'var(--gm-confidence-2, #f97316)',
+		1: 'var(--gm-confidence-1, #ef4444)',
+		0: '#64748b'
+	};
+
 	function handleFilterInput(event: Event) {
 		const target = event.target as HTMLInputElement;
 		assetFilter.set(target.value);
@@ -67,11 +85,12 @@
 						<th>IP Address</th>
 						<th>MAC Address</th>
 						<th>Type</th>
+						<th>Confidence</th>
 						<th>Vendor</th>
+						<th>Product</th>
 						<th>Protocols</th>
 						<th>Packets</th>
 						<th>First Seen</th>
-						<th>Last Seen</th>
 					</tr>
 				</thead>
 				<tbody>
@@ -92,7 +111,22 @@
 									{deviceTypeLabels[asset.device_type]}
 								</span>
 							</td>
+							<td>
+								{#if asset.confidence > 0}
+									<span
+										class="confidence-badge"
+										style="color: {confidenceColors[asset.confidence] ?? '#64748b'};
+										       background: {(confidenceColors[asset.confidence] ?? '#64748b')}18"
+										title="{confidenceLabels[asset.confidence] ?? '?'} ({asset.confidence}/5)"
+									>
+										{asset.confidence}/5
+									</span>
+								{:else}
+									<span class="confidence-none">—</span>
+								{/if}
+							</td>
 							<td class="cell-vendor">{asset.vendor ?? '—'}</td>
+							<td class="cell-vendor">{asset.product_family ?? '—'}</td>
 							<td class="cell-protocols">
 								{#each asset.protocols as proto}
 									<span class="proto-tag">{proto}</span>
@@ -100,7 +134,6 @@
 							</td>
 							<td class="cell-numeric">{asset.packet_count.toLocaleString()}</td>
 							<td class="cell-time">{new Date(asset.first_seen).toLocaleString()}</td>
-							<td class="cell-time">{new Date(asset.last_seen).toLocaleString()}</td>
 						</tr>
 					{/each}
 				</tbody>
@@ -282,5 +315,18 @@
 		padding: 1px 6px;
 		border-radius: 3px;
 		margin-right: 4px;
+	}
+
+	.confidence-badge {
+		font-size: 9px;
+		font-weight: 600;
+		padding: 2px 6px;
+		border-radius: 3px;
+		letter-spacing: 0.3px;
+	}
+
+	.confidence-none {
+		color: var(--gm-text-muted);
+		font-size: 10px;
 	}
 </style>

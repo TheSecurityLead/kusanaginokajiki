@@ -1,0 +1,13 @@
+name: "dnp3_start_bytes"
+description: "DNP3 protocol confirmed by start bytes 0x0564 in the data link layer header. All valid DNP3 frames begin with this two-byte sync sequence, providing high-confidence protocol identification independent of deep function code parsing."
+protocol: dnp3
+filters:
+  - field: tcp.dst_port
+    value: 20000
+  - field: payload
+    pattern: "\\x05\\x64"
+    offset: 0
+confidence: 4
+role: slave
+device_type: rtu
+payloads: []

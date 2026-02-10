@@ -1,0 +1,9 @@
+name: "rockwell_mac"
+description: "Rockwell Automation device identified by IEEE OUI 00:00:BC in the source MAC address. This OUI is registered to Allen-Bradley (now Rockwell Automation) and is found on ControlLogix, CompactLogix, MicroLogix, and FlexLogix PLCs as well as ENBT and EN2T communication modules."
+vendor: "Rockwell Automation"
+filters:
+  - field: mac.src_oui
+    value: "00:00:bc"
+confidence: 3
+device_type: plc
+payloads: []

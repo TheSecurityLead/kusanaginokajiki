@@ -1,0 +1,12 @@
+name: "modbus_server_response"
+description: "Modbus TCP server actively responding on port 502. The source port 502 combined with a minimum payload length of 7 bytes (MBAP header: Transaction ID + Protocol ID + Length + Unit ID) confirms this device is serving Modbus requests, not merely listening."
+protocol: modbus
+filters:
+  - field: tcp.src_port
+    value: 502
+  - field: payload
+    min_length: 7
+confidence: 2
+role: slave
+device_type: rtu
+payloads: []

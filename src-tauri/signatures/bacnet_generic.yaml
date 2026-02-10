@@ -1,0 +1,8 @@
+name: "bacnet_generic"
+description: "Generic BACnet/IP device identified by well-known UDP port 47808 (0xBAC0). BACnet (Building Automation and Control Networks) is the dominant protocol in building management systems for HVAC, lighting, fire detection, and access control."
+protocol: bacnet
+filters:
+  - field: udp.dst_port
+    value: 47808
+confidence: 1
+payloads: []

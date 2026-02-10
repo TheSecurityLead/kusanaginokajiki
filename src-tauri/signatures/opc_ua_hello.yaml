@@ -1,0 +1,11 @@
+name: "opc_ua_hello"
+description: "OPC UA Hello message confirmed by the ASCII 'HEL' message type at the start of the OPC UA binary transport header. The Hello message is the first step in the OPC UA connection handshake, providing high-confidence identification of an OPC UA endpoint."
+protocol: opc_ua
+filters:
+  - field: tcp.dst_port
+    value: 4840
+  - field: payload
+    pattern: "\\x48\\x45\\x4c"
+    offset: 0
+confidence: 4
+payloads: []

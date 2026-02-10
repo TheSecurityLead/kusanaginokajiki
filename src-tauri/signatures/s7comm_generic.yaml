@@ -1,0 +1,10 @@
+name: "s7comm_generic"
+description: "Generic Siemens S7comm device identified by ISO-TSAP port 102. S7comm is the proprietary protocol used by Siemens S7-300, S7-400, S7-1200, and S7-1500 PLCs for programming, diagnostics, and data exchange."
+protocol: s7comm
+vendor: "Siemens"
+filters:
+  - field: tcp.dst_port
+    value: 102
+confidence: 1
+device_type: plc
+payloads: []

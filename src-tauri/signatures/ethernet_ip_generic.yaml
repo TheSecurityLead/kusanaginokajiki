@@ -1,0 +1,9 @@
+name: "ethernet_ip_generic"
+description: "Generic EtherNet/IP CIP (Common Industrial Protocol) device identified by well-known port 44818. EtherNet/IP is the primary industrial protocol for Rockwell Automation (Allen-Bradley) controllers and is also used by other CIP-compatible vendors."
+protocol: ethernet_ip
+filters:
+  - field: tcp.dst_port
+    value: 44818
+confidence: 1
+device_type: plc
+payloads: []

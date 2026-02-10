@@ -10,6 +10,7 @@
 		{ id: 'topology', label: 'Topology', icon: '⬡' },
 		{ id: 'inventory', label: 'Inventory', icon: '☰' },
 		{ id: 'capture', label: 'Capture', icon: '◉' },
+		{ id: 'signatures', label: 'Signatures', icon: '⌘' },
 		{ id: 'settings', label: 'Settings', icon: '⚙' }
 	];
 

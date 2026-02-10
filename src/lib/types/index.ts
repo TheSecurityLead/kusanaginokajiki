@@ -81,6 +81,22 @@ export interface Asset {
 	purdue_level: PurdueLevel | null;
 	tags: string[];
 	packet_count: number;
+	/** Overall confidence score (1-5), highest from any signature match */
+	confidence: number;
+	/** Vendor-specific product identification from signatures */
+	product_family: string | null;
+	/** All signature matches for this asset */
+	signature_matches: AssetSignatureMatch[];
+}
+
+/** A signature match result attached to an asset */
+export interface AssetSignatureMatch {
+	signature_name: string;
+	confidence: number;
+	vendor: string | null;
+	product_family: string | null;
+	device_type: string | null;
+	role: string | null;
 }
 
 // ─── Protocols ────────────────────────────────────────────────
@@ -231,4 +247,40 @@ export interface WatchViewConfig extends TopologyTab {
 	targetNodeId: string;
 	/** How many hops from the target to include (1-5) */
 	depth: number;
+}
+
+// ─── Signatures (Phase 3) ────────────────────────────────────
+
+/** Information about a loaded signature */
+export interface SignatureInfo {
+	name: string;
+	description: string;
+	vendor: string | null;
+	product_family: string | null;
+	protocol: string | null;
+	confidence: number;
+	role: string | null;
+	device_type: string | null;
+	filter_count: number;
+}
+
+/** Summary of all loaded signatures */
+export interface SignatureSummary {
+	total_count: number;
+	signatures: SignatureInfo[];
+}
+
+/** Result of testing a signature against loaded data */
+export interface SignatureTestResult {
+	match_count: number;
+	matches: SignatureTestMatch[];
+}
+
+export interface SignatureTestMatch {
+	packet_index: number;
+	src_ip: string;
+	dst_ip: string;
+	src_port: number;
+	dst_port: number;
+	confidence: number;
 }

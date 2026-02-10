@@ -1,0 +1,9 @@
+name: "iec104_generic"
+description: "Generic IEC 60870-5-104 device identified by well-known port 2404. IEC 104 is the TCP/IP adaptation of the IEC 60870-5 telecontrol protocol, widely deployed in electrical substation SCADA systems for communication between control centers and RTUs or protection relays."
+protocol: iec104
+filters:
+  - field: tcp.dst_port
+    value: 2404
+confidence: 1
+device_type: rtu
+payloads: []

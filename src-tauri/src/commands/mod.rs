@@ -1,11 +1,13 @@
 pub mod system;
 pub mod capture;
 pub mod data;
+pub mod signatures;
 
 use std::collections::HashMap;
 use std::sync::Mutex;
 use gm_topology::TopologyGraph;
 use gm_parsers::IcsProtocol;
+use gm_signatures::SignatureEngine;
 use serde::Serialize;
 
 /// Shared application state, managed by Tauri.
@@ -28,6 +30,8 @@ pub struct AppStateInner {
     pub packet_summaries: HashMap<String, Vec<PacketSummary>>,
     /// List of imported PCAP files
     pub imported_files: Vec<String>,
+    /// Signature engine for device fingerprinting
+    pub signature_engine: SignatureEngine,
 }
 
 /// Asset information stored in application state.
@@ -46,6 +50,23 @@ pub struct AssetInfo {
     pub purdue_level: Option<u8>,
     pub tags: Vec<String>,
     pub packet_count: u64,
+    /// Overall confidence score (1-5), highest from any signature match
+    pub confidence: u8,
+    /// Vendor-specific product identification from signatures
+    pub product_family: Option<String>,
+    /// All signature matches for this asset
+    pub signature_matches: Vec<AssetSignatureMatch>,
+}
+
+/// A signature match result attached to an asset.
+#[derive(Debug, Clone, Serialize)]
+pub struct AssetSignatureMatch {
+    pub signature_name: String,
+    pub confidence: u8,
+    pub vendor: Option<String>,
+    pub product_family: Option<String>,
+    pub device_type: Option<String>,
+    pub role: Option<String>,
 }
 
 /// Connection information stored in application state.
@@ -94,6 +115,31 @@ pub struct ProtocolStatInfo {
 
 impl AppState {
     pub fn new() -> Self {
+        let mut engine = SignatureEngine::new();
+
+        // Load default signatures from the bundled signatures/ directory.
+        // Try multiple paths: relative to binary (production) and relative to src-tauri/ (dev).
+        let signature_dirs = [
+            std::path::PathBuf::from("signatures"),
+            std::path::PathBuf::from("../src-tauri/signatures"),
+            // When running via `cargo tauri dev`, CWD is the project root
+            std::path::PathBuf::from("src-tauri/signatures"),
+        ];
+
+        for dir in &signature_dirs {
+            if dir.exists() {
+                match engine.load_directory(dir) {
+                    Ok(count) => {
+                        log::info!("Loaded {} signatures from {}", count, dir.display());
+                        break;
+                    }
+                    Err(e) => {
+                        log::warn!("Failed to load signatures from {}: {}", dir.display(), e);
+                    }
+                }
+            }
+        }
+
         AppState {
             inner: Mutex::new(AppStateInner {
                 topology: TopologyGraph::default(),
@@ -101,6 +147,7 @@ impl AppState {
                 connections: Vec::new(),
                 packet_summaries: HashMap::new(),
                 imported_files: Vec::new(),
+                signature_engine: engine,
             }),
         }
     }

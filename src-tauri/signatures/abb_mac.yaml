@@ -1,0 +1,9 @@
+name: "abb_mac"
+description: "ABB device identified by IEEE OUI 00:80:25 in the source MAC address. This OUI is registered to ABB and is found on AC 800M, AC 500, and 800xA series controllers as well as ABB industrial network interface modules used in process automation and power systems."
+vendor: "ABB"
+filters:
+  - field: mac.src_oui
+    value: "00:80:25"
+confidence: 3
+device_type: plc
+payloads: []

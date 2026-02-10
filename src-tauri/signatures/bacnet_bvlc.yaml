@@ -1,0 +1,11 @@
+name: "bacnet_bvlc"
+description: "BACnet/IP confirmed by BVLC (BACnet Virtual Link Control) header type byte 0x81 at the start of the UDP payload. All BACnet/IP frames are encapsulated in BVLC, and this magic byte provides high-confidence protocol identification for building automation network traffic."
+protocol: bacnet
+filters:
+  - field: udp.dst_port
+    value: 47808
+  - field: payload
+    pattern: "\\x81"
+    offset: 0
+confidence: 4
+payloads: []

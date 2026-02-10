@@ -1,0 +1,14 @@
+name: "rockwell_ethernet_ip"
+description: "Rockwell Automation ControlLogix PLC identified by the ASCII string 'Rockwell' in the EtherNet/IP CIP payload on port 44818. This pattern typically appears in CIP Identity responses or List Identity replies, confirming the device vendor with high confidence."
+protocol: ethernet_ip
+vendor: "Rockwell Automation"
+product_family: "ControlLogix"
+filters:
+  - field: tcp.dst_port
+    value: 44818
+  - field: payload
+    pattern: "\\x52\\x6f\\x63\\x6b\\x77\\x65\\x6c\\x6c"
+confidence: 4
+role: slave
+device_type: plc
+payloads: []

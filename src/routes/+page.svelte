@@ -11,6 +11,7 @@
 	import InventoryView from '$lib/components/InventoryView.svelte';
 	import CaptureView from '$lib/components/CaptureView.svelte';
 	import SettingsView from '$lib/components/SettingsView.svelte';
+	import SignatureEditor from '$lib/components/SignatureEditor.svelte';
 	import ConnectionTree from '$lib/components/ConnectionTree.svelte';
 
 	let showTree = $state(true);
@@ -135,6 +136,8 @@
 	<InventoryView />
 {:else if $activeTab === 'capture'}
 	<CaptureView />
+{:else if $activeTab === 'signatures'}
+	<SignatureEditor />
 {:else if $activeTab === 'settings'}
 	<SettingsView />
 {/if}

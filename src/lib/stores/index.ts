@@ -19,7 +19,8 @@ import type {
 	TopologyTab,
 	FilteredViewConfig,
 	WatchViewConfig,
-	GroupingMode
+	GroupingMode,
+	SignatureSummary
 } from '$lib/types';
 
 // ─── Core Application State ──────────────────────────────────
@@ -38,6 +39,9 @@ export const topology = writable<TopologyGraph>({ nodes: [], edges: [] });
 
 /** Protocol statistics */
 export const protocolStats = writable<ProtocolStats[]>([]);
+
+/** Loaded signature information */
+export const signatureSummary = writable<SignatureSummary>({ total_count: 0, signatures: [] });
 
 // ─── Capture State ────────────────────────────────────────────
 
@@ -59,7 +63,7 @@ export const captureStats = writable<CaptureStatsEvent>({
 export const selectedAssetId = writable<string | null>(null);
 
 /** Currently active view/tab */
-export type ViewTab = 'topology' | 'inventory' | 'capture' | 'settings';
+export type ViewTab = 'topology' | 'inventory' | 'capture' | 'signatures' | 'settings';
 export const activeTab = writable<ViewTab>('topology');
 
 /** Search/filter text for asset inventory */

@@ -1,0 +1,15 @@
+[package]
+name = "gm-signatures"
+version = "0.1.0"
+edition = "2021"
+description = "YAML fingerprint engine for ICS/SCADA device identification"
+license = "Apache-2.0"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"
+serde_json = "1"
+regex = "1"
+thiserror = "2"
+log = "0.4"
+gm-parsers = { path = "../gm-parsers" }

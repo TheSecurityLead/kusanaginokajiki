@@ -1,0 +1,12 @@
+name: "ethernet_ip_register_session"
+description: "EtherNet/IP Register Session command (0x0065) detected in the encapsulation header. This command initiates a CIP session between a client and a target device, confirming active EtherNet/IP protocol communication rather than incidental traffic on port 44818."
+protocol: ethernet_ip
+filters:
+  - field: tcp.dst_port
+    value: 44818
+  - field: payload
+    pattern: "\\x00\\x65"
+    offset: 0
+confidence: 4
+device_type: plc
+payloads: []

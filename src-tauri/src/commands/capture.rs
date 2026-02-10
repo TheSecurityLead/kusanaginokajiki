@@ -6,9 +6,10 @@ use uuid::Uuid;
 
 use gm_capture::PcapReader;
 use gm_parsers::{identify_protocol, IcsProtocol};
+use gm_signatures::PacketData;
 use gm_topology::TopologyBuilder;
 
-use super::{AppState, AssetInfo, ConnectionInfo, PacketSummary, infer_device_type};
+use super::{AppState, AssetInfo, AssetSignatureMatch, ConnectionInfo, PacketSummary, infer_device_type};
 
 #[derive(Serialize)]
 pub struct ImportResult {
@@ -225,7 +226,70 @@ pub async fn import_pcap(
         }
     }
 
-    // Build assets from collected data
+    // ── Signature Matching ────────────────────────────────────────
+    // Convert packets to PacketData for the signature engine and group by IP.
+    // We run signature matching per-device: collect all packets where the IP
+    // is either source or destination, then match signatures against that set.
+    let mut ip_packets: HashMap<String, Vec<PacketData>> = HashMap::new();
+
+    for packet in &all_packets {
+        let protocol = identify_protocol(packet);
+        let proto_str = format!("{:?}", protocol).to_lowercase();
+
+        let pkt_data = PacketData {
+            src_ip: packet.src_ip.clone(),
+            dst_ip: packet.dst_ip.clone(),
+            src_port: packet.src_port,
+            dst_port: packet.dst_port,
+            src_mac: packet.src_mac.clone(),
+            dst_mac: packet.dst_mac.clone(),
+            transport: format!("{:?}", packet.transport).to_lowercase(),
+            protocol: proto_str,
+            payload: packet.payload.clone(),
+            length: packet.length,
+        };
+
+        // Associate packet with both src and dst IP for signature matching
+        ip_packets
+            .entry(packet.src_ip.clone())
+            .or_default()
+            .push(pkt_data.clone());
+        ip_packets
+            .entry(packet.dst_ip.clone())
+            .or_default()
+            .push(pkt_data);
+    }
+
+    // We need access to the signature engine from state for matching.
+    // Lock state briefly to run matching, then release before the final update.
+    let sig_results: HashMap<String, Vec<AssetSignatureMatch>> = {
+        let state_inner = state.inner.lock().map_err(|e| e.to_string())?;
+        let mut results = HashMap::new();
+
+        for (ip, packets) in &ip_packets {
+            let matches = state_inner.signature_engine.match_device_packets(packets);
+            if !matches.is_empty() {
+                results.insert(
+                    ip.clone(),
+                    matches
+                        .into_iter()
+                        .map(|m| AssetSignatureMatch {
+                            signature_name: m.signature_name,
+                            confidence: m.confidence,
+                            vendor: m.vendor,
+                            product_family: m.product_family,
+                            device_type: m.device_type,
+                            role: m.role,
+                        })
+                        .collect(),
+                );
+            }
+        }
+
+        results
+    };
+
+    // Build assets from collected data, enriched with signature results
     let all_ips: HashSet<String> = asset_protocols.keys().cloned().collect();
     let mut assets: Vec<AssetInfo> = Vec::new();
 
@@ -236,7 +300,34 @@ pub async fn import_pcap(
             .unwrap_or_default();
 
         let is_server = server_ips.contains(ip);
-        let device_type = infer_device_type(&protocols, is_server);
+        let mut device_type = infer_device_type(&protocols, is_server);
+
+        // Apply signature match data
+        let sig_matches = sig_results.get(ip).cloned().unwrap_or_default();
+        let best_match = sig_matches.first();
+
+        // Highest confidence from any signature match (0 if no matches)
+        let confidence = best_match.map(|m| m.confidence).unwrap_or(
+            // Default confidence: 1 if we identified a protocol by port, 0 if unknown
+            if protocols.iter().any(|p| *p != IcsProtocol::Unknown) {
+                1
+            } else {
+                0
+            },
+        );
+
+        // Use vendor from highest-confidence signature match
+        let vendor = best_match.and_then(|m| m.vendor.clone());
+        let product_family = best_match.and_then(|m| m.product_family.clone());
+
+        // Override device_type if signature provides one with higher confidence
+        if let Some(m) = best_match {
+            if let Some(ref sig_device_type) = m.device_type {
+                if m.confidence >= 3 {
+                    device_type = sig_device_type.clone();
+                }
+            }
+        }
 
         assets.push(AssetInfo {
             id: ip.clone(),
@@ -244,7 +335,7 @@ pub async fn import_pcap(
             mac_address: asset_macs.get(ip).cloned(),
             hostname: None,
             device_type,
-            vendor: None,
+            vendor,
             protocols: protocols.iter().map(|p| format!("{:?}", p).to_lowercase()).collect(),
             first_seen: asset_first_seen.get(ip).cloned().unwrap_or_default(),
             last_seen: asset_last_seen.get(ip).cloned().unwrap_or_default(),
@@ -252,6 +343,9 @@ pub async fn import_pcap(
             purdue_level: None,
             tags: Vec::new(),
             packet_count: *asset_packet_counts.get(ip).unwrap_or(&0),
+            confidence,
+            product_family,
+            signature_matches: sig_matches,
         });
     }
 
@@ -262,7 +356,23 @@ pub async fn import_pcap(
         b_ot.cmp(&a_ot).then(b.packet_count.cmp(&a.packet_count))
     });
 
-    let topology = topo_builder.build();
+    let mut topology = topo_builder.build();
+
+    // Enrich topology nodes with signature-derived data (vendor, device_type)
+    for node in &mut topology.nodes {
+        if let Some(sig_matches) = sig_results.get(&node.ip_address) {
+            if let Some(best) = sig_matches.first() {
+                if let Some(ref v) = best.vendor {
+                    node.vendor = Some(v.clone());
+                }
+                if let Some(ref dt) = best.device_type {
+                    if best.confidence >= 3 {
+                        node.device_type = dt.clone();
+                    }
+                }
+            }
+        }
+    }
     let connection_list: Vec<ConnectionInfo> = connections.into_values().collect();
     let asset_count = assets.len();
     let connection_count = connection_list.len();

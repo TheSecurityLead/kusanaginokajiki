@@ -1,0 +1,14 @@
+name: "schneider_modbus"
+description: "Schneider Electric Modicon M340 PLC identified by the ASCII string 'Schneider' in the Modbus TCP payload on port 502. This pattern typically appears in Modbus FC 43 (Read Device Identification) responses, confirming the device vendor and product family."
+protocol: modbus
+vendor: "Schneider Electric"
+product_family: "Modicon M340"
+filters:
+  - field: tcp.dst_port
+    value: 502
+  - field: payload
+    pattern: "\\x53\\x63\\x68\\x6e\\x65\\x69\\x64\\x65\\x72"
+confidence: 4
+role: slave
+device_type: plc
+payloads: []

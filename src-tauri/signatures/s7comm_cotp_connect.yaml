@@ -1,0 +1,13 @@
+name: "s7comm_cotp_connect"
+description: "Siemens S7comm connection confirmed by TPKT header (version 0x03, reserved 0x00) at the start of the TCP payload. TPKT is the ISO transport layer wrapper used by S7comm over TCP, and its presence on port 102 provides high-confidence identification of Siemens PLC communication."
+protocol: s7comm
+vendor: "Siemens"
+filters:
+  - field: tcp.dst_port
+    value: 102
+  - field: payload
+    pattern: "\\x03\\x00"
+    offset: 0
+confidence: 4
+device_type: plc
+payloads: []

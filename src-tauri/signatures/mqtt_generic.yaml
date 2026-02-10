@@ -1,0 +1,8 @@
+name: "mqtt_generic"
+description: "Generic MQTT (Message Queuing Telemetry Transport) device identified by well-known port 1883. MQTT is a lightweight publish-subscribe messaging protocol commonly used in IIoT gateways, edge devices, and telemetry systems for sensor data collection and command distribution."
+protocol: mqtt
+filters:
+  - field: tcp.dst_port
+    value: 1883
+confidence: 1
+payloads: []

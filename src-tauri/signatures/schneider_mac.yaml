@@ -1,0 +1,9 @@
+name: "schneider_mac"
+description: "Schneider Electric device identified by IEEE OUI 00:80:F4 in the source MAC address. This OUI is registered to Schneider Electric and is found on Modicon M340, M580, Premium, and Quantum PLCs as well as various Schneider industrial Ethernet modules."
+vendor: "Schneider Electric"
+filters:
+  - field: mac.src_oui
+    value: "00:80:f4"
+confidence: 3
+device_type: plc
+payloads: []

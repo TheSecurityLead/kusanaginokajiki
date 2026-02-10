@@ -1,0 +1,10 @@
+name: "modbus_generic"
+description: "Generic Modbus TCP device identified by well-known port 502. This is the lowest confidence match — any device communicating on port 502 is assumed to be a Modbus-capable RTU or PLC until deeper inspection confirms the protocol."
+protocol: modbus
+filters:
+  - field: tcp.dst_port
+    value: 502
+confidence: 1
+role: slave
+device_type: rtu
+payloads: []

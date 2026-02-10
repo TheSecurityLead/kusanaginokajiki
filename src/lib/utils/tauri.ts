@@ -17,7 +17,9 @@ import type {
 	ProtocolStats,
 	PacketSummary,
 	PacketEvent,
-	CaptureStatsEvent
+	CaptureStatsEvent,
+	SignatureSummary,
+	SignatureTestResult
 } from '$lib/types';
 
 // ─── System Commands ──────────────────────────────────────────
@@ -78,6 +80,23 @@ export async function getConnectionPackets(connectionId: string): Promise<Packet
 /** Get protocol breakdown statistics */
 export async function getProtocolStats(): Promise<ProtocolStats[]> {
 	return invoke<ProtocolStats[]>('get_protocol_stats');
+}
+
+// ─── Signatures (Phase 3) ─────────────────────────────────────
+
+/** Get all loaded signatures */
+export async function getSignatures(): Promise<SignatureSummary> {
+	return invoke<SignatureSummary>('get_signatures');
+}
+
+/** Reload signatures from disk */
+export async function reloadSignatures(): Promise<number> {
+	return invoke<number>('reload_signatures');
+}
+
+/** Test a YAML signature against loaded PCAP data */
+export async function testSignature(yaml: string): Promise<SignatureTestResult> {
+	return invoke<SignatureTestResult>('test_signature', { yaml });
 }
 
 // ─── Live Capture (Phase 5) ───────────────────────────────────

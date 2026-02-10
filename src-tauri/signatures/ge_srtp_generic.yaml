@@ -1,0 +1,10 @@
+name: "ge_srtp_generic"
+description: "Generic GE SRTP (Service Request Transport Protocol) device identified by well-known port 18245. GE SRTP is used by GE Fanuc/Emerson (formerly GE Intelligent Platforms) PACSystems, VersaMax, and Series 90 PLCs for programming, configuration, and runtime data exchange."
+protocol: ge_srtp
+vendor: "GE"
+filters:
+  - field: tcp.dst_port
+    value: 18245
+confidence: 1
+device_type: plc
+payloads: []

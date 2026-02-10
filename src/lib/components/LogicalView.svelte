@@ -2,7 +2,8 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { topology, selectedAssetId, groupingMode } from '$lib/stores';
 	import { addFilteredView, addWatchTab } from '$lib/stores';
-	import type { TopologyGraph, TopologyNode, GroupingMode } from '$lib/types';
+	import type { TopologyGraph, TopologyNode, GroupingMode, Asset } from '$lib/types';
+	import { assets } from '$lib/stores';
 	import {
 		DEVICE_COLORS,
 		DEVICE_LABELS,
@@ -77,6 +78,8 @@
 						'font-family': 'JetBrains Mono, monospace',
 						'text-valign': 'bottom',
 						'text-margin-y': 6,
+						'text-wrap': 'wrap' as any,
+						'text-max-width': '120px',
 						width: 32,
 						height: 32
 					}
@@ -177,9 +180,26 @@
 		});
 	}
 
+	/** Build a display label for a node, including vendor if available */
+	function nodeLabel(node: TopologyNode, assetMap: Map<string, Asset>): string {
+		const asset = assetMap.get(node.ip_address);
+		const vendor = asset?.vendor ?? node.vendor;
+		if (vendor) {
+			// Shorten long vendor names for the label
+			const shortVendor = vendor.length > 20 ? vendor.substring(0, 18) + '...' : vendor;
+			return `${node.ip_address}\n${shortVendor}`;
+		}
+		return node.ip_address;
+	}
+
 	/** Build Cytoscape elements from topology graph with current grouping */
 	function buildElements(graph: TopologyGraph, mode: GroupingMode) {
 		const elements: any[] = [];
+
+		// Build asset map for enrichment
+		let currentAssets: Asset[] = [];
+		assets.subscribe((a) => (currentAssets = a))();
+		const assetMap = new Map(currentAssets.map((a) => [a.ip_address, a]));
 
 		if (mode !== 'none') {
 			// Collect unique groups
@@ -204,14 +224,18 @@
 			const hasOt = node.protocols.some((p) => isOtProtocol(p));
 			const color = DEVICE_COLORS[node.device_type] ?? DEVICE_COLORS.unknown;
 			const parentId = mode !== 'none' ? getGroupId(node, mode) : undefined;
+			const asset = assetMap.get(node.ip_address);
+			const confidence = asset?.confidence ?? 0;
 
 			elements.push({
 				group: 'nodes',
 				data: {
 					id: node.id,
-					label: node.ip_address,
+					label: nodeLabel(node, assetMap),
 					deviceType: node.device_type,
-					vendor: node.vendor,
+					vendor: asset?.vendor ?? node.vendor,
+					productFamily: asset?.product_family,
+					confidence,
 					subnet: node.subnet,
 					protocols: node.protocols.join(', '),
 					packetCount: node.packet_count,
@@ -319,6 +343,13 @@
 		updateGraph(currentGraph, currentMode);
 	});
 
+	// Rebuild graph when assets update (e.g., after signature matching enriches vendor data)
+	const unsubAssets = assets.subscribe(() => {
+		if (currentGraph.nodes.length > 0) {
+			updateGraph(currentGraph, currentMode);
+		}
+	});
+
 	// Close context menu on any click outside
 	function handleWindowClick() {
 		if (ctxMenu.show) hideContextMenu();
@@ -332,6 +363,7 @@
 	onDestroy(() => {
 		unsubTopo();
 		unsubMode();
+		unsubAssets();
 		window.removeEventListener('click', handleWindowClick);
 		cy?.destroy();
 	});

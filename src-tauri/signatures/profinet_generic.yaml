@@ -1,0 +1,9 @@
+name: "profinet_generic"
+description: "Generic PROFINET IO device identified by well-known port 34962. PROFINET is Siemens' industrial Ethernet standard used for real-time communication between PROFINET IO controllers (PLCs) and IO devices in factory automation environments. Ports 34962-34964 are used for PROFINET RT/IRT communication."
+protocol: profinet
+vendor: "Siemens"
+filters:
+  - field: dst_port
+    value: 34962
+confidence: 1
+payloads: []

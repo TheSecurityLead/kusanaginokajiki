@@ -1,0 +1,8 @@
+name: "hart_ip_generic"
+description: "Generic HART-IP device identified by well-known port 5094. HART-IP extends the legacy HART (Highway Addressable Remote Transducer) protocol over TCP/UDP/IP, enabling communication with smart field instruments for process measurement and diagnostics in process automation environments."
+protocol: hart_ip
+filters:
+  - field: tcp.dst_port
+    value: 5094
+confidence: 1
+payloads: []

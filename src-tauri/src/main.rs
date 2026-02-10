@@ -30,6 +30,10 @@ fn main() {
             commands::data::get_connections,
             commands::data::get_protocol_stats,
             commands::data::get_connection_packets,
+            // Signatures
+            commands::signatures::get_signatures,
+            commands::signatures::reload_signatures,
+            commands::signatures::test_signature,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
