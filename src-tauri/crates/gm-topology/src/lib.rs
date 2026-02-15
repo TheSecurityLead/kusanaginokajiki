@@ -108,11 +108,22 @@ impl TopologyBuilder {
         }
     }
 
-    /// Build the final topology graph.
+    /// Build the final topology graph, consuming the builder.
     pub fn build(self) -> TopologyGraph {
         TopologyGraph {
             nodes: self.nodes.into_values().collect(),
             edges: self.edges.into_values().collect(),
+        }
+    }
+
+    /// Create a snapshot of the current topology without consuming the builder.
+    ///
+    /// Used by live capture to periodically export the topology while
+    /// continuing to accumulate data.
+    pub fn snapshot(&self) -> TopologyGraph {
+        TopologyGraph {
+            nodes: self.nodes.values().cloned().collect(),
+            edges: self.edges.values().cloned().collect(),
         }
     }
 

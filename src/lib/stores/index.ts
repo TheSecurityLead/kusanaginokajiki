@@ -54,6 +54,7 @@ export const captureStats = writable<CaptureStatsEvent>({
 	packets_per_second: 0,
 	bytes_captured: 0,
 	active_connections: 0,
+	asset_count: 0,
 	elapsed_seconds: 0
 });
 

@@ -18,6 +18,8 @@ import type {
 	PacketSummary,
 	PacketEvent,
 	CaptureStatsEvent,
+	CaptureStatusInfo,
+	StopCaptureResult,
 	SignatureSummary,
 	SignatureTestResult,
 	DeepParseInfo,
@@ -120,9 +122,24 @@ export async function startCapture(interfaceName: string, bpfFilter?: string): P
 	return invoke('start_capture', { interfaceName, bpfFilter: bpfFilter ?? null });
 }
 
-/** Stop live packet capture */
-export async function stopCapture(): Promise<void> {
-	return invoke('stop_capture');
+/** Stop live packet capture, optionally saving to a PCAP file */
+export async function stopCapture(savePath?: string): Promise<StopCaptureResult> {
+	return invoke<StopCaptureResult>('stop_capture', { savePath: savePath ?? null });
+}
+
+/** Pause live packet capture */
+export async function pauseCapture(): Promise<void> {
+	return invoke('pause_capture');
+}
+
+/** Resume a paused live capture */
+export async function resumeCapture(): Promise<void> {
+	return invoke('resume_capture');
+}
+
+/** Get current capture status */
+export async function getCaptureStatus(): Promise<CaptureStatusInfo> {
+	return invoke<CaptureStatusInfo>('get_capture_status');
 }
 
 // ─── Event Listeners ──────────────────────────────────────────
@@ -135,4 +152,9 @@ export async function onPacketEvent(callback: (event: PacketEvent) => void) {
 /** Listen for capture statistics updates */
 export async function onCaptureStats(callback: (stats: CaptureStatsEvent) => void) {
 	return listen<CaptureStatsEvent>('capture-stats', (event) => callback(event.payload));
+}
+
+/** Listen for capture error events */
+export async function onCaptureError(callback: (error: string) => void) {
+	return listen<string>('capture-error', (event) => callback(event.payload));
 }

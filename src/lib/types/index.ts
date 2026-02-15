@@ -217,6 +217,26 @@ export interface CaptureStatsEvent {
 	packets_per_second: number;
 	bytes_captured: number;
 	active_connections: number;
+	asset_count: number;
+	elapsed_seconds: number;
+}
+
+/** Result of stopping a capture */
+export interface StopCaptureResult {
+	packets_captured: number;
+	bytes_captured: number;
+	elapsed_seconds: number;
+	pcap_saved: boolean;
+	pcap_path: string | null;
+	packets_saved: number;
+}
+
+/** Current capture status from the backend */
+export interface CaptureStatusInfo {
+	is_running: boolean;
+	is_paused: boolean;
+	packets_captured: number;
+	bytes_captured: number;
 	elapsed_seconds: number;
 }
 

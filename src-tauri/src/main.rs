@@ -24,6 +24,12 @@ fn main() {
             commands::system::get_app_info,
             // Capture / Import
             commands::capture::import_pcap,
+            // Live Capture
+            commands::capture::start_capture,
+            commands::capture::stop_capture,
+            commands::capture::pause_capture,
+            commands::capture::resume_capture,
+            commands::capture::get_capture_status,
             // Data queries
             commands::data::get_topology,
             commands::data::get_assets,

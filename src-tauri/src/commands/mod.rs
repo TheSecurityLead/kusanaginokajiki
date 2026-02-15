@@ -1,10 +1,13 @@
 pub mod system;
 pub mod capture;
 pub mod data;
+pub mod processor;
 pub mod signatures;
 
 use std::collections::HashMap;
 use std::sync::Mutex;
+use std::thread::JoinHandle;
+use gm_capture::LiveCaptureHandle;
 use gm_topology::TopologyGraph;
 use gm_parsers::IcsProtocol;
 use gm_signatures::SignatureEngine;
@@ -34,6 +37,10 @@ pub struct AppStateInner {
     pub signature_engine: SignatureEngine,
     /// Deep parse results grouped by IP address
     pub deep_parse_info: HashMap<String, DeepParseInfo>,
+    /// Handle to the running live capture (None if not capturing)
+    pub live_capture: Option<LiveCaptureHandle>,
+    /// Join handle for the live capture processing thread
+    pub processing_thread: Option<JoinHandle<()>>,
 }
 
 /// Asset information stored in application state.
@@ -264,6 +271,8 @@ impl AppState {
                 imported_files: Vec::new(),
                 signature_engine: engine,
                 deep_parse_info: HashMap::new(),
+                live_capture: None,
+                processing_thread: None,
             }),
         }
     }
