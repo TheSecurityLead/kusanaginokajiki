@@ -23,7 +23,9 @@ import type {
 	SignatureSummary,
 	SignatureTestResult,
 	DeepParseInfo,
-	FunctionCodeStat
+	FunctionCodeStat,
+	SessionInfo,
+	AssetUpdate
 } from '$lib/types';
 
 // ─── System Commands ──────────────────────────────────────────
@@ -59,12 +61,14 @@ export async function getAssets(): Promise<Asset[]> {
 	return invoke<Asset[]>('get_assets');
 }
 
-/** Update an asset's metadata (device type, notes, Purdue level, tags) */
-export async function updateAsset(
-	assetId: string,
-	updates: Partial<Pick<Asset, 'device_type' | 'notes' | 'purdue_level' | 'tags'>>
-): Promise<Asset> {
+/** Update an asset's editable fields (device type, hostname, notes, Purdue level, tags) */
+export async function updateAsset(assetId: string, updates: AssetUpdate): Promise<Asset> {
 	return invoke<Asset>('update_asset', { assetId, updates });
+}
+
+/** Bulk update assets (same fields applied to multiple assets) */
+export async function bulkUpdateAssets(assetIds: string[], updates: AssetUpdate): Promise<number> {
+	return invoke<number>('bulk_update_assets', { assetIds, updates });
 }
 
 // ─── Connections ──────────────────────────────────────────────
@@ -157,4 +161,36 @@ export async function onCaptureStats(callback: (stats: CaptureStatsEvent) => voi
 /** Listen for capture error events */
 export async function onCaptureError(callback: (error: string) => void) {
 	return listen<string>('capture-error', (event) => callback(event.payload));
+}
+
+// ─── Sessions (Phase 6) ──────────────────────────────────
+
+/** Save current state as a named session */
+export async function saveSession(name: string, description?: string): Promise<SessionInfo> {
+	return invoke<SessionInfo>('save_session', { name, description: description ?? null });
+}
+
+/** Load a saved session by ID, replacing current state */
+export async function loadSession(sessionId: string): Promise<SessionInfo> {
+	return invoke<SessionInfo>('load_session', { sessionId });
+}
+
+/** List all saved sessions */
+export async function listSessions(): Promise<SessionInfo[]> {
+	return invoke<SessionInfo[]>('list_sessions');
+}
+
+/** Delete a saved session */
+export async function deleteSession(sessionId: string): Promise<void> {
+	return invoke('delete_session', { sessionId });
+}
+
+/** Export a session to a .kkj ZIP archive */
+export async function exportSessionArchive(sessionId: string, outputPath: string): Promise<string> {
+	return invoke<string>('export_session_archive', { sessionId, outputPath });
+}
+
+/** Import a session from a .kkj ZIP archive */
+export async function importSessionArchive(archivePath: string): Promise<SessionInfo> {
+	return invoke<SessionInfo>('import_session_archive', { archivePath });
 }

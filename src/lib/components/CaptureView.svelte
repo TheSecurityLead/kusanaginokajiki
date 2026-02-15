@@ -1,12 +1,14 @@
 <script lang="ts">
-	import { interfaces, captureStatus, captureStats, assets, connections, topology } from '$lib/stores';
+	import { interfaces, captureStatus, captureStats, assets, connections, topology, sessions, currentSession } from '$lib/stores';
 	import {
 		importPcap, getAssets, getConnections, getTopology, getProtocolStats,
 		startCapture, stopCapture, pauseCapture, resumeCapture,
-		onCaptureStats, onCaptureError
+		onCaptureStats, onCaptureError,
+		saveSession, loadSession, listSessions, deleteSession,
+		exportSessionArchive, importSessionArchive
 	} from '$lib/utils/tauri';
 	import { protocolStats } from '$lib/stores';
-	import type { FileImportResult, CaptureStatsEvent } from '$lib/types';
+	import type { FileImportResult, CaptureStatsEvent, SessionInfo } from '$lib/types';
 	import { onMount, onDestroy } from 'svelte';
 
 	// ── PCAP Import State ─────────────────────────────────
@@ -21,6 +23,14 @@
 	let captureError = $state('');
 	let stopResult = $state<{ packets: number; bytes: number; elapsed: number; saved: boolean; path: string | null } | null>(null);
 
+	// ── Session State ──────────────────────────────────
+	let sessionName = $state('');
+	let sessionDesc = $state('');
+	let sessionMessage = $state('');
+	let sessionMessageType = $state<'success' | 'error' | ''>('');
+	let showSaveForm = $state(false);
+	let confirmDeleteId = $state<string | null>(null);
+
 	// Event listener cleanup functions
 	let unlistenStats: (() => void) | null = null;
 	let unlistenError: (() => void) | null = null;
@@ -29,6 +39,8 @@
 	onMount(() => {
 		// Set up event listeners for live capture
 		setupEventListeners();
+		// Load session list
+		refreshSessions();
 	});
 
 	onDestroy(() => {
@@ -229,6 +241,123 @@
 		if (h > 0) return `${h}h ${m}m ${s}s`;
 		if (m > 0) return `${m}m ${s}s`;
 		return `${s}s`;
+	}
+
+	// ── Session Management ──────────────────────────────
+	async function refreshSessions() {
+		try {
+			const list = await listSessions();
+			sessions.set(list);
+		} catch {
+			// DB may not be available in dev mode
+		}
+	}
+
+	async function handleSaveSession() {
+		if (!sessionName.trim()) return;
+		try {
+			const info = await saveSession(sessionName.trim(), sessionDesc.trim() || undefined);
+			currentSession.set(info);
+			sessionMessage = `Session "${info.name}" saved (${info.asset_count} assets, ${info.connection_count} connections)`;
+			sessionMessageType = 'success';
+			showSaveForm = false;
+			sessionName = '';
+			sessionDesc = '';
+			await refreshSessions();
+		} catch (err) {
+			sessionMessage = `Save failed: ${err}`;
+			sessionMessageType = 'error';
+		}
+	}
+
+	async function handleLoadSession(id: string) {
+		try {
+			const info = await loadSession(id);
+			currentSession.set(info);
+			// Refresh all data stores
+			const [newAssets, newConnections, newTopology, newStats] = await Promise.all([
+				getAssets(), getConnections(), getTopology(), getProtocolStats()
+			]);
+			assets.set(newAssets);
+			connections.set(newConnections);
+			topology.set(newTopology);
+			protocolStats.set(newStats);
+			sessionMessage = `Session "${info.name}" loaded`;
+			sessionMessageType = 'success';
+		} catch (err) {
+			sessionMessage = `Load failed: ${err}`;
+			sessionMessageType = 'error';
+		}
+	}
+
+	async function handleDeleteSession(id: string) {
+		try {
+			await deleteSession(id);
+			if ($currentSession?.id === id) {
+				currentSession.set(null);
+			}
+			confirmDeleteId = null;
+			sessionMessage = 'Session deleted';
+			sessionMessageType = 'success';
+			await refreshSessions();
+		} catch (err) {
+			sessionMessage = `Delete failed: ${err}`;
+			sessionMessageType = 'error';
+		}
+	}
+
+	async function handleExportSession(session: SessionInfo) {
+		try {
+			const { save } = await import('@tauri-apps/plugin-dialog');
+			const path = await save({
+				title: 'Export Session Archive',
+				defaultPath: `${session.name.replace(/[^a-zA-Z0-9_-]/g, '_')}.kkj`,
+				filters: [
+					{ name: 'Kusanagi Kajiki Archive', extensions: ['kkj'] },
+					{ name: 'All Files', extensions: ['*'] }
+				]
+			});
+			if (!path) return;
+			await exportSessionArchive(session.id, path);
+			sessionMessage = `Exported to ${path}`;
+			sessionMessageType = 'success';
+		} catch (err) {
+			sessionMessage = `Export failed: ${err}`;
+			sessionMessageType = 'error';
+		}
+	}
+
+	async function handleImportArchive() {
+		try {
+			const { open } = await import('@tauri-apps/plugin-dialog');
+			const selected = await open({
+				title: 'Import Session Archive',
+				multiple: false,
+				filters: [
+					{ name: 'Kusanagi Kajiki Archive', extensions: ['kkj'] },
+					{ name: 'All Files', extensions: ['*'] }
+				]
+			});
+			if (!selected) return;
+			const path = typeof selected === 'string' ? selected : selected[0];
+			if (!path) return;
+			const info = await importSessionArchive(path);
+			currentSession.set(info);
+			// Refresh all data stores
+			const [newAssets, newConnections, newTopology, newStats] = await Promise.all([
+				getAssets(), getConnections(), getTopology(), getProtocolStats()
+			]);
+			assets.set(newAssets);
+			connections.set(newConnections);
+			topology.set(newTopology);
+			protocolStats.set(newStats);
+			sessionMessage = `Imported "${info.name}" (${info.asset_count} assets)`;
+			sessionMessageType = 'success';
+			await refreshSessions();
+		} catch (err) {
+			sessionMessage = `Import failed: ${err}`;
+			sessionMessageType = 'error';
+		}
 	}
 
 	const isCapturing = $derived($captureStatus === 'capturing' || $captureStatus === 'paused');
@@ -467,6 +596,124 @@
 						No interfaces detected. This is expected during development in the browser.
 						Interfaces will appear when running as a Tauri desktop app.
 					</div>
+				</div>
+			{/if}
+		</section>
+
+		<!-- Session Management Section -->
+		<section class="capture-section">
+			<h3 class="section-title">Sessions</h3>
+			<p class="section-desc">
+				Save and load analysis sessions. Sessions preserve assets, connections, topology, and deep parse data.
+				Export as .kkj archives for sharing or backup.
+			</p>
+
+			{#if $currentSession}
+				<div class="current-session">
+					<span class="session-current-label">Current:</span>
+					<span class="session-current-name">{$currentSession.name}</span>
+					<span class="session-current-stats">
+						{$currentSession.asset_count} assets, {$currentSession.connection_count} connections
+					</span>
+				</div>
+			{/if}
+
+			{#if sessionMessage}
+				<div class="session-message" class:success={sessionMessageType === 'success'} class:error={sessionMessageType === 'error'}>
+					{sessionMessage}
+				</div>
+			{/if}
+
+			<div class="session-actions">
+				{#if !showSaveForm}
+					<button class="action-btn primary" onclick={() => { showSaveForm = true; sessionMessage = ''; }} disabled={isCapturing}>
+						Save Session
+					</button>
+				{/if}
+				<button class="action-btn secondary" onclick={handleImportArchive} disabled={isCapturing}>
+					Import Archive
+				</button>
+			</div>
+
+			{#if showSaveForm}
+				<div class="save-form">
+					<div class="form-group">
+						<label class="form-label" for="session-name">Session Name</label>
+						<input
+							id="session-name"
+							class="form-input"
+							type="text"
+							placeholder="e.g., Plant Floor Assessment 2026-02"
+							bind:value={sessionName}
+						/>
+					</div>
+					<div class="form-group">
+						<label class="form-label" for="session-desc">Description (optional)</label>
+						<input
+							id="session-desc"
+							class="form-input"
+							type="text"
+							placeholder="e.g., Initial baseline of SCADA network"
+							bind:value={sessionDesc}
+						/>
+					</div>
+					<div class="save-form-actions">
+						<button class="action-btn primary" onclick={handleSaveSession} disabled={!sessionName.trim()}>
+							Save
+						</button>
+						<button class="action-btn secondary" onclick={() => { showSaveForm = false; }}>
+							Cancel
+						</button>
+					</div>
+				</div>
+			{/if}
+
+			{#if $sessions.length > 0}
+				<div class="session-list">
+					<h4 class="subsection-title">Saved Sessions</h4>
+					{#each $sessions as session}
+						<div class="session-card" class:active={$currentSession?.id === session.id}>
+							<div class="session-info">
+								<div class="session-name">{session.name}</div>
+								{#if session.description}
+									<div class="session-desc-text">{session.description}</div>
+								{/if}
+								<div class="session-meta">
+									{session.asset_count} assets, {session.connection_count} connections
+									&middot; {new Date(session.created_at).toLocaleDateString()}
+								</div>
+							</div>
+							<div class="session-card-actions">
+								<button
+									class="session-btn load"
+									onclick={() => handleLoadSession(session.id)}
+									disabled={isCapturing}
+									title="Load session"
+								>Load</button>
+								<button
+									class="session-btn export"
+									onclick={() => handleExportSession(session)}
+									title="Export as .kkj archive"
+								>Export</button>
+								{#if confirmDeleteId === session.id}
+									<button
+										class="session-btn confirm-delete"
+										onclick={() => handleDeleteSession(session.id)}
+									>Confirm</button>
+									<button
+										class="session-btn cancel-delete"
+										onclick={() => { confirmDeleteId = null; }}
+									>Cancel</button>
+								{:else}
+									<button
+										class="session-btn delete"
+										onclick={() => { confirmDeleteId = session.id; }}
+										title="Delete session"
+									>Delete</button>
+								{/if}
+							</div>
+						</div>
+					{/each}
 				</div>
 			{/if}
 		</section>
@@ -939,5 +1186,192 @@
 		text-transform: uppercase;
 		letter-spacing: 1px;
 		margin-top: 4px;
+	}
+
+	/* ── Session Management ──────────────────────────── */
+
+	.current-session {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 8px 12px;
+		background: rgba(16, 185, 129, 0.08);
+		border: 1px solid rgba(16, 185, 129, 0.2);
+		border-radius: 6px;
+		margin-bottom: 12px;
+		font-size: 11px;
+	}
+
+	.session-current-label {
+		color: var(--gm-text-muted);
+		font-size: 10px;
+		text-transform: uppercase;
+		letter-spacing: 0.5px;
+	}
+
+	.session-current-name {
+		color: #10b981;
+		font-weight: 600;
+	}
+
+	.session-current-stats {
+		color: var(--gm-text-muted);
+		font-size: 10px;
+		margin-left: auto;
+	}
+
+	.session-message {
+		padding: 8px 12px;
+		border-radius: 6px;
+		font-size: 11px;
+		margin-bottom: 12px;
+	}
+
+	.session-message.success {
+		background: rgba(16, 185, 129, 0.1);
+		border: 1px solid rgba(16, 185, 129, 0.2);
+		color: #10b981;
+	}
+
+	.session-message.error {
+		background: rgba(239, 68, 68, 0.1);
+		border: 1px solid rgba(239, 68, 68, 0.2);
+		color: #ef4444;
+	}
+
+	.session-actions {
+		display: flex;
+		gap: 8px;
+		margin-bottom: 16px;
+	}
+
+	.action-btn.secondary {
+		background: rgba(100, 116, 139, 0.15);
+		border-color: rgba(100, 116, 139, 0.3);
+		color: var(--gm-text-secondary);
+	}
+
+	.action-btn.secondary:hover:not(:disabled) {
+		background: rgba(100, 116, 139, 0.25);
+		border-color: var(--gm-text-muted);
+	}
+
+	.save-form {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+		padding: 14px;
+		background: var(--gm-bg-panel);
+		border-radius: 6px;
+		margin-bottom: 16px;
+	}
+
+	.save-form-actions {
+		display: flex;
+		gap: 8px;
+	}
+
+	.session-list {
+		margin-top: 4px;
+	}
+
+	.session-card {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		padding: 10px 14px;
+		background: var(--gm-bg-panel);
+		border: 1px solid var(--gm-border);
+		border-radius: 6px;
+		margin-bottom: 6px;
+	}
+
+	.session-card.active {
+		border-color: rgba(16, 185, 129, 0.3);
+		background: rgba(16, 185, 129, 0.05);
+	}
+
+	.session-info {
+		flex: 1;
+		min-width: 0;
+	}
+
+	.session-name {
+		font-size: 12px;
+		font-weight: 600;
+		color: var(--gm-text-primary);
+	}
+
+	.session-desc-text {
+		font-size: 10px;
+		color: var(--gm-text-muted);
+		margin-top: 2px;
+	}
+
+	.session-meta {
+		font-size: 10px;
+		color: var(--gm-text-muted);
+		margin-top: 4px;
+	}
+
+	.session-card-actions {
+		display: flex;
+		gap: 4px;
+		flex-shrink: 0;
+		margin-left: 12px;
+	}
+
+	.session-btn {
+		padding: 4px 10px;
+		border: 1px solid var(--gm-border);
+		border-radius: 4px;
+		font-family: inherit;
+		font-size: 10px;
+		font-weight: 500;
+		cursor: pointer;
+		transition: all 0.15s;
+		background: transparent;
+	}
+
+	.session-btn.load {
+		color: #3b82f6;
+		border-color: rgba(59, 130, 246, 0.3);
+	}
+
+	.session-btn.load:hover:not(:disabled) {
+		background: rgba(59, 130, 246, 0.15);
+	}
+
+	.session-btn.export {
+		color: #8b5cf6;
+		border-color: rgba(139, 92, 246, 0.3);
+	}
+
+	.session-btn.export:hover {
+		background: rgba(139, 92, 246, 0.15);
+	}
+
+	.session-btn.delete {
+		color: #ef4444;
+		border-color: rgba(239, 68, 68, 0.3);
+	}
+
+	.session-btn.delete:hover {
+		background: rgba(239, 68, 68, 0.15);
+	}
+
+	.session-btn.confirm-delete {
+		color: #fff;
+		background: #ef4444;
+		border-color: #ef4444;
+	}
+
+	.session-btn.cancel-delete {
+		color: var(--gm-text-muted);
+	}
+
+	.session-btn:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
 	}
 </style>

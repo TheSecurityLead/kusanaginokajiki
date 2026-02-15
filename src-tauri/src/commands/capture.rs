@@ -86,10 +86,15 @@ pub async fn import_pcap(
     // Build results from accumulated state
     let deep_parse_info = processor.build_deep_parse_info();
 
-    // Lock state briefly to run signature matching (needs SignatureEngine)
+    // Lock state briefly to run signature matching (needs SignatureEngine + OUI + GeoIP)
     let (assets, sig_results) = {
         let state_inner = state.inner.lock().map_err(|e| e.to_string())?;
-        processor.build_assets(&state_inner.signature_engine, &deep_parse_info)
+        processor.build_assets(
+            &state_inner.signature_engine,
+            &deep_parse_info,
+            &state_inner.oui_lookup,
+            &state_inner.geoip_lookup,
+        )
     };
 
     // Build topology, enriched with signature data
@@ -431,10 +436,12 @@ fn flush_batch(
     let update_result: Result<CaptureStatsPayload, String> = (|| {
         let inner = state.inner.lock().map_err(|e| e.to_string())?;
 
-        // Run signature matching
+        // Run signature matching with OUI + GeoIP enrichment
         let (assets, sig_results) = processor.build_assets(
             &inner.signature_engine,
             &deep_parse_info,
+            &inner.oui_lookup,
+            &inner.geoip_lookup,
         );
 
         // Build topology snapshot, enriched with signature data

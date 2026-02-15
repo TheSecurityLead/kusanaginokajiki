@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use gm_capture::ParsedPacket;
 
-/// ICS/SCADA and common IT protocols recognized by GRASSMARLIN Reborn.
+/// ICS/SCADA and common IT protocols recognized by Kusanagi Kajiki.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum IcsProtocol {
@@ -45,6 +45,35 @@ pub enum IcsProtocol {
 }
 
 impl IcsProtocol {
+    /// Parse a protocol name string back into an IcsProtocol variant.
+    ///
+    /// Accepts the snake_case serde names (e.g., "modbus", "ethernet_ip")
+    /// as well as common display names. Returns Unknown for unrecognized strings.
+    pub fn from_name(name: &str) -> Self {
+        match name {
+            "modbus" => IcsProtocol::Modbus,
+            "dnp3" => IcsProtocol::Dnp3,
+            "ethernet_ip" => IcsProtocol::EthernetIp,
+            "bacnet" => IcsProtocol::Bacnet,
+            "s7comm" => IcsProtocol::S7comm,
+            "opc_ua" => IcsProtocol::OpcUa,
+            "profinet" => IcsProtocol::Profinet,
+            "iec104" => IcsProtocol::Iec104,
+            "mqtt" => IcsProtocol::Mqtt,
+            "hart_ip" => IcsProtocol::HartIp,
+            "foundation_fieldbus" => IcsProtocol::FoundationFieldbus,
+            "ge_srtp" => IcsProtocol::GeSrtp,
+            "wonderware_suitelink" => IcsProtocol::WonderwareSuitelink,
+            "http" => IcsProtocol::Http,
+            "https" => IcsProtocol::Https,
+            "dns" => IcsProtocol::Dns,
+            "ssh" => IcsProtocol::Ssh,
+            "rdp" => IcsProtocol::Rdp,
+            "snmp" => IcsProtocol::Snmp,
+            _ => IcsProtocol::Unknown,
+        }
+    }
+
     /// Returns true if this is an OT/ICS-specific protocol.
     pub fn is_ot(&self) -> bool {
         matches!(

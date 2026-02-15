@@ -1,5 +1,5 @@
 [package]
-name = "grassmarlin-reborn"
+name = "kusanaginokajiki"
 version = "0.1.0"
 edition = "2021"
 description = "Modern ICS/SCADA passive network discovery tool"
@@ -46,11 +46,17 @@ anyhow = "1"
 log = "0.4"
 env_logger = "0.11"
 
+# Platform directories
+dirs = "6"
+
 # UUID generation for asset IDs
 uuid = { version = "1", features = ["v4"] }
 
 # Timestamp handling
 chrono = { version = "0.4", features = ["serde"] }
+
+# Session archive ZIP support
+zip = "2"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

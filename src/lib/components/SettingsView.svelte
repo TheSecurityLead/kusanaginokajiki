@@ -27,7 +27,7 @@
 			<div class="about-grid">
 				<div class="about-row">
 					<span class="about-label">Application</span>
-					<span class="about-value">GRASSMARLIN Reborn</span>
+					<span class="about-value">Kusanagi Kajiki</span>
 				</div>
 				<div class="about-row">
 					<span class="about-label">Version</span>
@@ -43,7 +43,7 @@
 				</div>
 			</div>
 			<p class="about-desc">
-				A modern successor to the NSA's GRASSMARLIN ICS/SCADA passive network discovery tool.
+				Kusanagi Kajiki — a modern ICS/SCADA passive network discovery tool.
 				Rebuilt with Tauri 2.0 (Rust) and SvelteKit for performance, security, and cross-platform support.
 			</p>
 		</section>
@@ -69,7 +69,7 @@
 			<h3 class="section-title">Database</h3>
 			<div class="about-row">
 				<span class="about-label">Location</span>
-				<span class="about-value mono">~/.grassmarlin-reborn/assets.db</span>
+				<span class="about-value mono">~/.kusanaginokajiki/data.db</span>
 			</div>
 			<button class="action-btn danger" style="margin-top: 12px">
 				Reset Database

@@ -42,6 +42,15 @@ fn main() {
             commands::signatures::get_signatures,
             commands::signatures::reload_signatures,
             commands::signatures::test_signature,
+            // Sessions & Asset Updates (Phase 6)
+            commands::session::save_session,
+            commands::session::load_session,
+            commands::session::list_sessions,
+            commands::session::delete_session,
+            commands::session::update_asset,
+            commands::session::bulk_update_assets,
+            commands::session::export_session_archive,
+            commands::session::import_session_archive,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

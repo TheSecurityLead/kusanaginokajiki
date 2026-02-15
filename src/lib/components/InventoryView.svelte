@@ -1,7 +1,7 @@
 <script lang="ts">
-	import { filteredAssets, assetFilter, selectedAssetId, selectedAsset, protocolFilter } from '$lib/stores';
-	import { getDeepParseInfo } from '$lib/utils/tauri';
-	import type { DeviceType, IcsProtocol, DeepParseInfo } from '$lib/types';
+	import { filteredAssets, assetFilter, selectedAssetId, selectedAsset, protocolFilter, assets } from '$lib/stores';
+	import { getDeepParseInfo, getAssets, updateAsset, bulkUpdateAssets } from '$lib/utils/tauri';
+	import type { DeviceType, IcsProtocol, DeepParseInfo, AssetUpdate, Asset } from '$lib/types';
 
 	const deviceTypeLabels: Record<DeviceType, string> = {
 		plc: 'PLC',
@@ -25,6 +25,17 @@
 		unknown: '#64748b'
 	};
 
+	const deviceTypeOptions: DeviceType[] = ['plc', 'rtu', 'hmi', 'historian', 'engineering_workstation', 'scada_server', 'it_device', 'unknown'];
+
+	const purdueLabels: Record<number, string> = {
+		0: 'L0 — Process',
+		1: 'L1 — Control',
+		2: 'L2 — Supervisory',
+		3: 'L3 — Operations',
+		4: 'L4 — Enterprise',
+		5: 'L5 — Internet/DMZ'
+	};
+
 	const protocols: IcsProtocol[] = ['modbus', 'dnp3', 'ethernet_ip', 'bacnet', 's7comm', 'opc_ua'];
 
 	const confidenceLabels: Record<number, string> = {
@@ -45,19 +56,48 @@
 		0: '#64748b'
 	};
 
+	// Country code → flag emoji mapping
+	function countryFlag(code: string): string {
+		const base = 0x1F1E6;
+		const a = code.charCodeAt(0) - 65;
+		const b = code.charCodeAt(1) - 65;
+		return String.fromCodePoint(base + a) + String.fromCodePoint(base + b);
+	}
+
 	let deepParseInfo = $state<DeepParseInfo | null>(null);
 	let loadingDeepParse = $state(false);
 	let lastLoadedIp = $state<string | null>(null);
+
+	// Editing state
+	let isEditing = $state(false);
+	let editDeviceType = $state<string>('');
+	let editHostname = $state('');
+	let editNotes = $state('');
+	let editPurdueLevel = $state<number | null>(null);
+	let editTags = $state('');
+	let editSaving = $state(false);
+	let editMessage = $state('');
+
+	// Bulk selection
+	let selectedIds = $state<Set<string>>(new Set());
+	let showBulkPanel = $state(false);
+	let bulkDeviceType = $state<string>('');
+	let bulkPurdueLevel = $state<string>('');
+	let bulkSaving = $state(false);
 
 	// Load deep parse info when selected asset changes
 	$effect(() => {
 		const asset = $selectedAsset;
 		if (asset && asset.ip_address !== lastLoadedIp) {
 			lastLoadedIp = asset.ip_address;
+			isEditing = false;
+			editMessage = '';
 			loadDeepParseInfo(asset.ip_address);
 		} else if (!asset) {
 			deepParseInfo = null;
 			lastLoadedIp = null;
+			isEditing = false;
+			editMessage = '';
 		}
 	});
 
@@ -70,6 +110,97 @@
 			deepParseInfo = null;
 		}
 		loadingDeepParse = false;
+	}
+
+	function startEditing(asset: Asset) {
+		editDeviceType = asset.device_type;
+		editHostname = asset.hostname ?? '';
+		editNotes = asset.notes;
+		editPurdueLevel = asset.purdue_level ?? null;
+		editTags = asset.tags.join(', ');
+		editMessage = '';
+		isEditing = true;
+	}
+
+	async function saveEdits() {
+		const asset = $selectedAsset;
+		if (!asset) return;
+		editSaving = true;
+		editMessage = '';
+
+		const updates: AssetUpdate = {};
+		if (editDeviceType !== asset.device_type) updates.device_type = editDeviceType;
+		if (editHostname !== (asset.hostname ?? '')) updates.hostname = editHostname;
+		if (editNotes !== asset.notes) updates.notes = editNotes;
+		const newPurdue = editPurdueLevel ?? 255;
+		const oldPurdue = asset.purdue_level ?? 255;
+		if (newPurdue !== oldPurdue) updates.purdue_level = editPurdueLevel ?? 255;
+		const newTags = editTags.split(',').map(t => t.trim()).filter(Boolean);
+		if (JSON.stringify(newTags) !== JSON.stringify(asset.tags)) updates.tags = newTags;
+
+		if (Object.keys(updates).length === 0) {
+			isEditing = false;
+			editSaving = false;
+			return;
+		}
+
+		try {
+			await updateAsset(asset.id, updates);
+			// Refresh assets
+			const refreshed = await getAssets();
+			assets.set(refreshed);
+			editMessage = 'Saved';
+			isEditing = false;
+		} catch (err) {
+			editMessage = `Error: ${err}`;
+		}
+		editSaving = false;
+	}
+
+	function toggleSelect(id: string, event: MouseEvent) {
+		event.stopPropagation();
+		const next = new Set(selectedIds);
+		if (next.has(id)) {
+			next.delete(id);
+		} else {
+			next.add(id);
+		}
+		selectedIds = next;
+		showBulkPanel = next.size > 0;
+	}
+
+	function selectAll() {
+		if (selectedIds.size === $filteredAssets.length) {
+			selectedIds = new Set();
+			showBulkPanel = false;
+		} else {
+			selectedIds = new Set($filteredAssets.map(a => a.id));
+			showBulkPanel = true;
+		}
+	}
+
+	async function applyBulkUpdate() {
+		if (selectedIds.size === 0) return;
+		bulkSaving = true;
+		const updates: AssetUpdate = {};
+		if (bulkDeviceType) updates.device_type = bulkDeviceType;
+		if (bulkPurdueLevel) updates.purdue_level = parseInt(bulkPurdueLevel);
+		if (Object.keys(updates).length === 0) {
+			bulkSaving = false;
+			return;
+		}
+		try {
+			await bulkUpdateAssets(Array.from(selectedIds), updates);
+			const refreshed = await getAssets();
+			assets.set(refreshed);
+			selectedIds = new Set();
+			showBulkPanel = false;
+			bulkDeviceType = '';
+			bulkPurdueLevel = '';
+		} catch (err) {
+			console.error('Bulk update failed:', err);
+		}
+		bulkSaving = false;
 	}
 
 	function handleFilterInput(event: Event) {
@@ -106,6 +237,31 @@
 		</div>
 	</div>
 
+	<!-- Bulk Operations Bar -->
+	{#if showBulkPanel}
+		<div class="bulk-bar">
+			<span class="bulk-count">{selectedIds.size} selected</span>
+			<select class="bulk-select" bind:value={bulkDeviceType}>
+				<option value="">Set Type...</option>
+				{#each deviceTypeOptions as dt}
+					<option value={dt}>{deviceTypeLabels[dt]}</option>
+				{/each}
+			</select>
+			<select class="bulk-select" bind:value={bulkPurdueLevel}>
+				<option value="">Set Purdue...</option>
+				{#each [0,1,2,3,4,5] as level}
+					<option value={level.toString()}>{purdueLabels[level]}</option>
+				{/each}
+			</select>
+			<button class="bulk-apply" onclick={applyBulkUpdate} disabled={bulkSaving || (!bulkDeviceType && !bulkPurdueLevel)}>
+				Apply
+			</button>
+			<button class="bulk-cancel" onclick={() => { selectedIds = new Set(); showBulkPanel = false; }}>
+				Clear
+			</button>
+		</div>
+	{/if}
+
 	<div class="inventory-body">
 		<div class="table-container">
 			{#if $filteredAssets.length === 0}
@@ -116,15 +272,22 @@
 				<table class="asset-table">
 					<thead>
 						<tr>
+							<th class="th-check">
+								<input type="checkbox"
+									checked={selectedIds.size === $filteredAssets.length && $filteredAssets.length > 0}
+									onchange={selectAll}
+								/>
+							</th>
 							<th>IP Address</th>
 							<th>MAC Address</th>
 							<th>Type</th>
 							<th>Confidence</th>
 							<th>Vendor</th>
+							<th>OUI</th>
 							<th>Product</th>
 							<th>Protocols</th>
+							<th>Country</th>
 							<th>Packets</th>
-							<th>First Seen</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -136,7 +299,18 @@
 									$selectedAssetId === asset.id ? null : asset.id
 								)}
 							>
-								<td class="cell-ip">{asset.ip_address}</td>
+								<td class="cell-check">
+									<input type="checkbox"
+										checked={selectedIds.has(asset.id)}
+										onclick={(e) => toggleSelect(asset.id, e)}
+									/>
+								</td>
+								<td class="cell-ip">
+									{asset.ip_address}
+									{#if asset.is_public_ip}
+										<span class="public-badge" title="Public IP">PUB</span>
+									{/if}
+								</td>
 								<td class="cell-mac">{asset.mac_address ?? '—'}</td>
 								<td>
 									<span
@@ -162,14 +336,21 @@
 									{/if}
 								</td>
 								<td class="cell-vendor">{asset.vendor ?? '—'}</td>
+								<td class="cell-vendor cell-oui">{asset.oui_vendor ?? '—'}</td>
 								<td class="cell-vendor">{asset.product_family ?? '—'}</td>
 								<td class="cell-protocols">
 									{#each asset.protocols as proto}
 										<span class="proto-tag">{proto}</span>
 									{/each}
 								</td>
+								<td class="cell-country">
+									{#if asset.country}
+										<span title={asset.country}>{countryFlag(asset.country)}</span>
+									{:else}
+										—
+									{/if}
+								</td>
 								<td class="cell-numeric">{asset.packet_count.toLocaleString()}</td>
-								<td class="cell-time">{new Date(asset.first_seen).toLocaleString()}</td>
 							</tr>
 						{/each}
 					</tbody>
@@ -177,44 +358,171 @@
 			{/if}
 		</div>
 
-		<!-- Deep Parse Detail Panel -->
+		<!-- Detail Panel -->
 		{#if $selectedAsset}
 			<div class="detail-panel">
 				<div class="detail-header">
 					<h3 class="detail-title">{$selectedAsset.ip_address}</h3>
-					<button class="detail-close" onclick={() => selectedAssetId.set(null)}>&times;</button>
+					<div class="detail-header-actions">
+						{#if !isEditing}
+							<button class="edit-btn" onclick={() => startEditing($selectedAsset!)} title="Edit asset">Edit</button>
+						{/if}
+						<button class="detail-close" onclick={() => selectedAssetId.set(null)}>&times;</button>
+					</div>
 				</div>
 
 				<div class="detail-body">
-					<!-- Basic Info -->
-					<div class="detail-section">
-						<div class="detail-row">
-							<span class="detail-label">Type</span>
-							<span class="detail-value">{deviceTypeLabels[$selectedAsset.device_type] ?? $selectedAsset.device_type}</span>
+					{#if editMessage}
+						<div class="edit-message" class:success={editMessage === 'Saved'} class:error={editMessage.startsWith('Error')}>
+							{editMessage}
 						</div>
-						{#if $selectedAsset.vendor}
-							<div class="detail-row">
-								<span class="detail-label">Vendor</span>
-								<span class="detail-value">{$selectedAsset.vendor}</span>
+					{/if}
+
+					<!-- Editable fields -->
+					{#if isEditing}
+						<div class="detail-section edit-section">
+							<h4 class="section-title">Edit Asset</h4>
+							<div class="edit-group">
+								<label class="edit-label" for="edit-device-type">Device Type</label>
+								<select id="edit-device-type" class="edit-select" bind:value={editDeviceType}>
+									{#each deviceTypeOptions as dt}
+										<option value={dt}>{deviceTypeLabels[dt]}</option>
+									{/each}
+								</select>
 							</div>
-						{/if}
-						{#if $selectedAsset.product_family}
-							<div class="detail-row">
-								<span class="detail-label">Product</span>
-								<span class="detail-value">{$selectedAsset.product_family}</span>
+							<div class="edit-group">
+								<label class="edit-label" for="edit-hostname">Hostname</label>
+								<input id="edit-hostname" class="edit-input" type="text" bind:value={editHostname} placeholder="e.g., PLC-BOILER-01" />
 							</div>
-						{/if}
-						<div class="detail-row">
-							<span class="detail-label">Confidence</span>
-							<span class="detail-value">
-								{#if $selectedAsset.confidence > 0}
-									{$selectedAsset.confidence}/5 ({confidenceLabels[$selectedAsset.confidence]})
-								{:else}
-									—
-								{/if}
-							</span>
+							<div class="edit-group">
+								<label class="edit-label" for="edit-purdue">Purdue Level</label>
+								<select id="edit-purdue" class="edit-select" bind:value={editPurdueLevel}>
+									<option value={null}>Not set</option>
+									{#each [0,1,2,3,4,5] as level}
+										<option value={level}>{purdueLabels[level]}</option>
+									{/each}
+								</select>
+							</div>
+							<div class="edit-group">
+								<label class="edit-label" for="edit-tags">Tags (comma separated)</label>
+								<input id="edit-tags" class="edit-input" type="text" bind:value={editTags} placeholder="e.g., critical, zone-a" />
+							</div>
+							<div class="edit-group">
+								<label class="edit-label" for="edit-notes">Notes</label>
+								<textarea id="edit-notes" class="edit-textarea" bind:value={editNotes} rows="3" placeholder="Freeform notes about this asset..."></textarea>
+							</div>
+							<div class="edit-actions">
+								<button class="action-btn primary small" onclick={saveEdits} disabled={editSaving}>
+									{editSaving ? 'Saving...' : 'Save'}
+								</button>
+								<button class="action-btn secondary small" onclick={() => { isEditing = false; editMessage = ''; }}>
+									Cancel
+								</button>
+							</div>
 						</div>
-					</div>
+					{:else}
+						<!-- Read-only basic info -->
+						<div class="detail-section">
+							<div class="detail-row">
+								<span class="detail-label">Type</span>
+								<span class="detail-value">{deviceTypeLabels[$selectedAsset.device_type] ?? $selectedAsset.device_type}</span>
+							</div>
+							{#if $selectedAsset.hostname}
+								<div class="detail-row">
+									<span class="detail-label">Hostname</span>
+									<span class="detail-value">{$selectedAsset.hostname}</span>
+								</div>
+							{/if}
+							{#if $selectedAsset.vendor}
+								<div class="detail-row">
+									<span class="detail-label">Vendor</span>
+									<span class="detail-value">{$selectedAsset.vendor}</span>
+								</div>
+							{/if}
+							{#if $selectedAsset.oui_vendor}
+								<div class="detail-row">
+									<span class="detail-label">OUI Vendor</span>
+									<span class="detail-value">{$selectedAsset.oui_vendor}</span>
+								</div>
+							{/if}
+							{#if $selectedAsset.product_family}
+								<div class="detail-row">
+									<span class="detail-label">Product</span>
+									<span class="detail-value">{$selectedAsset.product_family}</span>
+								</div>
+							{/if}
+							<div class="detail-row">
+								<span class="detail-label">Confidence</span>
+								<span class="detail-value">
+									{#if $selectedAsset.confidence > 0}
+										<span
+											class="confidence-badge"
+											style="color: {confidenceColors[$selectedAsset.confidence] ?? '#64748b'};
+											       background: {(confidenceColors[$selectedAsset.confidence] ?? '#64748b')}18"
+										>
+											{$selectedAsset.confidence}/5 ({confidenceLabels[$selectedAsset.confidence]})
+										</span>
+									{:else}
+										—
+									{/if}
+								</span>
+							</div>
+							{#if $selectedAsset.purdue_level != null}
+								<div class="detail-row">
+									<span class="detail-label">Purdue</span>
+									<span class="detail-value">{purdueLabels[$selectedAsset.purdue_level] ?? `L${$selectedAsset.purdue_level}`}</span>
+								</div>
+							{/if}
+							{#if $selectedAsset.country}
+								<div class="detail-row">
+									<span class="detail-label">Country</span>
+									<span class="detail-value">{countryFlag($selectedAsset.country)} {$selectedAsset.country}</span>
+								</div>
+							{/if}
+							{#if $selectedAsset.is_public_ip}
+								<div class="detail-row">
+									<span class="detail-label">Public IP</span>
+									<span class="detail-value finding">Yes — unexpected for OT</span>
+								</div>
+							{/if}
+							{#if $selectedAsset.tags.length > 0}
+								<div class="detail-row">
+									<span class="detail-label">Tags</span>
+									<span class="detail-value">
+										{#each $selectedAsset.tags as tag}
+											<span class="tag-badge">{tag}</span>
+										{/each}
+									</span>
+								</div>
+							{/if}
+							{#if $selectedAsset.notes}
+								<div class="detail-row notes-row">
+									<span class="detail-label">Notes</span>
+									<span class="detail-value notes-text">{$selectedAsset.notes}</span>
+								</div>
+							{/if}
+
+							<!-- Confidence Breakdown -->
+							{#if $selectedAsset.signature_matches.length > 0}
+								<div class="detail-subsection">
+									<h5 class="subsection-title">Confidence Breakdown</h5>
+									{#each $selectedAsset.signature_matches as match}
+										<div class="confidence-row">
+											<span
+												class="confidence-badge small"
+												style="color: {confidenceColors[match.confidence] ?? '#64748b'};
+												       background: {(confidenceColors[match.confidence] ?? '#64748b')}18"
+											>{match.confidence}</span>
+											<span class="match-name">{match.signature_name}</span>
+											{#if match.vendor}
+												<span class="match-vendor">{match.vendor}</span>
+											{/if}
+										</div>
+									{/each}
+								</div>
+							{/if}
+						</div>
+					{/if}
 
 					{#if loadingDeepParse}
 						<div class="detail-loading">Loading deep parse data...</div>
@@ -234,7 +542,6 @@
 									</div>
 								{/if}
 
-								<!-- Device Identification (FC 43/14) -->
 								{#if deepParseInfo.modbus.device_id}
 									<div class="detail-subsection">
 										<h5 class="subsection-title">Device Identification (FC 43)</h5>
@@ -271,7 +578,6 @@
 									</div>
 								{/if}
 
-								<!-- Function Codes -->
 								{#if deepParseInfo.modbus.function_codes.length > 0}
 									<div class="detail-subsection">
 										<h5 class="subsection-title">Function Codes</h5>
@@ -287,7 +593,6 @@
 									</div>
 								{/if}
 
-								<!-- Register Ranges -->
 								{#if deepParseInfo.modbus.register_ranges.length > 0}
 									<div class="detail-subsection">
 										<h5 class="subsection-title">Register Ranges</h5>
@@ -303,7 +608,6 @@
 									</div>
 								{/if}
 
-								<!-- Relationships -->
 								{#if deepParseInfo.modbus.relationships.length > 0}
 									<div class="detail-subsection">
 										<h5 class="subsection-title">Relationships</h5>
@@ -320,7 +624,6 @@
 									</div>
 								{/if}
 
-								<!-- Polling Intervals -->
 								{#if deepParseInfo.modbus.polling_intervals.length > 0}
 									<div class="detail-subsection">
 										<h5 class="subsection-title">Polling Intervals</h5>
@@ -359,7 +662,6 @@
 									</div>
 								{/if}
 
-								<!-- Function Codes -->
 								{#if deepParseInfo.dnp3.function_codes.length > 0}
 									<div class="detail-subsection">
 										<h5 class="subsection-title">Function Codes</h5>
@@ -375,7 +677,6 @@
 									</div>
 								{/if}
 
-								<!-- Relationships -->
 								{#if deepParseInfo.dnp3.relationships.length > 0}
 									<div class="detail-subsection">
 										<h5 class="subsection-title">Relationships</h5>
@@ -471,6 +772,59 @@
 		white-space: nowrap;
 	}
 
+	/* ── Bulk Operations Bar ──────────────────────── */
+
+	.bulk-bar {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 8px 16px;
+		background: rgba(59, 130, 246, 0.08);
+		border-bottom: 1px solid rgba(59, 130, 246, 0.2);
+		flex-shrink: 0;
+	}
+
+	.bulk-count {
+		font-size: 11px;
+		font-weight: 600;
+		color: #3b82f6;
+	}
+
+	.bulk-select {
+		background: var(--gm-bg-panel);
+		border: 1px solid var(--gm-border);
+		border-radius: 4px;
+		padding: 4px 8px;
+		color: var(--gm-text-secondary);
+		font-family: inherit;
+		font-size: 10px;
+	}
+
+	.bulk-apply {
+		padding: 4px 12px;
+		background: rgba(59, 130, 246, 0.15);
+		border: 1px solid rgba(59, 130, 246, 0.3);
+		border-radius: 4px;
+		color: #3b82f6;
+		font-family: inherit;
+		font-size: 10px;
+		font-weight: 600;
+		cursor: pointer;
+	}
+
+	.bulk-apply:disabled { opacity: 0.5; cursor: not-allowed; }
+
+	.bulk-cancel {
+		padding: 4px 8px;
+		background: none;
+		border: 1px solid var(--gm-border);
+		border-radius: 4px;
+		color: var(--gm-text-muted);
+		font-family: inherit;
+		font-size: 10px;
+		cursor: pointer;
+	}
+
 	/* ── Body (table + detail panel) ─────────────── */
 
 	.inventory-body {
@@ -520,6 +874,8 @@
 		white-space: nowrap;
 	}
 
+	.th-check { width: 32px; }
+
 	.asset-table td {
 		padding: 7px 12px;
 		border-bottom: 1px solid rgba(45, 58, 79, 0.5);
@@ -540,9 +896,22 @@
 		background: rgba(59, 130, 246, 0.1);
 	}
 
+	.cell-check { width: 32px; text-align: center; }
+
 	.cell-ip {
 		font-weight: 600;
 		color: var(--gm-text-primary) !important;
+	}
+
+	.public-badge {
+		font-size: 8px;
+		font-weight: 700;
+		padding: 1px 4px;
+		border-radius: 3px;
+		background: rgba(239, 68, 68, 0.15);
+		color: #ef4444;
+		margin-left: 4px;
+		letter-spacing: 0.5px;
 	}
 
 	.cell-mac {
@@ -550,18 +919,13 @@
 		font-size: 10px;
 	}
 
-	.cell-vendor {
-		font-size: 10px;
-	}
+	.cell-vendor { font-size: 10px; }
+	.cell-oui { color: var(--gm-text-muted) !important; }
+	.cell-country { text-align: center; }
 
 	.cell-numeric {
 		text-align: right;
 		font-variant-numeric: tabular-nums;
-	}
-
-	.cell-time {
-		font-size: 10px;
-		color: var(--gm-text-muted) !important;
 	}
 
 	.device-badge {
@@ -589,6 +953,11 @@
 		letter-spacing: 0.3px;
 	}
 
+	.confidence-badge.small {
+		font-size: 8px;
+		padding: 1px 5px;
+	}
+
 	.confidence-none {
 		color: var(--gm-text-muted);
 		font-size: 10px;
@@ -597,8 +966,8 @@
 	/* ── Detail Panel ─────────────────────────────── */
 
 	.detail-panel {
-		width: 340px;
-		min-width: 300px;
+		width: 360px;
+		min-width: 320px;
 		border-left: 1px solid var(--gm-border);
 		background: var(--gm-bg-secondary);
 		display: flex;
@@ -615,12 +984,32 @@
 		flex-shrink: 0;
 	}
 
+	.detail-header-actions {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+	}
+
 	.detail-title {
 		font-size: 13px;
 		font-weight: 600;
 		color: var(--gm-text-primary);
 		margin: 0;
 	}
+
+	.edit-btn {
+		padding: 3px 10px;
+		background: rgba(59, 130, 246, 0.1);
+		border: 1px solid rgba(59, 130, 246, 0.3);
+		border-radius: 4px;
+		color: #3b82f6;
+		font-family: inherit;
+		font-size: 10px;
+		font-weight: 600;
+		cursor: pointer;
+	}
+
+	.edit-btn:hover { background: rgba(59, 130, 246, 0.2); }
 
 	.detail-close {
 		background: none;
@@ -654,6 +1043,18 @@
 		font-size: 11px;
 	}
 
+	.notes-row {
+		flex-direction: column;
+		gap: 4px;
+	}
+
+	.notes-text {
+		text-align: left !important;
+		white-space: pre-wrap;
+		font-size: 10px;
+		line-height: 1.5;
+	}
+
 	.detail-label {
 		color: var(--gm-text-muted);
 		font-size: 10px;
@@ -671,12 +1072,152 @@
 		font-weight: 600;
 	}
 
+	.detail-value.finding {
+		color: #ef4444;
+		font-weight: 600;
+	}
+
+	.tag-badge {
+		font-size: 9px;
+		padding: 1px 6px;
+		border-radius: 3px;
+		background: rgba(139, 92, 246, 0.15);
+		color: #8b5cf6;
+		margin-left: 3px;
+	}
+
 	.detail-loading {
 		color: var(--gm-text-muted);
 		font-size: 11px;
 		padding: 16px 0;
 		text-align: center;
 	}
+
+	.edit-message {
+		padding: 6px 10px;
+		border-radius: 4px;
+		font-size: 10px;
+		margin-bottom: 10px;
+	}
+
+	.edit-message.success {
+		background: rgba(16, 185, 129, 0.1);
+		color: #10b981;
+	}
+
+	.edit-message.error {
+		background: rgba(239, 68, 68, 0.1);
+		color: #ef4444;
+	}
+
+	/* ── Edit Form ─────────────────────────────────── */
+
+	.edit-section {
+		background: var(--gm-bg-panel);
+		padding: 12px;
+		border-radius: 6px;
+	}
+
+	.edit-group {
+		margin-bottom: 8px;
+	}
+
+	.edit-label {
+		display: block;
+		font-size: 9px;
+		font-weight: 600;
+		color: var(--gm-text-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.3px;
+		margin-bottom: 3px;
+	}
+
+	.edit-input, .edit-select, .edit-textarea {
+		width: 100%;
+		padding: 5px 8px;
+		background: var(--gm-bg-primary);
+		border: 1px solid var(--gm-border);
+		border-radius: 4px;
+		color: var(--gm-text-primary);
+		font-family: inherit;
+		font-size: 11px;
+		outline: none;
+		box-sizing: border-box;
+	}
+
+	.edit-textarea {
+		resize: vertical;
+		min-height: 48px;
+	}
+
+	.edit-input:focus, .edit-select:focus, .edit-textarea:focus {
+		border-color: rgba(59, 130, 246, 0.5);
+	}
+
+	.edit-actions {
+		display: flex;
+		gap: 6px;
+		margin-top: 10px;
+	}
+
+	.action-btn {
+		padding: 10px 20px;
+		border: 1px solid var(--gm-border);
+		border-radius: 6px;
+		font-family: inherit;
+		font-size: 12px;
+		font-weight: 600;
+		cursor: pointer;
+		transition: all 0.15s;
+	}
+
+	.action-btn.small {
+		padding: 5px 14px;
+		font-size: 10px;
+	}
+
+	.action-btn.primary {
+		background: rgba(16, 185, 129, 0.15);
+		border-color: rgba(16, 185, 129, 0.3);
+		color: #10b981;
+	}
+
+	.action-btn.primary:hover:not(:disabled) {
+		background: rgba(16, 185, 129, 0.25);
+	}
+
+	.action-btn.secondary {
+		background: rgba(100, 116, 139, 0.1);
+		border-color: rgba(100, 116, 139, 0.3);
+		color: var(--gm-text-secondary);
+	}
+
+	.action-btn:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	/* ── Confidence Breakdown ───────────────────── */
+
+	.confidence-row {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		font-size: 10px;
+		padding: 2px 0;
+	}
+
+	.match-name {
+		color: var(--gm-text-secondary);
+		flex: 1;
+	}
+
+	.match-vendor {
+		color: var(--gm-text-muted);
+		font-size: 9px;
+	}
+
+	/* ── Deep Parse sections ─────────────────────── */
 
 	.section-title {
 		font-size: 11px;
@@ -706,8 +1247,6 @@
 		font-weight: 600;
 	}
 
-	/* ── Function Code List ───────────────────── */
-
 	.fc-list {
 		display: flex;
 		flex-direction: column;
@@ -722,9 +1261,7 @@
 		padding: 2px 0;
 	}
 
-	.fc-item.write {
-		color: var(--gm-text-primary);
-	}
+	.fc-item.write { color: var(--gm-text-primary); }
 
 	.fc-code {
 		font-weight: 600;
@@ -732,9 +1269,7 @@
 		color: var(--gm-text-secondary);
 	}
 
-	.fc-item.write .fc-code {
-		color: #ef4444;
-	}
+	.fc-item.write .fc-code { color: #ef4444; }
 
 	.fc-name {
 		flex: 1;
@@ -745,8 +1280,6 @@
 		color: var(--gm-text-muted);
 		font-variant-numeric: tabular-nums;
 	}
-
-	/* ── Register Ranges ─────────────────────── */
 
 	.reg-list {
 		display: flex;
@@ -777,8 +1310,6 @@
 		color: var(--gm-text-muted);
 		font-variant-numeric: tabular-nums;
 	}
-
-	/* ── Relationships ────────────────────────── */
 
 	.rel-item {
 		display: flex;
@@ -815,8 +1346,6 @@
 		font-variant-numeric: tabular-nums;
 	}
 
-	/* ── Polling Intervals ────────────────────── */
-
 	.poll-item {
 		display: flex;
 		justify-content: space-between;
@@ -825,9 +1354,7 @@
 		padding: 3px 0;
 	}
 
-	.poll-target {
-		color: var(--gm-text-secondary);
-	}
+	.poll-target { color: var(--gm-text-secondary); }
 
 	.poll-interval {
 		color: var(--gm-text-primary);

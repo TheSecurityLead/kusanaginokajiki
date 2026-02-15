@@ -87,6 +87,12 @@ export interface Asset {
 	product_family: string | null;
 	/** All signature matches for this asset */
 	signature_matches: AssetSignatureMatch[];
+	/** Vendor from IEEE OUI database (MAC prefix lookup) */
+	oui_vendor: string | null;
+	/** ISO 3166-1 alpha-2 country code (public IPs only) */
+	country: string | null;
+	/** Whether this IP is a public (routable) address */
+	is_public_ip: boolean;
 }
 
 /** A signature match result attached to an asset */
@@ -383,4 +389,26 @@ export interface PollingInterval {
 	min_interval_ms: number;
 	max_interval_ms: number;
 	sample_count: number;
+}
+
+// ─── Sessions (Phase 6) ─────────────────────────────────
+
+/** Session info returned from the backend */
+export interface SessionInfo {
+	id: string;
+	name: string;
+	description: string;
+	created_at: string;
+	updated_at: string;
+	asset_count: number;
+	connection_count: number;
+}
+
+/** Partial updates for an asset's editable fields */
+export interface AssetUpdate {
+	device_type?: string;
+	hostname?: string;
+	notes?: string;
+	purdue_level?: number;
+	tags?: string[];
 }

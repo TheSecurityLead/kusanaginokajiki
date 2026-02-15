@@ -20,7 +20,8 @@ import type {
 	FilteredViewConfig,
 	WatchViewConfig,
 	GroupingMode,
-	SignatureSummary
+	SignatureSummary,
+	SessionInfo
 } from '$lib/types';
 
 // ─── Core Application State ──────────────────────────────────
@@ -42,6 +43,14 @@ export const protocolStats = writable<ProtocolStats[]>([]);
 
 /** Loaded signature information */
 export const signatureSummary = writable<SignatureSummary>({ total_count: 0, signatures: [] });
+
+// ─── Session State (Phase 6) ─────────────────────────────
+
+/** All saved sessions */
+export const sessions = writable<SessionInfo[]>([]);
+
+/** Currently loaded session info (null if no session loaded) */
+export const currentSession = writable<SessionInfo | null>(null);
 
 // ─── Capture State ────────────────────────────────────────────
 

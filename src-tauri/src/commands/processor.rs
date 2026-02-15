@@ -15,6 +15,7 @@ use gm_parsers::{
 };
 use gm_signatures::{PacketData, SignatureEngine};
 use gm_topology::TopologyBuilder;
+use gm_db::{OuiLookup, GeoIpLookup};
 
 use super::{
     AssetInfo, AssetSignatureMatch, ConnectionInfo, PacketSummary, infer_device_type,
@@ -582,11 +583,13 @@ impl PacketProcessor {
 
     /// Run signature matching and build the final asset list.
     ///
-    /// Requires a reference to the SignatureEngine for matching.
+    /// Requires references to the SignatureEngine, OUI lookup, and GeoIP lookup.
     pub fn build_assets(
         &self,
         engine: &SignatureEngine,
         deep_parse_info: &HashMap<String, DeepParseInfo>,
+        oui_lookup: &OuiLookup,
+        geoip_lookup: &GeoIpLookup,
     ) -> (Vec<AssetInfo>, HashMap<String, Vec<AssetSignatureMatch>>) {
         // Run signature matching per device
         let mut sig_results: HashMap<String, Vec<AssetSignatureMatch>> = HashMap::new();
@@ -633,6 +636,20 @@ impl PacketProcessor {
             let mut vendor = best_match.and_then(|m| m.vendor.clone());
             let mut product_family = best_match.and_then(|m| m.product_family.clone());
 
+            // OUI vendor lookup from MAC address
+            let mac = self.asset_macs.get(ip);
+            let oui_vendor = mac.and_then(|m| oui_lookup.lookup(m).map(|v| v.to_string()));
+
+            // If no signature vendor but OUI found, use OUI vendor + confidence 3
+            if vendor.is_none() {
+                if let Some(ref oui_v) = oui_vendor {
+                    vendor = Some(oui_v.clone());
+                    if confidence < 3 {
+                        confidence = 3;
+                    }
+                }
+            }
+
             // Deep parse Device ID (FC 43/14) overrides with confidence 5
             if let Some(dp_info) = deep_parse_info.get(ip) {
                 if let Some(ref modbus) = dp_info.modbus {
@@ -664,6 +681,10 @@ impl PacketProcessor {
                 }
             }
 
+            // GeoIP enrichment
+            let is_public_ip = GeoIpLookup::is_public_ip(ip);
+            let country = geoip_lookup.lookup_country(ip);
+
             assets.push(AssetInfo {
                 id: ip.clone(),
                 ip_address: ip.clone(),
@@ -681,6 +702,9 @@ impl PacketProcessor {
                 confidence,
                 product_family,
                 signature_matches: sig_matches,
+                oui_vendor,
+                country,
+                is_public_ip,
             });
         }
 

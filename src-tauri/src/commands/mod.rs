@@ -3,6 +3,7 @@ pub mod capture;
 pub mod data;
 pub mod processor;
 pub mod signatures;
+pub mod session;
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -11,7 +12,8 @@ use gm_capture::LiveCaptureHandle;
 use gm_topology::TopologyGraph;
 use gm_parsers::IcsProtocol;
 use gm_signatures::SignatureEngine;
-use serde::Serialize;
+use gm_db::{Database, OuiLookup, GeoIpLookup};
+use serde::{Serialize, Deserialize};
 
 /// Shared application state, managed by Tauri.
 ///
@@ -41,10 +43,20 @@ pub struct AppStateInner {
     pub live_capture: Option<LiveCaptureHandle>,
     /// Join handle for the live capture processing thread
     pub processing_thread: Option<JoinHandle<()>>,
+    /// IEEE OUI vendor lookup table
+    pub oui_lookup: OuiLookup,
+    /// GeoIP country lookup
+    pub geoip_lookup: GeoIpLookup,
+    /// SQLite database for persistence
+    pub db: Option<Database>,
+    /// Currently loaded session ID (None if no session loaded)
+    pub current_session_id: Option<String>,
+    /// Currently loaded session name
+    pub current_session_name: Option<String>,
 }
 
 /// Asset information stored in application state.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AssetInfo {
     pub id: String,
     pub ip_address: String,
@@ -65,10 +77,19 @@ pub struct AssetInfo {
     pub product_family: Option<String>,
     /// All signature matches for this asset
     pub signature_matches: Vec<AssetSignatureMatch>,
+    /// Vendor name from IEEE OUI database (MAC prefix lookup)
+    #[serde(default)]
+    pub oui_vendor: Option<String>,
+    /// ISO 3166-1 alpha-2 country code (public IPs only)
+    #[serde(default)]
+    pub country: Option<String>,
+    /// Whether this IP is a public (routable) address
+    #[serde(default)]
+    pub is_public_ip: bool,
 }
 
 /// A signature match result attached to an asset.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AssetSignatureMatch {
     pub signature_name: String,
     pub confidence: u8,
@@ -79,7 +100,7 @@ pub struct AssetSignatureMatch {
 }
 
 /// Connection information stored in application state.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConnectionInfo {
     pub id: String,
     pub src_ip: String,
@@ -127,7 +148,7 @@ pub struct ProtocolStatInfo {
 /// Collects all Modbus/DNP3 details observed across every packet
 /// for a given IP, including function codes, unit IDs, register ranges,
 /// role (master/slave), and polling intervals.
-#[derive(Debug, Clone, Default, Serialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct DeepParseInfo {
     /// Modbus-specific details (present if device speaks Modbus)
     pub modbus: Option<ModbusDetail>,
@@ -136,7 +157,7 @@ pub struct DeepParseInfo {
 }
 
 /// Aggregated Modbus details for a device.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModbusDetail {
     /// Detected role: "master", "slave", or "both"
     pub role: String,
@@ -155,7 +176,7 @@ pub struct ModbusDetail {
 }
 
 /// DNP3 aggregated details for a device.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Dnp3Detail {
     /// Detected role: "master", "outstation", or "both"
     pub role: String,
@@ -170,7 +191,7 @@ pub struct Dnp3Detail {
 }
 
 /// Function code usage statistics.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FunctionCodeStat {
     pub code: u8,
     pub name: String,
@@ -180,7 +201,7 @@ pub struct FunctionCodeStat {
 }
 
 /// Register range accessed by a Modbus device.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegisterRangeInfo {
     pub start: u16,
     pub count: u16,
@@ -190,7 +211,7 @@ pub struct RegisterRangeInfo {
 }
 
 /// Modbus device identification from FC 43/14.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModbusDeviceIdInfo {
     pub vendor_name: Option<String>,
     pub product_code: Option<String>,
@@ -201,7 +222,7 @@ pub struct ModbusDeviceIdInfo {
 }
 
 /// A relationship between Modbus master/slave.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModbusRelationship {
     pub remote_ip: String,
     /// "master" or "slave" — what the REMOTE device is
@@ -211,7 +232,7 @@ pub struct ModbusRelationship {
 }
 
 /// A relationship between DNP3 master/outstation.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Dnp3Relationship {
     pub remote_ip: String,
     /// "master" or "outstation"
@@ -220,7 +241,7 @@ pub struct Dnp3Relationship {
 }
 
 /// Detected polling interval for a master→slave relationship.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PollingInterval {
     pub remote_ip: String,
     pub unit_id: Option<u8>,
@@ -262,6 +283,66 @@ impl AppState {
             }
         }
 
+        // Load OUI database
+        let oui_paths = [
+            std::path::PathBuf::from("data/oui.tsv"),
+            std::path::PathBuf::from("../src-tauri/data/oui.tsv"),
+            std::path::PathBuf::from("src-tauri/data/oui.tsv"),
+        ];
+        let mut oui_lookup = OuiLookup::empty();
+        for path in &oui_paths {
+            if path.exists() {
+                match OuiLookup::load_from_file(path) {
+                    Ok(lookup) => {
+                        oui_lookup = lookup;
+                        break;
+                    }
+                    Err(e) => {
+                        log::warn!("Failed to load OUI from {}: {}", path.display(), e);
+                    }
+                }
+            }
+        }
+
+        // Load GeoIP database
+        let geoip_paths = [
+            std::path::PathBuf::from("data/dbip-country-lite.mmdb"),
+            std::path::PathBuf::from("../src-tauri/data/dbip-country-lite.mmdb"),
+            std::path::PathBuf::from("src-tauri/data/dbip-country-lite.mmdb"),
+        ];
+        let mut geoip_lookup = GeoIpLookup::empty();
+        for path in &geoip_paths {
+            if path.exists() {
+                match GeoIpLookup::load_from_file(path) {
+                    Ok(lookup) => {
+                        geoip_lookup = lookup;
+                        break;
+                    }
+                    Err(e) => {
+                        log::warn!("Failed to load GeoIP from {}: {}", path.display(), e);
+                    }
+                }
+            }
+        }
+
+        // Open SQLite database at ~/.kusanaginokajiki/data.db
+        let db = match dirs::home_dir() {
+            Some(home) => {
+                let db_path = home.join(".kusanaginokajiki").join("data.db");
+                match Database::open(&db_path) {
+                    Ok(db) => Some(db),
+                    Err(e) => {
+                        log::warn!("Failed to open database at {}: {}", db_path.display(), e);
+                        None
+                    }
+                }
+            }
+            None => {
+                log::warn!("Could not determine home directory for database");
+                None
+            }
+        };
+
         AppState {
             inner: Mutex::new(AppStateInner {
                 topology: TopologyGraph::default(),
@@ -273,6 +354,11 @@ impl AppState {
                 deep_parse_info: HashMap::new(),
                 live_capture: None,
                 processing_thread: None,
+                oui_lookup,
+                geoip_lookup,
+                db,
+                current_session_id: None,
+                current_session_name: None,
             }),
         }
     }
