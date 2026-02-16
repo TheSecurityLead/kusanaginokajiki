@@ -514,3 +514,39 @@ export interface FrameRow {
 	length: number;
 	origin_file: string;
 }
+
+// ─── Export & Reporting (Phase 9) ─────────────────────────
+
+/** Configuration for PDF report generation */
+export interface ReportConfig {
+	assessor_name: string;
+	client_name: string;
+	assessment_date?: string;
+	title?: string;
+	include_executive_summary: boolean;
+	include_asset_inventory: boolean;
+	include_protocol_analysis: boolean;
+	include_findings: boolean;
+	include_recommendations: boolean;
+}
+
+/** SBOM entry (CISA BOD 23-01 format) */
+export interface SbomEntry {
+	ip_address: string;
+	mac_address: string;
+	hostname: string;
+	vendor: string;
+	product: string;
+	firmware_version: string;
+	protocols: string;
+	purdue_zone: string;
+	device_type: string;
+	confidence: number;
+	first_seen: string;
+	last_seen: string;
+	country: string;
+	tags: string;
+}
+
+/** Export format options */
+export type ExportFormat = 'csv' | 'json' | 'pdf' | 'sbom_csv' | 'sbom_json' | 'stix';

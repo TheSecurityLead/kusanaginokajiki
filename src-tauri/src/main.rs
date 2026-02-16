@@ -70,6 +70,15 @@ fn main() {
             commands::wireshark::get_connection_frames,
             commands::wireshark::export_frames_csv,
             commands::wireshark::save_frames_csv,
+            // Export & Reporting (Phase 9)
+            commands::export::export_assets_csv,
+            commands::export::export_connections_csv,
+            commands::export::export_topology_json,
+            commands::export::export_assets_json,
+            commands::export::generate_pdf_report,
+            commands::export::export_sbom,
+            commands::export::export_stix_bundle,
+            commands::export::save_topology_image,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

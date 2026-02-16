@@ -7,6 +7,7 @@ pub mod session;
 pub mod physical;
 pub mod ingest;
 pub mod wireshark;
+pub mod export;
 
 use std::collections::HashMap;
 use std::sync::Mutex;

@@ -1,0 +1,654 @@
+//! PDF report generation using genpdf.
+//!
+//! Generates a professional assessment report with:
+//! - Executive summary
+//! - Asset inventory table
+//! - Protocol analysis summary
+//! - Findings and recommendations
+
+use genpdf::elements;
+use genpdf::style;
+use genpdf::{Alignment, Document, Element, Margins, SimplePageDecorator};
+
+use crate::{ReportConfig, ReportData, ReportError};
+
+/// Generate a PDF report and write it to the given file path.
+pub fn generate_report(
+    config: &ReportConfig,
+    data: &ReportData,
+    output_path: &str,
+) -> Result<(), ReportError> {
+    // Try multiple known font paths for Liberation Sans
+    let font_paths = [
+        "/usr/share/fonts/liberation-sans",
+        "/usr/share/fonts/truetype/liberation",
+        "/usr/share/fonts/liberation",
+        "/usr/share/fonts",
+        // macOS
+        "/Library/Fonts",
+        // Flatpak / bundled
+        "fonts",
+        "../src-tauri/fonts",
+    ];
+
+    let mut font_family = None;
+    for path in &font_paths {
+        if let Ok(ff) = genpdf::fonts::from_files(path, "LiberationSans", None) {
+            font_family = Some(ff);
+            break;
+        }
+    }
+
+    let font_family = font_family.ok_or_else(|| {
+        ReportError::Pdf(
+            "Could not find LiberationSans fonts. Install liberation-sans-fonts package.".to_string()
+        )
+    })?;
+
+    let mut doc = Document::new(font_family);
+    doc.set_title(config.title.as_deref().unwrap_or("ICS/SCADA Network Assessment Report"));
+    doc.set_font_size(10);
+    doc.set_line_spacing(1.25);
+
+    // Page decorator with margins
+    let mut decorator = SimplePageDecorator::new();
+    decorator.set_margins(Margins::trbl(25, 20, 25, 20));
+    doc.set_page_decorator(decorator);
+
+    // ── Title Page ──────────────────────────────────────────
+    add_title_page(&mut doc, config, data);
+
+    // ── Executive Summary ───────────────────────────────────
+    if config.include_executive_summary {
+        doc.push(elements::PageBreak::new());
+        add_executive_summary(&mut doc, data);
+    }
+
+    // ── Asset Inventory ─────────────────────────────────────
+    if config.include_asset_inventory {
+        doc.push(elements::PageBreak::new());
+        add_asset_inventory(&mut doc, data);
+    }
+
+    // ── Protocol Analysis ───────────────────────────────────
+    if config.include_protocol_analysis {
+        doc.push(elements::PageBreak::new());
+        add_protocol_analysis(&mut doc, data);
+    }
+
+    // ── Findings ────────────────────────────────────────────
+    if config.include_findings {
+        doc.push(elements::PageBreak::new());
+        add_findings(&mut doc, data);
+    }
+
+    // ── Recommendations ─────────────────────────────────────
+    if config.include_recommendations {
+        doc.push(elements::PageBreak::new());
+        add_recommendations(&mut doc, data);
+    }
+
+    // Render to file
+    doc.render_to_file(output_path)
+        .map_err(|e| ReportError::Pdf(e.to_string()))?;
+
+    Ok(())
+}
+
+/// Add the title/cover page.
+fn add_title_page(doc: &mut Document, config: &ReportConfig, data: &ReportData) {
+    doc.push(elements::Break::new(8.0));
+
+    // Title
+    let title = config.title.as_deref().unwrap_or("ICS/SCADA Network Assessment Report");
+    let title_style = style::Style::new().bold().with_font_size(22);
+    doc.push(
+        elements::Paragraph::new(title)
+            .aligned(Alignment::Center)
+            .styled(title_style),
+    );
+
+    doc.push(elements::Break::new(2.0));
+
+    // Subtitle
+    let subtitle_style = style::Style::new().with_font_size(14)
+        .with_color(genpdf::style::Color::Rgb(100, 116, 139));
+    doc.push(
+        elements::Paragraph::new("Passive Network Discovery & Analysis")
+            .aligned(Alignment::Center)
+            .styled(subtitle_style),
+    );
+
+    doc.push(elements::Break::new(6.0));
+
+    // Metadata table
+    let mut table = elements::TableLayout::new(vec![1, 2]);
+    table.set_cell_decorator(elements::FrameCellDecorator::new(true, true, false));
+
+    push_meta_row(&mut table, "Client:", &config.client_name);
+    push_meta_row(&mut table, "Assessor:", &config.assessor_name);
+    push_meta_row(&mut table, "Date:", &config.assessment_date);
+    if let Some(ref session) = data.session_name {
+        push_meta_row(&mut table, "Session:", session);
+    }
+    push_meta_row(&mut table, "Assets Discovered:", &data.assets.len().to_string());
+    push_meta_row(&mut table, "Connections Observed:", &data.connections.len().to_string());
+    push_meta_row(&mut table, "Protocols Detected:", &data.protocol_stats.len().to_string());
+
+    doc.push(table);
+
+    doc.push(elements::Break::new(4.0));
+
+    // Tool credit
+    let credit_style = style::Style::new().with_font_size(8)
+        .with_color(genpdf::style::Color::Rgb(100, 116, 139));
+    doc.push(
+        elements::Paragraph::new(format!(
+            "Generated by Kusanagi Kajiki v{}",
+            env!("CARGO_PKG_VERSION")
+        ))
+            .aligned(Alignment::Center)
+            .styled(credit_style),
+    );
+}
+
+/// Add executive summary section.
+fn add_executive_summary(doc: &mut Document, data: &ReportData) {
+    add_section_header(doc, "1. Executive Summary");
+
+    let total_assets = data.assets.len();
+    let ot_assets = data.assets.iter().filter(|a| {
+        !matches!(a.device_type.as_str(), "it_device" | "unknown")
+    }).count();
+    let it_assets = total_assets - ot_assets;
+    let total_connections = data.connections.len();
+    let total_protocols = data.protocol_stats.len();
+    let ot_protocols = data.protocol_stats.iter()
+        .filter(|p| is_ot_protocol(&p.protocol))
+        .count();
+
+    let summary = format!(
+        "This assessment identified {} network assets ({} OT devices, {} IT devices) \
+         communicating over {} connections using {} protocols ({} ICS/SCADA protocols). \
+         The analysis was performed through passive traffic observation only \
+         -- no packets were transmitted to the target network.",
+        total_assets, ot_assets, it_assets,
+        total_connections, total_protocols, ot_protocols
+    );
+    doc.push(elements::Paragraph::new(summary));
+    doc.push(elements::Break::new(1.5));
+
+    // Device type breakdown
+    add_subsection_header(doc, "Device Type Breakdown");
+
+    let mut type_counts: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    for asset in &data.assets {
+        *type_counts.entry(&asset.device_type).or_insert(0) += 1;
+    }
+
+    let mut table = elements::TableLayout::new(vec![2, 1]);
+    table.set_cell_decorator(elements::FrameCellDecorator::new(true, true, false));
+
+    push_header_row(&mut table, &["Device Type", "Count"]);
+    let mut sorted: Vec<_> = type_counts.iter().collect();
+    sorted.sort_by(|a, b| b.1.cmp(a.1));
+    for (dtype, count) in sorted {
+        let label = device_type_label(dtype);
+        let count_str = count.to_string();
+        push_data_row(&mut table, &[&label, &count_str]);
+    }
+
+    doc.push(table);
+
+    // Findings summary
+    if !data.findings.is_empty() {
+        doc.push(elements::Break::new(1.5));
+        let finding_summary = format!(
+            "{} findings were identified during this assessment.",
+            data.findings.len()
+        );
+        doc.push(elements::Paragraph::new(finding_summary));
+    }
+}
+
+/// Add asset inventory section.
+fn add_asset_inventory(doc: &mut Document, data: &ReportData) {
+    add_section_header(doc, "2. Asset Inventory");
+
+    if data.assets.is_empty() {
+        doc.push(elements::Paragraph::new("No assets discovered."));
+        return;
+    }
+
+    let intro = format!(
+        "The following {} assets were discovered through passive network analysis.",
+        data.assets.len()
+    );
+    doc.push(elements::Paragraph::new(intro));
+    doc.push(elements::Break::new(1.0));
+
+    // Asset table -- IP, Type, Vendor, Protocols, Confidence, Purdue
+    let mut table = elements::TableLayout::new(vec![3, 2, 2, 3, 1, 1]);
+    table.set_cell_decorator(elements::FrameCellDecorator::new(true, true, false));
+
+    push_header_row(&mut table, &["IP Address", "Type", "Vendor", "Protocols", "Conf", "Purdue"]);
+
+    for asset in &data.assets {
+        let vendor = asset.vendor.as_deref()
+            .or(asset.oui_vendor.as_deref())
+            .unwrap_or("-");
+        // Truncate vendor for table
+        let vendor_short = if vendor.len() > 16 {
+            format!("{}...", &vendor[..14])
+        } else {
+            vendor.to_string()
+        };
+        let protocols = if asset.protocols.len() > 2 {
+            format!("{}, +{}", asset.protocols[..2].join(", "), asset.protocols.len() - 2)
+        } else {
+            asset.protocols.join(", ")
+        };
+        let purdue = asset.purdue_level
+            .map_or("-".to_string(), |l| format!("L{}", l));
+        let type_label = device_type_label(&asset.device_type);
+        let conf_str = asset.confidence.to_string();
+
+        push_data_row(&mut table, &[
+            &asset.ip_address,
+            &type_label,
+            &vendor_short,
+            &protocols,
+            &conf_str,
+            &purdue,
+        ]);
+    }
+
+    doc.push(table);
+}
+
+/// Add protocol analysis section.
+fn add_protocol_analysis(doc: &mut Document, data: &ReportData) {
+    add_section_header(doc, "3. Protocol Analysis");
+
+    if data.protocol_stats.is_empty() {
+        doc.push(elements::Paragraph::new("No protocol statistics available."));
+        return;
+    }
+
+    let intro = format!(
+        "{} protocols were observed in network traffic.",
+        data.protocol_stats.len()
+    );
+    doc.push(elements::Paragraph::new(intro));
+    doc.push(elements::Break::new(1.0));
+
+    // Protocol table
+    let mut table = elements::TableLayout::new(vec![3, 2, 2, 2, 2]);
+    table.set_cell_decorator(elements::FrameCellDecorator::new(true, true, false));
+
+    push_header_row(&mut table, &["Protocol", "Packets", "Bytes", "Connections", "Devices"]);
+
+    for stat in &data.protocol_stats {
+        let packets = format_number(stat.packet_count);
+        let bytes = format_bytes(stat.byte_count);
+        let conns = stat.connection_count.to_string();
+        let devices = stat.unique_devices.to_string();
+
+        push_data_row(&mut table, &[
+            &stat.protocol,
+            &packets,
+            &bytes,
+            &conns,
+            &devices,
+        ]);
+    }
+
+    doc.push(table);
+
+    // OT vs IT breakdown
+    doc.push(elements::Break::new(1.5));
+    let ot_count = data.protocol_stats.iter()
+        .filter(|p| is_ot_protocol(&p.protocol))
+        .count();
+    let it_count = data.protocol_stats.len() - ot_count;
+    doc.push(elements::Paragraph::new(format!(
+        "Of {} protocols observed, {} are ICS/SCADA protocols and {} are IT protocols.",
+        data.protocol_stats.len(), ot_count, it_count
+    )));
+}
+
+/// Add findings section.
+fn add_findings(doc: &mut Document, data: &ReportData) {
+    add_section_header(doc, "4. Findings");
+
+    if data.findings.is_empty() {
+        doc.push(elements::Paragraph::new(
+            "No specific findings were identified during this assessment. \
+             Note: Automated finding generation is available in Phase 10 \
+             (MITRE ATT&CK, Purdue Model analysis)."
+        ));
+
+        // Generate auto-findings from data patterns
+        let auto_findings = generate_auto_findings(data);
+        if !auto_findings.is_empty() {
+            doc.push(elements::Break::new(1.0));
+            add_subsection_header(doc, "Observations");
+            for finding in &auto_findings {
+                doc.push(elements::Break::new(0.5));
+                let severity_label = format!("[{}] {}", finding.0.to_uppercase(), finding.1);
+                let sev_style = style::Style::new().bold().with_font_size(10);
+                doc.push(elements::Paragraph::new(severity_label).styled(sev_style));
+                doc.push(elements::Paragraph::new(finding.2.clone()));
+            }
+        }
+        return;
+    }
+
+    let mut table = elements::TableLayout::new(vec![1, 3, 4, 2]);
+    table.set_cell_decorator(elements::FrameCellDecorator::new(true, true, false));
+
+    push_header_row(&mut table, &["Severity", "Title", "Description", "Assets"]);
+
+    for finding in &data.findings {
+        let affected = finding.affected_assets.join(", ");
+        push_data_row(&mut table, &[
+            &finding.severity,
+            &finding.title,
+            &finding.description,
+            &affected,
+        ]);
+    }
+
+    doc.push(table);
+}
+
+/// Add recommendations section.
+fn add_recommendations(doc: &mut Document, data: &ReportData) {
+    add_section_header(doc, "5. Recommendations");
+
+    // Standard ICS/SCADA recommendations
+    let recommendations = vec![
+        ("Network Segmentation",
+         "Ensure proper network segmentation between OT and IT networks. \
+          Implement DMZ zones for data transfer between levels."),
+        ("Protocol Encryption",
+         "Many ICS protocols (Modbus, DNP3, S7comm) transmit in plaintext. \
+          Where possible, use encrypted alternatives or VPN tunnels."),
+        ("Access Control",
+         "Implement network access control lists (ACLs) to restrict \
+          communication to known, authorized devices and protocols."),
+        ("Monitoring",
+         "Deploy continuous passive monitoring to detect unauthorized \
+          devices, protocol anomalies, and suspicious communication patterns."),
+        ("Asset Management",
+         "Maintain an up-to-date asset inventory. Use the SBOM export \
+          from this tool to feed into asset management systems."),
+    ];
+
+    for (title, desc) in &recommendations {
+        doc.push(elements::Break::new(0.5));
+        let title_style = style::Style::new().bold();
+        doc.push(elements::Paragraph::new(*title).styled(title_style));
+        doc.push(elements::Paragraph::new(*desc));
+    }
+
+    // Specific recommendations from findings
+    if !data.findings.is_empty() {
+        doc.push(elements::Break::new(1.5));
+        add_subsection_header(doc, "Finding-Specific Recommendations");
+        for finding in &data.findings {
+            if !finding.recommendation.is_empty() {
+                doc.push(elements::Break::new(0.5));
+                let title_style = style::Style::new().bold();
+                doc.push(elements::Paragraph::new(&finding.title).styled(title_style));
+                doc.push(elements::Paragraph::new(&finding.recommendation));
+            }
+        }
+    }
+}
+
+// ── Helper Functions ─────────────────────────────────────────
+
+fn add_section_header(doc: &mut Document, title: &str) {
+    let hdr_style = style::Style::new().bold().with_font_size(16);
+    doc.push(elements::Paragraph::new(title).styled(hdr_style));
+    doc.push(elements::Break::new(1.0));
+}
+
+fn add_subsection_header(doc: &mut Document, title: &str) {
+    let hdr_style = style::Style::new().bold().with_font_size(12);
+    doc.push(elements::Paragraph::new(title).styled(hdr_style));
+    doc.push(elements::Break::new(0.5));
+}
+
+fn push_meta_row(table: &mut elements::TableLayout, label: &str, value: &str) {
+    let label_style = style::Style::new().bold().with_font_size(10);
+    let mut row = table.row();
+    row.push_element(
+        elements::Paragraph::new(label)
+            .styled(label_style)
+            .padded(Margins::trbl(2, 4, 2, 4)),
+    );
+    row.push_element(
+        elements::Paragraph::new(value)
+            .padded(Margins::trbl(2, 4, 2, 4)),
+    );
+    row.push().ok();
+}
+
+fn push_header_row(table: &mut elements::TableLayout, headers: &[&str]) {
+    let header_style = style::Style::new().bold().with_font_size(8);
+    let mut row = table.row();
+    for header in headers {
+        row.push_element(
+            elements::Paragraph::new(*header)
+                .styled(header_style)
+                .padded(Margins::trbl(2, 3, 2, 3)),
+        );
+    }
+    row.push().ok();
+}
+
+fn push_data_row(table: &mut elements::TableLayout, cells: &[&str]) {
+    let cell_style = style::Style::new().with_font_size(8);
+    let mut row = table.row();
+    for cell in cells {
+        row.push_element(
+            elements::Paragraph::new(*cell)
+                .styled(cell_style)
+                .padded(Margins::trbl(1, 3, 1, 3)),
+        );
+    }
+    row.push().ok();
+}
+
+fn device_type_label(dtype: &str) -> String {
+    match dtype {
+        "plc" => "PLC".to_string(),
+        "rtu" => "RTU".to_string(),
+        "hmi" => "HMI".to_string(),
+        "historian" => "Historian".to_string(),
+        "scada_server" => "SCADA Server".to_string(),
+        "engineering_workstation" => "Eng. Workstation".to_string(),
+        "it_device" => "IT Device".to_string(),
+        "unknown" => "Unknown".to_string(),
+        other => other.to_string(),
+    }
+}
+
+fn is_ot_protocol(protocol: &str) -> bool {
+    matches!(
+        protocol,
+        "modbus" | "dnp3" | "ethernet_ip" | "bacnet" | "s7comm"
+        | "opc_ua" | "profinet" | "iec104" | "mqtt" | "hart_ip"
+        | "foundation_fieldbus" | "ge_srtp" | "wonderware_suitelink"
+    )
+}
+
+fn format_number(n: u64) -> String {
+    if n >= 1_000_000 {
+        format!("{:.1}M", n as f64 / 1_000_000.0)
+    } else if n >= 1_000 {
+        format!("{:.1}K", n as f64 / 1_000.0)
+    } else {
+        n.to_string()
+    }
+}
+
+fn format_bytes(bytes: u64) -> String {
+    if bytes >= 1_073_741_824 {
+        format!("{:.1} GB", bytes as f64 / 1_073_741_824.0)
+    } else if bytes >= 1_048_576 {
+        format!("{:.1} MB", bytes as f64 / 1_048_576.0)
+    } else if bytes >= 1024 {
+        format!("{:.1} KB", bytes as f64 / 1024.0)
+    } else {
+        format!("{} B", bytes)
+    }
+}
+
+/// Generate automatic observations from data patterns.
+fn generate_auto_findings(data: &ReportData) -> Vec<(&str, &str, String)> {
+    let mut findings = Vec::new();
+
+    // Check for public IPs
+    let public_count = data.assets.iter().filter(|a| a.is_public_ip).count();
+    if public_count > 0 {
+        findings.push((
+            "warning",
+            "Public IP Addresses Detected",
+            format!(
+                "{} assets have public (routable) IP addresses. OT networks should \
+                 not be directly accessible from the internet.",
+                public_count
+            ),
+        ));
+    }
+
+    // Check for unencrypted OT protocols
+    let unencrypted_ot = data.protocol_stats.iter()
+        .filter(|p| matches!(p.protocol.as_str(), "modbus" | "dnp3" | "s7comm" | "bacnet" | "profinet"))
+        .count();
+    if unencrypted_ot > 0 {
+        findings.push((
+            "info",
+            "Unencrypted ICS Protocols",
+            format!(
+                "{} ICS protocols were observed transmitting in plaintext. \
+                 This is common in OT environments but represents a risk.",
+                unencrypted_ot
+            ),
+        ));
+    }
+
+    // Check for assets without Purdue level assignment
+    let unassigned = data.assets.iter().filter(|a| a.purdue_level.is_none()).count();
+    if unassigned > 0 {
+        findings.push((
+            "info",
+            "Unclassified Assets",
+            format!(
+                "{} of {} assets have no Purdue level assignment. \
+                 Assign levels in the Inventory view for compliance reporting.",
+                unassigned, data.assets.len()
+            ),
+        ));
+    }
+
+    findings
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_format_number() {
+        assert_eq!(format_number(42), "42");
+        assert_eq!(format_number(1500), "1.5K");
+        assert_eq!(format_number(2_500_000), "2.5M");
+    }
+
+    #[test]
+    fn test_format_bytes() {
+        assert_eq!(format_bytes(500), "500 B");
+        assert_eq!(format_bytes(1536), "1.5 KB");
+        assert_eq!(format_bytes(5_242_880), "5.0 MB");
+    }
+
+    #[test]
+    fn test_device_type_label() {
+        assert_eq!(device_type_label("plc"), "PLC");
+        assert_eq!(device_type_label("hmi"), "HMI");
+        assert_eq!(device_type_label("it_device"), "IT Device");
+    }
+
+    #[test]
+    fn test_auto_findings() {
+        let mut data = ReportData {
+            assets: vec![crate::ExportAsset {
+                ip_address: "192.168.1.10".to_string(),
+                mac_address: None,
+                hostname: None,
+                device_type: "plc".to_string(),
+                vendor: None,
+                product_family: None,
+                protocols: vec!["s7comm".to_string()],
+                confidence: 4,
+                purdue_level: Some(1),
+                oui_vendor: None,
+                country: None,
+                is_public_ip: false,
+                first_seen: "2025-01-01T00:00:00Z".to_string(),
+                last_seen: "2025-01-02T00:00:00Z".to_string(),
+                notes: String::new(),
+                tags: vec![],
+                packet_count: 100,
+            }],
+            connections: vec![],
+            protocol_stats: vec![crate::ExportProtocolStat {
+                protocol: "s7comm".to_string(),
+                packet_count: 50,
+                byte_count: 2500,
+                connection_count: 1,
+                unique_devices: 2,
+            }],
+            findings: vec![],
+            session_name: None,
+        };
+        let findings = generate_auto_findings(&data);
+        // Should find unencrypted OT protocols
+        assert!(!findings.is_empty());
+
+        // Add a public IP asset
+        data.assets.push(crate::ExportAsset {
+            ip_address: "8.8.8.8".to_string(),
+            mac_address: None,
+            hostname: None,
+            device_type: "it_device".to_string(),
+            vendor: None,
+            product_family: None,
+            protocols: vec!["dns".to_string()],
+            confidence: 1,
+            purdue_level: None,
+            oui_vendor: None,
+            country: Some("US".to_string()),
+            is_public_ip: true,
+            first_seen: "2025-01-01T00:00:00Z".to_string(),
+            last_seen: "2025-01-01T00:00:00Z".to_string(),
+            notes: String::new(),
+            tags: vec![],
+            packet_count: 10,
+        });
+        let findings = generate_auto_findings(&data);
+        assert!(findings.iter().any(|f| f.1 == "Public IP Addresses Detected"));
+    }
+
+    #[test]
+    fn test_is_ot_protocol() {
+        assert!(is_ot_protocol("modbus"));
+        assert!(is_ot_protocol("dnp3"));
+        assert!(!is_ot_protocol("http"));
+        assert!(!is_ot_protocol("dns"));
+    }
+}

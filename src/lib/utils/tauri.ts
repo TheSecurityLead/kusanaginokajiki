@@ -29,7 +29,8 @@ import type {
 	PhysicalTopology,
 	IngestImportResult,
 	WiresharkInfo,
-	FrameRow
+	FrameRow,
+	ReportConfig
 } from '$lib/types';
 
 // ─── System Commands ──────────────────────────────────────────
@@ -283,4 +284,46 @@ export async function exportFramesCsv(connectionId: string): Promise<string> {
 /** Save connection frames CSV to a file */
 export async function saveFramesCsv(connectionId: string, outputPath: string): Promise<void> {
 	return invoke('save_frames_csv', { connectionId, outputPath });
+}
+
+// ─── Export & Reporting (Phase 9) ────────────────────────────────
+
+/** Export all assets as CSV to a file */
+export async function exportAssetsCsv(outputPath: string): Promise<string> {
+	return invoke<string>('export_assets_csv', { outputPath });
+}
+
+/** Export all connections as CSV to a file */
+export async function exportConnectionsCsv(outputPath: string): Promise<string> {
+	return invoke<string>('export_connections_csv', { outputPath });
+}
+
+/** Export full topology as JSON to a file */
+export async function exportTopologyJson(outputPath: string): Promise<string> {
+	return invoke<string>('export_topology_json', { outputPath });
+}
+
+/** Export all assets as JSON to a file */
+export async function exportAssetsJson(outputPath: string): Promise<string> {
+	return invoke<string>('export_assets_json', { outputPath });
+}
+
+/** Generate a PDF assessment report */
+export async function generatePdfReport(config: ReportConfig, outputPath: string): Promise<string> {
+	return invoke<string>('generate_pdf_report', { config, outputPath });
+}
+
+/** Export SBOM (CISA BOD 23-01 format) as CSV or JSON */
+export async function exportSbom(format: 'csv' | 'json', outputPath: string): Promise<string> {
+	return invoke<string>('export_sbom', { format, outputPath });
+}
+
+/** Export STIX 2.1 bundle as JSON */
+export async function exportStixBundle(outputPath: string): Promise<string> {
+	return invoke<string>('export_stix_bundle', { outputPath });
+}
+
+/** Save topology image (PNG/SVG) from frontend-captured data */
+export async function saveTopologyImage(imageData: string, outputPath: string): Promise<string> {
+	return invoke<string>('save_topology_image', { imageData, outputPath });
 }

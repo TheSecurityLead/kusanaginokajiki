@@ -1,0 +1,19 @@
+[package]
+name = "gm-report"
+version = "0.1.0"
+edition = "2021"
+description = "PDF report generation, CSV/JSON/SBOM/STIX export for Kusanagi Kajiki"
+
+[dependencies]
+# PDF generation (pure Rust, includes table support)
+genpdf = "0.2"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Error handling
+thiserror = "2"
+
+# Timestamps
+chrono = { version = "0.4", features = ["serde"] }

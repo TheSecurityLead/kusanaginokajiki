@@ -12,6 +12,7 @@
 		{ id: 'inventory', label: 'Inventory', icon: '☰' },
 		{ id: 'protocol_stats', label: 'Protocols', icon: '▤' },
 		{ id: 'capture', label: 'Capture', icon: '◉' },
+		{ id: 'export', label: 'Export', icon: '⤓' },
 		{ id: 'signatures', label: 'Signatures', icon: '⌘' },
 		{ id: 'settings', label: 'Settings', icon: '⚙' }
 	];

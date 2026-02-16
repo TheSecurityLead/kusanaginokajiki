@@ -86,7 +86,7 @@ export const captureStats = writable<CaptureStatsEvent>({
 export const selectedAssetId = writable<string | null>(null);
 
 /** Currently active view/tab */
-export type ViewTab = 'topology' | 'physical' | 'inventory' | 'capture' | 'signatures' | 'protocol_stats' | 'settings';
+export type ViewTab = 'topology' | 'physical' | 'inventory' | 'capture' | 'signatures' | 'protocol_stats' | 'export' | 'settings';
 export const activeTab = writable<ViewTab>('topology');
 
 /** Search/filter text for asset inventory */

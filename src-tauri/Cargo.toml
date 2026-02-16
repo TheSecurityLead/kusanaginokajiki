@@ -17,6 +17,7 @@ members = [
     "crates/gm-db",
     "crates/gm-physical",
     "crates/gm-ingest",
+    "crates/gm-report",
 ]
 
 [dependencies]
@@ -33,6 +34,7 @@ gm-db = { path = "crates/gm-db" }
 gm-signatures = { path = "crates/gm-signatures" }
 gm-physical = { path = "crates/gm-physical" }
 gm-ingest = { path = "crates/gm-ingest" }
+gm-report = { path = "crates/gm-report" }
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
