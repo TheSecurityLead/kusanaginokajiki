@@ -149,7 +149,7 @@ Kusanagi Kajiki implements every major GRASSMARLIN 3.2 feature and adds capabili
 ```bash
 sudo dnf install libpcap-devel webkit2gtk4.1-devel libsoup3-devel javascriptcoregtk4.1-devel
 
-git clone https://github.com/YOUR_USERNAME/KusanagiNoKajiki.git
+git clone https://github.com/TheSecurityLead/KusanagiNoKajiki.git
 cd KusanagiNoKajiki
 
 npm install --legacy-peer-deps
@@ -166,7 +166,7 @@ npm run tauri build      # Production binary
 sudo apt install libpcap-dev libwebkit2gtk-4.1-dev \
   libappindicator3-dev librsvg2-dev patchelf
 
-git clone https://github.com/YOUR_USERNAME/KusanagiNoKajiki.git
+git clone https://github.com/TheSecurityLead/KusanagiNoKajiki.git
 cd KusanagiNoKajiki
 
 npm install
@@ -180,7 +180,7 @@ npm run tauri dev
 brew install libpcap
 xcode-select --install
 
-git clone https://github.com/YOUR_USERNAME/KusanagiNoKajiki.git
+git clone https://github.com/TheSecurityLead/KusanagiNoKajiki.git
 cd KusanagiNoKajiki
 
 npm install
@@ -194,7 +194,7 @@ npm run tauri dev
 2. Download the [Npcap SDK](https://npcap.com/#download) and add `Lib/x64` to your `LIB` environment variable
 
 ```powershell
-git clone https://github.com/YOUR_USERNAME/KusanagiNoKajiki.git
+git clone https://github.com/TheSecurityLead/KusanagiNoKajiki.git
 cd KusanagiNoKajiki
 
 npm install
@@ -348,7 +348,7 @@ Contributions are welcome. Areas where contributions would be most valuable:
 - **YAML signatures** — Fingerprint signatures for additional ICS vendor products
 - **Protocol parsers** — Deep parsing for BACnet, EtherNet/IP, S7comm, OPC UA
 - **Test PCAPs** — Sanitized ICS network captures for the test suite
-- **Bug reports** — [Open an issue](https://github.com/YOUR_USERNAME/KusanagiNoKajiki/issues)
+- **Bug reports** — [Open an issue](https://github.com/TheSecurityLead/KusanagiNoKajiki/issues)
 
 ---
 
