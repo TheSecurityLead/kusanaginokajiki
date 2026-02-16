@@ -190,12 +190,12 @@ Development follows a phased plan. Phases 0–7 achieve GRASSMARLIN feature pari
 | 1 — PCAP Import | ✅ Done | Multi-PCAP import, L2-L4 parsing, connection tree |
 | 2 — Topology | ✅ Done | Logical/Mesh views, dynamic grouping, filtered views, watch tabs |
 | 3 — Signatures | ✅ Done | YAML fingerprint engine (54+ sigs), confidence scoring, editor |
-| 4 — Deep Parsing | 🔨 Current | Modbus/DNP3 deep inspection, protocol statistics |
-| 5 — Live Capture | ⏳ Planned | Real-time capture with streaming topology |
-| 6 — Persistence | ⏳ Planned | SQLite, sessions, MAC OUI, GeoIP, session archives |
-| 7 — Physical Topology | ⏳ Planned | Cisco config/CAM import, physical switch port view |
-| 8 — Tool Integration | ⏳ Planned | Wireshark, Zeek, Suricata, Nmap/Masscan import |
-| 9 — Export & Reports | ⏳ Planned | PDF reports, SBOM/CISA BOD 23-01, STIX 2.1 |
+| 4 — Deep Parsing | ✅ Done  | Modbus/DNP3 deep inspection, protocol statistics |
+| 5 — Live Capture | ✅ Done | Real-time capture with streaming topology |
+| 6 — Persistence | ✅ Done | SQLite, sessions, MAC OUI, GeoIP, session archives |
+| 7 — Physical Topology | ✅ Done | Cisco config/CAM import, physical switch port view |
+| 8 — Tool Integration | ✅ Done | Wireshark, Zeek, Suricata, Nmap/Masscan import |
+| 9 — Export & Reports | 🔨 Current | PDF reports, SBOM/CISA BOD 23-01, STIX 2.1 |
 | 10 — Security Analysis | ⏳ Planned | MITRE ATT&CK for ICS, Purdue overlay, anomaly scoring, TLS, Shodan |
 | 11 — Advanced | ⏳ Planned | Baseline drift, timeline replay, OPC UA certs, plugins, multi-user, light theme |
 
