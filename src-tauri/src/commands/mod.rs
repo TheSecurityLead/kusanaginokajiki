@@ -4,6 +4,9 @@ pub mod data;
 pub mod processor;
 pub mod signatures;
 pub mod session;
+pub mod physical;
+pub mod ingest;
+pub mod wireshark;
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -13,6 +16,7 @@ use gm_topology::TopologyGraph;
 use gm_parsers::IcsProtocol;
 use gm_signatures::SignatureEngine;
 use gm_db::{Database, OuiLookup, GeoIpLookup};
+use gm_physical::PhysicalTopology;
 use serde::{Serialize, Deserialize};
 
 /// Shared application state, managed by Tauri.
@@ -53,6 +57,8 @@ pub struct AppStateInner {
     pub current_session_id: Option<String>,
     /// Currently loaded session name
     pub current_session_name: Option<String>,
+    /// Physical topology from Cisco config/CAM/CDP/ARP imports
+    pub physical_topology: PhysicalTopology,
 }
 
 /// Asset information stored in application state.
@@ -359,6 +365,7 @@ impl AppState {
                 db,
                 current_session_id: None,
                 current_session_name: None,
+                physical_topology: PhysicalTopology::default(),
             }),
         }
     }

@@ -25,7 +25,11 @@ import type {
 	DeepParseInfo,
 	FunctionCodeStat,
 	SessionInfo,
-	AssetUpdate
+	AssetUpdate,
+	PhysicalTopology,
+	IngestImportResult,
+	WiresharkInfo,
+	FrameRow
 } from '$lib/types';
 
 // ─── System Commands ──────────────────────────────────────────
@@ -193,4 +197,90 @@ export async function exportSessionArchive(sessionId: string, outputPath: string
 /** Import a session from a .kkj ZIP archive */
 export async function importSessionArchive(archivePath: string): Promise<SessionInfo> {
 	return invoke<SessionInfo>('import_session_archive', { archivePath });
+}
+
+// ─── Physical Topology (Phase 7) ─────────────────────────────────
+
+/** Import a Cisco IOS running-config file */
+export async function importCiscoConfig(path: string): Promise<PhysicalTopology> {
+	return invoke<PhysicalTopology>('import_cisco_config', { path });
+}
+
+/** Import a show mac address-table output file */
+export async function importMacTable(path: string, switchHostname: string): Promise<PhysicalTopology> {
+	return invoke<PhysicalTopology>('import_mac_table', { path, switchHostname });
+}
+
+/** Import a show cdp neighbors detail output file */
+export async function importCdpNeighbors(path: string, switchHostname: string): Promise<PhysicalTopology> {
+	return invoke<PhysicalTopology>('import_cdp_neighbors', { path, switchHostname });
+}
+
+/** Import a show arp output file */
+export async function importArpTable(path: string): Promise<PhysicalTopology> {
+	return invoke<PhysicalTopology>('import_arp_table', { path });
+}
+
+/** Get the current physical topology */
+export async function getPhysicalTopology(): Promise<PhysicalTopology> {
+	return invoke<PhysicalTopology>('get_physical_topology');
+}
+
+/** Clear all physical topology data */
+export async function clearPhysicalTopology(): Promise<void> {
+	return invoke('clear_physical_topology');
+}
+
+// ─── External Tool Import (Phase 8) ─────────────────────────────
+
+/** Import Zeek TSV log files (conn.log, modbus.log, dnp3.log, s7comm.log) */
+export async function importZeekLogs(paths: string[]): Promise<IngestImportResult> {
+	return invoke<IngestImportResult>('import_zeek_logs', { paths });
+}
+
+/** Import a Suricata eve.json file */
+export async function importSuricataEve(path: string): Promise<IngestImportResult> {
+	return invoke<IngestImportResult>('import_suricata_eve', { path });
+}
+
+/** Import an Nmap XML file (-oX output). WARNING: Active scan data. */
+export async function importNmapXml(path: string): Promise<IngestImportResult> {
+	return invoke<IngestImportResult>('import_nmap_xml', { path });
+}
+
+/** Import a Masscan JSON file (-oJ output). WARNING: Active scan data. */
+export async function importMasscanJson(path: string): Promise<IngestImportResult> {
+	return invoke<IngestImportResult>('import_masscan_json', { path });
+}
+
+// ─── Wireshark Integration (Phase 8) ────────────────────────────
+
+/** Detect Wireshark installation */
+export async function detectWireshark(): Promise<WiresharkInfo> {
+	return invoke<WiresharkInfo>('detect_wireshark');
+}
+
+/** Open Wireshark with a filter for a specific connection */
+export async function openInWireshark(connectionId: string): Promise<void> {
+	return invoke('open_in_wireshark', { connectionId });
+}
+
+/** Open Wireshark filtered to a specific IP address */
+export async function openWiresharkForNode(ipAddress: string): Promise<void> {
+	return invoke('open_wireshark_for_node', { ipAddress });
+}
+
+/** Get packet frames for a connection (View Frames dialog) */
+export async function getConnectionFrames(connectionId: string): Promise<FrameRow[]> {
+	return invoke<FrameRow[]>('get_connection_frames', { connectionId });
+}
+
+/** Export connection frames as CSV text */
+export async function exportFramesCsv(connectionId: string): Promise<string> {
+	return invoke<string>('export_frames_csv', { connectionId });
+}
+
+/** Save connection frames CSV to a file */
+export async function saveFramesCsv(connectionId: string, outputPath: string): Promise<void> {
+	return invoke('save_frames_csv', { connectionId, outputPath });
 }

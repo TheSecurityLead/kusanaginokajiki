@@ -1,0 +1,29 @@
+[package]
+name = "gm-ingest"
+version = "0.1.0"
+edition = "2021"
+description = "External tool log parsers: Zeek, Suricata, Nmap, Masscan"
+
+[dependencies]
+# Shared types
+gm-capture = { path = "../gm-capture" }
+gm-parsers = { path = "../gm-parsers" }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# XML parsing for Nmap
+quick-xml = { version = "0.37", features = ["serialize"] }
+
+# Timestamp handling
+chrono = { version = "0.4", features = ["serde"] }
+
+# Error handling
+thiserror = "2"
+
+# Logging
+log = "0.4"
+
+[dev-dependencies]
+tempfile = "3"

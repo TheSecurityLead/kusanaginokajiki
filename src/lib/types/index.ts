@@ -412,3 +412,105 @@ export interface AssetUpdate {
 	purdue_level?: number;
 	tags?: string[];
 }
+
+// ─── Physical Topology (Phase 7) ─────────────────────────
+
+/** A physical network switch with ports and metadata */
+export interface PhysicalSwitch {
+	hostname: string;
+	management_ip: string | null;
+	model: string | null;
+	ios_version: string | null;
+	ports: PhysicalPort[];
+	vlans: Record<number, string>;
+}
+
+/** A physical switch port with devices and config */
+export interface PhysicalPort {
+	name: string;
+	short_name: string;
+	description: string | null;
+	vlans: number[];
+	mode: string;
+	shutdown: boolean;
+	ip_address: string | null;
+	subnet_mask: string | null;
+	mac_addresses: string[];
+	ip_addresses: string[];
+	cdp_neighbor: CdpNeighbor | null;
+	speed: string | null;
+	duplex: string | null;
+}
+
+/** CDP/LLDP neighbor on a port */
+export interface CdpNeighbor {
+	device_id: string;
+	remote_port: string;
+	platform: string | null;
+	ip_address: string | null;
+	capabilities: string[];
+}
+
+/** Where a device is physically located */
+export interface DeviceLocation {
+	ip_address: string;
+	mac_address: string | null;
+	switch_hostname: string;
+	port_name: string;
+	vlan: number | null;
+}
+
+/** A link between two physical switches */
+export interface PhysicalLink {
+	src_switch: string;
+	src_port: string;
+	dst_switch: string;
+	dst_port: string;
+}
+
+/** Full physical topology */
+export interface PhysicalTopology {
+	switches: PhysicalSwitch[];
+	links: PhysicalLink[];
+	device_locations: Record<string, DeviceLocation>;
+}
+
+// ─── External Tool Ingest (Phase 8) ─────────────────────
+
+/** Data source for ingested results */
+export type IngestSource = 'zeek' | 'suricata' | 'nmap' | 'masscan';
+
+/** Result of importing external tool data */
+export interface IngestImportResult {
+	source: string;
+	files_processed: number;
+	asset_count: number;
+	connection_count: number;
+	alert_count: number;
+	new_assets: number;
+	updated_assets: number;
+	duration_ms: number;
+	errors: string[];
+}
+
+// ─── Wireshark Integration (Phase 8) ─────────────────────
+
+/** Wireshark installation info */
+export interface WiresharkInfo {
+	found: boolean;
+	path: string | null;
+	version: string | null;
+}
+
+/** A packet frame row for the View Frames dialog */
+export interface FrameRow {
+	number: number;
+	timestamp: string;
+	src_ip: string;
+	dst_ip: string;
+	src_port: number;
+	dst_port: number;
+	protocol: string;
+	length: number;
+	origin_file: string;
+}

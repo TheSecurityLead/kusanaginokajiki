@@ -51,6 +51,25 @@ fn main() {
             commands::session::bulk_update_assets,
             commands::session::export_session_archive,
             commands::session::import_session_archive,
+            // Physical Topology (Phase 7)
+            commands::physical::import_cisco_config,
+            commands::physical::import_mac_table,
+            commands::physical::import_cdp_neighbors,
+            commands::physical::import_arp_table,
+            commands::physical::get_physical_topology,
+            commands::physical::clear_physical_topology,
+            // External Tool Import (Phase 8)
+            commands::ingest::import_zeek_logs,
+            commands::ingest::import_suricata_eve,
+            commands::ingest::import_nmap_xml,
+            commands::ingest::import_masscan_json,
+            // Wireshark Integration (Phase 8)
+            commands::wireshark::detect_wireshark,
+            commands::wireshark::open_in_wireshark,
+            commands::wireshark::open_wireshark_for_node,
+            commands::wireshark::get_connection_frames,
+            commands::wireshark::export_frames_csv,
+            commands::wireshark::save_frames_csv,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -94,6 +94,35 @@ impl IcsProtocol {
         )
     }
 
+    /// Returns the snake_case name matching the serde serialization format.
+    ///
+    /// Inverse of `from_name()` — round-trips correctly:
+    /// `IcsProtocol::from_name(proto.to_name()) == proto`
+    pub fn to_name(&self) -> &'static str {
+        match self {
+            IcsProtocol::Modbus => "modbus",
+            IcsProtocol::Dnp3 => "dnp3",
+            IcsProtocol::EthernetIp => "ethernet_ip",
+            IcsProtocol::Bacnet => "bacnet",
+            IcsProtocol::S7comm => "s7comm",
+            IcsProtocol::OpcUa => "opc_ua",
+            IcsProtocol::Profinet => "profinet",
+            IcsProtocol::Iec104 => "iec104",
+            IcsProtocol::Mqtt => "mqtt",
+            IcsProtocol::HartIp => "hart_ip",
+            IcsProtocol::FoundationFieldbus => "foundation_fieldbus",
+            IcsProtocol::GeSrtp => "ge_srtp",
+            IcsProtocol::WonderwareSuitelink => "wonderware_suitelink",
+            IcsProtocol::Http => "http",
+            IcsProtocol::Https => "https",
+            IcsProtocol::Dns => "dns",
+            IcsProtocol::Ssh => "ssh",
+            IcsProtocol::Rdp => "rdp",
+            IcsProtocol::Snmp => "snmp",
+            IcsProtocol::Unknown => "unknown",
+        }
+    }
+
     /// Returns a human-readable display name.
     pub fn display_name(&self) -> &'static str {
         match self {

@@ -1,0 +1,11 @@
+[package]
+name = "gm-physical"
+version = "0.1.0"
+edition = "2021"
+description = "Physical topology parsing — Cisco config/CAM/CDP/ARP"
+
+[dependencies]
+regex = "1"
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
+log = "0.4"

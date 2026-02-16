@@ -5,10 +5,11 @@
 		startCapture, stopCapture, pauseCapture, resumeCapture,
 		onCaptureStats, onCaptureError,
 		saveSession, loadSession, listSessions, deleteSession,
-		exportSessionArchive, importSessionArchive
+		exportSessionArchive, importSessionArchive,
+		importZeekLogs, importSuricataEve, importNmapXml, importMasscanJson
 	} from '$lib/utils/tauri';
 	import { protocolStats } from '$lib/stores';
-	import type { FileImportResult, CaptureStatsEvent, SessionInfo } from '$lib/types';
+	import type { FileImportResult, CaptureStatsEvent, SessionInfo, IngestImportResult } from '$lib/types';
 	import { onMount, onDestroy } from 'svelte';
 
 	// ── PCAP Import State ─────────────────────────────────
@@ -30,6 +31,11 @@
 	let sessionMessageType = $state<'success' | 'error' | ''>('');
 	let showSaveForm = $state(false);
 	let confirmDeleteId = $state<string | null>(null);
+
+	// ── External Tool Import State ────────────────────────
+	let ingestStatus = $state<'idle' | 'importing' | 'done' | 'error'>('idle');
+	let ingestMessage = $state('');
+	let lastIngestResult = $state<IngestImportResult | null>(null);
 
 	// Event listener cleanup functions
 	let unlistenStats: (() => void) | null = null;
@@ -360,6 +366,141 @@
 		}
 	}
 
+	// ── External Tool Import Handlers ────────────────────
+	async function handleImportZeek() {
+		try {
+			const { open } = await import('@tauri-apps/plugin-dialog');
+			const selected = await open({
+				title: 'Import Zeek Logs',
+				multiple: true,
+				filters: [
+					{ name: 'Zeek Logs', extensions: ['log'] },
+					{ name: 'All Files', extensions: ['*'] }
+				]
+			});
+			if (!selected || selected.length === 0) return;
+			const paths: string[] = selected;
+			if (paths.length === 0) return;
+
+			ingestStatus = 'importing';
+			ingestMessage = `Importing ${paths.length} Zeek log file${paths.length > 1 ? 's' : ''}...`;
+			lastIngestResult = null;
+
+			const result = await importZeekLogs(paths);
+			lastIngestResult = result;
+			ingestStatus = 'done';
+			ingestMessage = `Zeek: ${result.new_assets} new + ${result.updated_assets} updated assets, ${result.connection_count} connections (${result.duration_ms}ms)`;
+
+			await refreshStores();
+		} catch (err) {
+			ingestStatus = 'error';
+			ingestMessage = `Zeek import failed: ${err}`;
+		}
+	}
+
+	async function handleImportSuricata() {
+		try {
+			const { open } = await import('@tauri-apps/plugin-dialog');
+			const selected = await open({
+				title: 'Import Suricata eve.json',
+				multiple: false,
+				filters: [
+					{ name: 'JSON Files', extensions: ['json'] },
+					{ name: 'All Files', extensions: ['*'] }
+				]
+			});
+			if (!selected) return;
+			const path = typeof selected === 'string' ? selected : selected[0];
+			if (!path) return;
+
+			ingestStatus = 'importing';
+			ingestMessage = 'Importing Suricata eve.json...';
+			lastIngestResult = null;
+
+			const result = await importSuricataEve(path);
+			lastIngestResult = result;
+			ingestStatus = 'done';
+			ingestMessage = `Suricata: ${result.new_assets} new + ${result.updated_assets} updated assets, ${result.connection_count} connections, ${result.alert_count} alerts (${result.duration_ms}ms)`;
+
+			await refreshStores();
+		} catch (err) {
+			ingestStatus = 'error';
+			ingestMessage = `Suricata import failed: ${err}`;
+		}
+	}
+
+	async function handleImportNmap() {
+		try {
+			const { open } = await import('@tauri-apps/plugin-dialog');
+			const selected = await open({
+				title: 'Import Nmap XML',
+				multiple: false,
+				filters: [
+					{ name: 'XML Files', extensions: ['xml'] },
+					{ name: 'All Files', extensions: ['*'] }
+				]
+			});
+			if (!selected) return;
+			const path = typeof selected === 'string' ? selected : selected[0];
+			if (!path) return;
+
+			ingestStatus = 'importing';
+			ingestMessage = 'Importing Nmap XML...';
+			lastIngestResult = null;
+
+			const result = await importNmapXml(path);
+			lastIngestResult = result;
+			ingestStatus = 'done';
+			ingestMessage = `Nmap: ${result.new_assets} new + ${result.updated_assets} updated assets (${result.duration_ms}ms) [ACTIVE SCAN]`;
+
+			await refreshStores();
+		} catch (err) {
+			ingestStatus = 'error';
+			ingestMessage = `Nmap import failed: ${err}`;
+		}
+	}
+
+	async function handleImportMasscan() {
+		try {
+			const { open } = await import('@tauri-apps/plugin-dialog');
+			const selected = await open({
+				title: 'Import Masscan JSON',
+				multiple: false,
+				filters: [
+					{ name: 'JSON Files', extensions: ['json'] },
+					{ name: 'All Files', extensions: ['*'] }
+				]
+			});
+			if (!selected) return;
+			const path = typeof selected === 'string' ? selected : selected[0];
+			if (!path) return;
+
+			ingestStatus = 'importing';
+			ingestMessage = 'Importing Masscan JSON...';
+			lastIngestResult = null;
+
+			const result = await importMasscanJson(path);
+			lastIngestResult = result;
+			ingestStatus = 'done';
+			ingestMessage = `Masscan: ${result.new_assets} new + ${result.updated_assets} updated assets (${result.duration_ms}ms) [ACTIVE SCAN]`;
+
+			await refreshStores();
+		} catch (err) {
+			ingestStatus = 'error';
+			ingestMessage = `Masscan import failed: ${err}`;
+		}
+	}
+
+	async function refreshStores() {
+		const [newAssets, newConnections, newTopology, newStats] = await Promise.all([
+			getAssets(), getConnections(), getTopology(), getProtocolStats()
+		]);
+		assets.set(newAssets);
+		connections.set(newConnections);
+		topology.set(newTopology);
+		protocolStats.set(newStats);
+	}
+
 	const isCapturing = $derived($captureStatus === 'capturing' || $captureStatus === 'paused');
 </script>
 
@@ -597,6 +738,101 @@
 						Interfaces will appear when running as a Tauri desktop app.
 					</div>
 				</div>
+			{/if}
+		</section>
+
+		<!-- External Tool Import Section -->
+		<section class="capture-section">
+			<h3 class="section-title">External Tool Import</h3>
+			<p class="section-desc">
+				Import results from Zeek, Suricata, Nmap, or Masscan. Passive tool data (Zeek, Suricata)
+				is merged naturally. Active scan data (Nmap, Masscan) is tagged — this tool never performs scans.
+			</p>
+
+			<div class="ingest-grid">
+				<div class="ingest-card">
+					<div class="ingest-card-header">
+						<span class="ingest-card-title">Zeek (Bro)</span>
+						<span class="ingest-badge passive">PASSIVE</span>
+					</div>
+					<p class="ingest-card-desc">conn.log, modbus.log, dnp3.log, s7comm.log</p>
+					<button class="action-btn primary" onclick={handleImportZeek} disabled={ingestStatus === 'importing' || isCapturing}>
+						Import Zeek Logs
+					</button>
+				</div>
+
+				<div class="ingest-card">
+					<div class="ingest-card-header">
+						<span class="ingest-card-title">Suricata</span>
+						<span class="ingest-badge passive">PASSIVE</span>
+					</div>
+					<p class="ingest-card-desc">eve.json — flows, alerts, protocol metadata</p>
+					<button class="action-btn primary" onclick={handleImportSuricata} disabled={ingestStatus === 'importing' || isCapturing}>
+						Import eve.json
+					</button>
+				</div>
+
+				<div class="ingest-card">
+					<div class="ingest-card-header">
+						<span class="ingest-card-title">Nmap</span>
+						<span class="ingest-badge active">ACTIVE SCAN</span>
+					</div>
+					<p class="ingest-card-desc">XML output (-oX) — hosts, ports, services, OS</p>
+					<button class="action-btn warning" onclick={handleImportNmap} disabled={ingestStatus === 'importing' || isCapturing}>
+						Import Nmap XML
+					</button>
+				</div>
+
+				<div class="ingest-card">
+					<div class="ingest-card-header">
+						<span class="ingest-card-title">Masscan</span>
+						<span class="ingest-badge active">ACTIVE SCAN</span>
+					</div>
+					<p class="ingest-card-desc">JSON output (-oJ) — IP, ports, banners</p>
+					<button class="action-btn warning" onclick={handleImportMasscan} disabled={ingestStatus === 'importing' || isCapturing}>
+						Import Masscan JSON
+					</button>
+				</div>
+			</div>
+
+			{#if ingestMessage}
+				<div
+					class="import-result"
+					class:success={ingestStatus === 'done'}
+					class:error={ingestStatus === 'error'}
+					class:loading={ingestStatus === 'importing'}
+				>
+					{ingestMessage}
+				</div>
+			{/if}
+
+			{#if lastIngestResult && ingestStatus === 'done'}
+				<div class="import-stats-grid">
+					<div class="import-stat">
+						<span class="import-stat-value">{lastIngestResult.new_assets}</span>
+						<span class="import-stat-label">New Assets</span>
+					</div>
+					<div class="import-stat">
+						<span class="import-stat-value">{lastIngestResult.updated_assets}</span>
+						<span class="import-stat-label">Updated</span>
+					</div>
+					<div class="import-stat">
+						<span class="import-stat-value">{lastIngestResult.connection_count}</span>
+						<span class="import-stat-label">Connections</span>
+					</div>
+					<div class="import-stat">
+						<span class="import-stat-value">{lastIngestResult.alert_count}</span>
+						<span class="import-stat-label">Alerts</span>
+					</div>
+				</div>
+				{#if lastIngestResult.errors.length > 0}
+					<div class="ingest-errors">
+						<h4 class="subsection-title">Errors</h4>
+						{#each lastIngestResult.errors as err}
+							<div class="ingest-error-row">{err}</div>
+						{/each}
+					</div>
+				{/if}
 			{/if}
 		</section>
 
@@ -1373,5 +1609,83 @@
 	.session-btn:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
+	}
+
+	/* ── External Tool Import ─────────────────────── */
+
+	.ingest-grid {
+		display: grid;
+		grid-template-columns: repeat(2, 1fr);
+		gap: 12px;
+		margin-bottom: 12px;
+	}
+
+	.ingest-card {
+		background: var(--gm-bg-panel);
+		border: 1px solid var(--gm-border);
+		border-radius: 6px;
+		padding: 12px;
+	}
+
+	.ingest-card-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 6px;
+	}
+
+	.ingest-card-title {
+		font-size: 12px;
+		font-weight: 600;
+		color: var(--gm-text-primary);
+	}
+
+	.ingest-badge {
+		font-size: 8px;
+		font-weight: 700;
+		letter-spacing: 0.5px;
+		padding: 2px 6px;
+		border-radius: 3px;
+	}
+
+	.ingest-badge.passive {
+		background: rgba(16, 185, 129, 0.15);
+		color: #10b981;
+	}
+
+	.ingest-badge.active {
+		background: rgba(245, 158, 11, 0.15);
+		color: #f59e0b;
+	}
+
+	.ingest-card-desc {
+		font-size: 10px;
+		color: var(--gm-text-muted);
+		margin: 0 0 10px 0;
+		line-height: 1.4;
+	}
+
+	.action-btn.warning {
+		background: rgba(245, 158, 11, 0.15);
+		border-color: rgba(245, 158, 11, 0.3);
+		color: #f59e0b;
+	}
+
+	.action-btn.warning:hover:not(:disabled) {
+		background: rgba(245, 158, 11, 0.25);
+		border-color: #f59e0b;
+	}
+
+	.ingest-errors {
+		margin-top: 12px;
+	}
+
+	.ingest-error-row {
+		font-size: 10px;
+		color: #ef4444;
+		padding: 4px 8px;
+		background: rgba(239, 68, 68, 0.05);
+		border-radius: 4px;
+		margin-bottom: 3px;
 	}
 </style>

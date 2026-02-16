@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { connectionTree, selectedAssetId } from '$lib/stores';
-	import { getConnectionPackets } from '$lib/utils/tauri';
-	import type { Connection, PacketSummary, DeviceType } from '$lib/types';
+	import { getConnectionPackets, openInWireshark, detectWireshark, getConnectionFrames } from '$lib/utils/tauri';
+	import type { Connection, PacketSummary, DeviceType, FrameRow } from '$lib/types';
+	import { onMount } from 'svelte';
 
 	const deviceTypeLabels: Record<DeviceType, string> = {
 		plc: 'PLC',
@@ -91,6 +92,81 @@
 			return iso;
 		}
 	}
+
+	// ── Wireshark & View Frames ───────────────────────
+	let wiresharkAvailable = $state(false);
+	let connCtxMenu = $state<{ x: number; y: number; connId: string; show: boolean }>({
+		x: 0, y: 0, connId: '', show: false
+	});
+	let viewFrames = $state<{ connId: string; frames: FrameRow[]; show: boolean }>({
+		connId: '', frames: [], show: false
+	});
+
+	onMount(() => {
+		checkWireshark();
+		const handler = () => { if (connCtxMenu.show) connCtxMenu = { ...connCtxMenu, show: false }; };
+		window.addEventListener('click', handler);
+		return () => window.removeEventListener('click', handler);
+	});
+
+	async function checkWireshark() {
+		try {
+			const info = await detectWireshark();
+			wiresharkAvailable = info.found;
+		} catch {
+			wiresharkAvailable = false;
+		}
+	}
+
+	function showConnContextMenu(e: MouseEvent, connId: string) {
+		e.preventDefault();
+		e.stopPropagation();
+		connCtxMenu = { x: e.clientX, y: e.clientY, connId, show: true };
+	}
+
+	async function handleOpenInWireshark() {
+		if (!connCtxMenu.connId) return;
+		try {
+			await openInWireshark(connCtxMenu.connId);
+		} catch (err) {
+			console.error('Wireshark launch failed:', err);
+		}
+		connCtxMenu = { ...connCtxMenu, show: false };
+	}
+
+	async function handleViewFrames(connId?: string) {
+		const id = connId || connCtxMenu.connId;
+		if (!id) return;
+		try {
+			const frames = await getConnectionFrames(id);
+			viewFrames = { connId: id, frames, show: true };
+		} catch (err) {
+			console.error('Failed to get frames:', err);
+		}
+		connCtxMenu = { ...connCtxMenu, show: false };
+	}
+
+	async function handleExportCsv() {
+		if (!viewFrames.connId) return;
+		try {
+			const { save } = await import('@tauri-apps/plugin-dialog');
+			const path = await save({
+				title: 'Export Frames as CSV',
+				defaultPath: `frames_${viewFrames.connId.slice(0, 8)}.csv`,
+				filters: [{ name: 'CSV Files', extensions: ['csv'] }]
+			});
+			if (path) {
+				const { saveFramesCsv } = await import('$lib/utils/tauri');
+				await saveFramesCsv(viewFrames.connId, path);
+			}
+		} catch (err) {
+			console.error('CSV export failed:', err);
+		}
+	}
+
+	function closeViewFrames() {
+		viewFrames = { ...viewFrames, show: false };
+	}
 </script>
 
 <div class="tree-container">
@@ -141,6 +217,7 @@
 										class="conn-header"
 										class:expanded={isConnExpanded}
 										onclick={() => toggleConnection(conn)}
+										oncontextmenu={(e) => showConnContextMenu(e, conn.id)}
 									>
 										<span class="expand-icon small">{isConnExpanded ? '\u25BC' : '\u25B6'}</span>
 										<span class="conn-arrow">
@@ -206,6 +283,70 @@
 		{/if}
 	</div>
 </div>
+
+<!-- Connection Context Menu -->
+{#if connCtxMenu.show}
+	<!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
+	<div
+		class="conn-ctx-menu"
+		style="left: {connCtxMenu.x}px; top: {connCtxMenu.y}px;"
+		onclick={(e) => e.stopPropagation()}
+	>
+		<button class="conn-ctx-item" onclick={() => handleViewFrames()}>
+			View Frames
+		</button>
+		{#if wiresharkAvailable}
+			<button class="conn-ctx-item" onclick={handleOpenInWireshark}>
+				Open in Wireshark
+			</button>
+		{/if}
+	</div>
+{/if}
+
+<!-- View Frames Dialog -->
+{#if viewFrames.show}
+	<!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
+	<div class="frames-overlay" onclick={closeViewFrames}>
+		<div class="frames-dialog" onclick={(e) => e.stopPropagation()}>
+			<div class="frames-header">
+				<h3 class="frames-title">View Frames</h3>
+				<span class="frames-count">{viewFrames.frames.length} packets</span>
+				<div class="frames-actions">
+					<button class="frames-btn" onclick={handleExportCsv}>Export CSV</button>
+					<button class="frames-btn close" onclick={closeViewFrames}>&times;</button>
+				</div>
+			</div>
+			<div class="frames-table-wrap">
+				<table class="frames-table">
+					<thead>
+						<tr>
+							<th>#</th>
+							<th>Timestamp</th>
+							<th>Source</th>
+							<th>Dest</th>
+							<th>Protocol</th>
+							<th>Length</th>
+							<th>File</th>
+						</tr>
+					</thead>
+					<tbody>
+						{#each viewFrames.frames as frame}
+							<tr>
+								<td class="frame-num">{frame.number}</td>
+								<td class="frame-ts">{formatTime(frame.timestamp)}</td>
+								<td>{frame.src_ip}:{frame.src_port}</td>
+								<td>{frame.dst_ip}:{frame.dst_port}</td>
+								<td class="frame-proto">{frame.protocol}</td>
+								<td class="frame-len">{frame.length}</td>
+								<td class="frame-file">{frame.origin_file}</td>
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			</div>
+		</div>
+	</div>
+{/if}
 
 <style>
 	.tree-container {
@@ -462,5 +603,180 @@
 		color: var(--gm-text-muted);
 		padding: 4px 0;
 		font-style: italic;
+	}
+
+	/* ── Connection Context Menu ──────────────────── */
+
+	.conn-ctx-menu {
+		position: fixed;
+		z-index: 9999;
+		background: var(--gm-bg-secondary);
+		border: 1px solid var(--gm-border);
+		border-radius: 6px;
+		padding: 4px 0;
+		min-width: 160px;
+		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+	}
+
+	.conn-ctx-item {
+		display: block;
+		width: 100%;
+		padding: 6px 12px;
+		background: transparent;
+		border: none;
+		color: var(--gm-text-primary);
+		font-family: inherit;
+		font-size: 11px;
+		text-align: left;
+		cursor: pointer;
+		transition: background 0.1s;
+	}
+
+	.conn-ctx-item:hover {
+		background: var(--gm-bg-hover);
+	}
+
+	/* ── View Frames Dialog ───────────────────────── */
+
+	.frames-overlay {
+		position: fixed;
+		inset: 0;
+		z-index: 10000;
+		background: rgba(0, 0, 0, 0.6);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.frames-dialog {
+		background: var(--gm-bg-primary);
+		border: 1px solid var(--gm-border);
+		border-radius: 8px;
+		width: 90%;
+		max-width: 900px;
+		max-height: 80vh;
+		display: flex;
+		flex-direction: column;
+		box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+	}
+
+	.frames-header {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		padding: 12px 16px;
+		border-bottom: 1px solid var(--gm-border);
+	}
+
+	.frames-title {
+		font-size: 13px;
+		font-weight: 600;
+		color: var(--gm-text-primary);
+		margin: 0;
+	}
+
+	.frames-count {
+		font-size: 10px;
+		color: var(--gm-text-muted);
+		background: rgba(59, 130, 246, 0.15);
+		padding: 2px 8px;
+		border-radius: 10px;
+	}
+
+	.frames-actions {
+		margin-left: auto;
+		display: flex;
+		gap: 6px;
+	}
+
+	.frames-btn {
+		padding: 4px 10px;
+		background: var(--gm-bg-secondary);
+		border: 1px solid var(--gm-border);
+		border-radius: 4px;
+		color: var(--gm-text-primary);
+		font-family: inherit;
+		font-size: 11px;
+		cursor: pointer;
+		transition: background 0.15s;
+	}
+
+	.frames-btn:hover {
+		background: var(--gm-bg-hover);
+	}
+
+	.frames-btn.close {
+		font-size: 16px;
+		line-height: 1;
+		padding: 2px 8px;
+		border: none;
+		background: transparent;
+	}
+
+	.frames-table-wrap {
+		flex: 1;
+		overflow: auto;
+		padding: 0;
+	}
+
+	.frames-table {
+		width: 100%;
+		border-collapse: collapse;
+		font-size: 10px;
+	}
+
+	.frames-table thead {
+		position: sticky;
+		top: 0;
+		background: var(--gm-bg-secondary);
+		z-index: 1;
+	}
+
+	.frames-table th {
+		padding: 6px 10px;
+		text-align: left;
+		font-size: 9px;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.5px;
+		color: var(--gm-text-muted);
+		border-bottom: 1px solid var(--gm-border);
+	}
+
+	.frames-table td {
+		padding: 4px 10px;
+		color: var(--gm-text-secondary);
+		border-bottom: 1px solid rgba(45, 58, 79, 0.2);
+	}
+
+	.frames-table tr:hover td {
+		background: var(--gm-bg-hover);
+	}
+
+	.frame-num {
+		font-variant-numeric: tabular-nums;
+		color: var(--gm-text-muted);
+	}
+
+	.frame-ts {
+		color: var(--gm-text-muted);
+	}
+
+	.frame-proto {
+		font-weight: 600;
+		color: var(--gm-modbus);
+	}
+
+	.frame-len {
+		text-align: right;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.frame-file {
+		color: var(--gm-text-muted);
+		max-width: 150px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 </style>

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { topology, selectedAssetId, groupingMode } from '$lib/stores';
+	import { topology, selectedAssetId, groupingMode, physicalHighlightIp, activeTab } from '$lib/stores';
 	import { addFilteredView, addWatchTab } from '$lib/stores';
 	import type { TopologyGraph, TopologyNode, GroupingMode, Asset } from '$lib/types';
 	import { assets } from '$lib/stores';
@@ -13,6 +13,19 @@
 		getGroupLabel,
 		isOtProtocol
 	} from '$lib/utils/graph';
+	import { openWiresharkForNode, detectWireshark } from '$lib/utils/tauri';
+
+	let wiresharkAvailable = $state(false);
+
+	// Check if Wireshark is installed on mount
+	async function checkWireshark() {
+		try {
+			const info = await detectWireshark();
+			wiresharkAvailable = info.found;
+		} catch {
+			wiresharkAvailable = false;
+		}
+	}
 
 	let graphContainer: HTMLDivElement;
 	let cy: any = null;
@@ -328,6 +341,25 @@
 		hideContextMenu();
 	}
 
+	function handleShowInPhysical() {
+		if (ctxMenu.nodeId) {
+			physicalHighlightIp.set(ctxMenu.nodeId);
+			activeTab.set('physical');
+		}
+		hideContextMenu();
+	}
+
+	async function handleOpenInWireshark() {
+		if (ctxMenu.nodeId) {
+			try {
+				await openWiresharkForNode(ctxMenu.nodeId);
+			} catch (err) {
+				console.error('Failed to open Wireshark:', err);
+			}
+		}
+		hideContextMenu();
+	}
+
 	// ── Store subscriptions ──
 
 	let currentGraph: TopologyGraph = { nodes: [], edges: [] };
@@ -357,6 +389,7 @@
 
 	onMount(() => {
 		initCytoscape();
+		checkWireshark();
 		window.addEventListener('click', handleWindowClick);
 	});
 
@@ -429,6 +462,14 @@
 				<button class="ctx-item" onclick={handleWatch}>
 					Watch Node
 				</button>
+				<button class="ctx-item" onclick={handleShowInPhysical}>
+					Show in Physical
+				</button>
+				{#if wiresharkAvailable}
+					<button class="ctx-item" onclick={handleOpenInWireshark}>
+						Open in Wireshark
+					</button>
+				{/if}
 				<div class="ctx-sep"></div>
 			{/if}
 			<button class="ctx-item" onclick={handleCreateFilteredView}>

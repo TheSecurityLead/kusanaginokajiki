@@ -21,7 +21,8 @@ import type {
 	WatchViewConfig,
 	GroupingMode,
 	SignatureSummary,
-	SessionInfo
+	SessionInfo,
+	PhysicalTopology
 } from '$lib/types';
 
 // ─── Core Application State ──────────────────────────────────
@@ -52,6 +53,18 @@ export const sessions = writable<SessionInfo[]>([]);
 /** Currently loaded session info (null if no session loaded) */
 export const currentSession = writable<SessionInfo | null>(null);
 
+// ─── Physical Topology State (Phase 7) ───────────────────
+
+/** Physical topology from Cisco config/CAM/CDP/ARP imports */
+export const physicalTopology = writable<PhysicalTopology>({
+	switches: [],
+	links: [],
+	device_locations: {}
+});
+
+/** Currently selected device IP in physical view (for cross-reference) */
+export const physicalHighlightIp = writable<string | null>(null);
+
 // ─── Capture State ────────────────────────────────────────────
 
 /** Current capture status */
@@ -73,7 +86,7 @@ export const captureStats = writable<CaptureStatsEvent>({
 export const selectedAssetId = writable<string | null>(null);
 
 /** Currently active view/tab */
-export type ViewTab = 'topology' | 'inventory' | 'capture' | 'signatures' | 'protocol_stats' | 'settings';
+export type ViewTab = 'topology' | 'physical' | 'inventory' | 'capture' | 'signatures' | 'protocol_stats' | 'settings';
 export const activeTab = writable<ViewTab>('topology');
 
 /** Search/filter text for asset inventory */

@@ -14,6 +14,7 @@
 	import SignatureEditor from '$lib/components/SignatureEditor.svelte';
 	import ProtocolStats from '$lib/components/ProtocolStats.svelte';
 	import ConnectionTree from '$lib/components/ConnectionTree.svelte';
+	import PhysicalView from '$lib/components/PhysicalView.svelte';
 
 	let showTree = $state(true);
 
@@ -133,6 +134,8 @@
 			{/each}
 		</div>
 	</div>
+{:else if $activeTab === 'physical'}
+	<PhysicalView />
 {:else if $activeTab === 'inventory'}
 	<InventoryView />
 {:else if $activeTab === 'protocol_stats'}
