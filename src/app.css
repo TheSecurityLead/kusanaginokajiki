@@ -2,7 +2,7 @@
 
 /* Kusanagi Kajiki — Design Tokens */
 :root {
-  /* OT/Industrial color palette */
+  /* OT/Industrial color palette — Dark theme (default) */
   --gm-bg-primary: #0a0e17;
   --gm-bg-secondary: #111827;
   --gm-bg-panel: #1a2235;
@@ -37,6 +37,60 @@
   --gm-warning: #f59e0b;
   --gm-danger: #ef4444;
   --gm-info: #3b82f6;
+
+  /* Purdue Model zone colors */
+  --gm-purdue-l0: #94a3b8;
+  --gm-purdue-l1: #f59e0b;
+  --gm-purdue-l2: #3b82f6;
+  --gm-purdue-l3: #8b5cf6;
+  --gm-purdue-l4: #10b981;
+  --gm-purdue-l5: #06b6d4;
+
+  /* Severity colors */
+  --gm-severity-critical: #ef4444;
+  --gm-severity-high: #f97316;
+  --gm-severity-medium: #f59e0b;
+  --gm-severity-low: #3b82f6;
+  --gm-severity-info: #64748b;
+
+  /* Baseline drift colors */
+  --gm-drift-new: #10b981;
+  --gm-drift-missing: #ef4444;
+  --gm-drift-changed: #f59e0b;
+}
+
+/* ─── Light Theme ─────────────────────────────────────────── */
+/* For control room environments where dark screens cause glare */
+[data-theme="light"] {
+  --gm-bg-primary: #f8fafc;
+  --gm-bg-secondary: #f1f5f9;
+  --gm-bg-panel: #ffffff;
+  --gm-bg-hover: #e2e8f0;
+  --gm-border: #cbd5e1;
+  --gm-border-active: #3b82f6;
+
+  --gm-text-primary: #0f172a;
+  --gm-text-secondary: #475569;
+  --gm-text-muted: #94a3b8;
+
+  /* Slightly darker protocol/device colors for light backgrounds */
+  --gm-unknown: #94a3b8;
+  --gm-it-device: #94a3b8;
+
+  /* Severity stays the same (already high contrast) */
+  --gm-severity-info: #94a3b8;
+}
+
+[data-theme="light"] ::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+}
+
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }
 
 /* Base styles */

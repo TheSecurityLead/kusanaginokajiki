@@ -30,7 +30,15 @@ import type {
 	IngestImportResult,
 	WiresharkInfo,
 	FrameRow,
-	ReportConfig
+	ReportConfig,
+	AnalysisResult,
+	Finding,
+	PurdueAssignment,
+	AnomalyScore,
+	BaselineDiff,
+	UserSettings,
+	TimelineRange,
+	PluginManifest
 } from '$lib/types';
 
 // ─── System Commands ──────────────────────────────────────────
@@ -200,6 +208,13 @@ export async function importSessionArchive(archivePath: string): Promise<Session
 	return invoke<SessionInfo>('import_session_archive', { archivePath });
 }
 
+// ─── Baseline Drift (Phase 11) ──────────────────────────────────
+
+/** Compare current state against a saved baseline session */
+export async function compareSessions(baselineSessionId: string): Promise<BaselineDiff> {
+	return invoke<BaselineDiff>('compare_sessions', { baselineSessionId });
+}
+
 // ─── Physical Topology (Phase 7) ─────────────────────────────────
 
 /** Import a Cisco IOS running-config file */
@@ -326,4 +341,52 @@ export async function exportStixBundle(outputPath: string): Promise<string> {
 /** Save topology image (PNG/SVG) from frontend-captured data */
 export async function saveTopologyImage(imageData: string, outputPath: string): Promise<string> {
 	return invoke<string>('save_topology_image', { imageData, outputPath });
+}
+
+// ─── Security Analysis (Phase 10) ───────────────────────────────
+
+/** Run the full security analysis pipeline (ATT&CK + Purdue + anomaly) */
+export async function runAnalysis(): Promise<AnalysisResult> {
+	return invoke<AnalysisResult>('run_analysis');
+}
+
+/** Get all findings from the last analysis run */
+export async function getFindings(): Promise<Finding[]> {
+	return invoke<Finding[]>('get_findings');
+}
+
+/** Get Purdue level assignments from the last analysis run */
+export async function getPurdueAssignments(): Promise<PurdueAssignment[]> {
+	return invoke<PurdueAssignment[]>('get_purdue_assignments');
+}
+
+/** Get anomaly scores from the last analysis run */
+export async function getAnomalies(): Promise<AnomalyScore[]> {
+	return invoke<AnomalyScore[]>('get_anomalies');
+}
+
+// ─── Settings (Phase 11) ────────────────────────────────────────
+
+/** Load user settings from disk */
+export async function getSettings(): Promise<UserSettings> {
+	return invoke<UserSettings>('get_settings');
+}
+
+/** Save user settings to disk */
+export async function saveSettings(settings: UserSettings): Promise<void> {
+	return invoke('save_settings', { settings });
+}
+
+// ─── Timeline (Phase 11) ────────────────────────────────────────
+
+/** Get the time range of the current dataset */
+export async function getTimelineRange(): Promise<TimelineRange> {
+	return invoke<TimelineRange>('get_timeline_range');
+}
+
+// ─── Plugins (Phase 11) ─────────────────────────────────────────
+
+/** List plugins found in the plugins directory */
+export async function listPlugins(): Promise<PluginManifest[]> {
+	return invoke<PluginManifest[]>('list_plugins');
 }

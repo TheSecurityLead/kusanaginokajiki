@@ -550,3 +550,157 @@ export interface SbomEntry {
 
 /** Export format options */
 export type ExportFormat = 'csv' | 'json' | 'pdf' | 'sbom_csv' | 'sbom_json' | 'stix';
+
+// ─── Security Analysis (Phase 10) ────────────────────────
+
+/** Finding type classification */
+export type FindingType = 'attack_technique' | 'purdue_violation' | 'anomaly';
+
+/** Severity levels for findings */
+export type FindingSeverity = 'info' | 'low' | 'medium' | 'high' | 'critical';
+
+/** A security finding from analysis */
+export interface Finding {
+	id: string;
+	finding_type: FindingType;
+	severity: FindingSeverity;
+	title: string;
+	description: string;
+	affected_assets: string[];
+	evidence: string;
+	technique_id: string | null;
+	created_at: string;
+}
+
+/** Purdue level assignment method */
+export type PurdueMethod = 'auto' | 'manual';
+
+/** Purdue level assignment for a device */
+export interface PurdueAssignment {
+	ip_address: string;
+	level: number;
+	method: PurdueMethod;
+	reason: string;
+}
+
+/** Anomaly type classification */
+export type AnomalyType = 'polling_deviation' | 'role_reversal' | 'new_device' | 'unexpected_public_ip';
+
+/** An anomaly score from analysis */
+export interface AnomalyScore {
+	anomaly_type: AnomalyType;
+	severity: FindingSeverity;
+	confidence: number;
+	affected_asset: string;
+	evidence: string;
+}
+
+/** Full analysis result from the backend */
+export interface AnalysisResult {
+	findings: Finding[];
+	purdue_assignments: PurdueAssignment[];
+	anomalies: AnomalyScore[];
+	summary: AnalysisSummary;
+}
+
+/** Summary statistics from an analysis run */
+export interface AnalysisSummary {
+	total_findings: number;
+	critical_count: number;
+	high_count: number;
+	medium_count: number;
+	low_count: number;
+	info_count: number;
+	purdue_violations: number;
+	anomaly_count: number;
+	assets_analyzed: number;
+	connections_analyzed: number;
+	unencrypted_ot_percent: number;
+}
+
+// ─── Baseline Drift (Phase 11) ───────────────────────────
+
+/** Full diff result between current state and a baseline session */
+export interface BaselineDiff {
+	baseline_session_name: string;
+	new_assets: DriftAsset[];
+	missing_assets: DriftAsset[];
+	changed_assets: ChangedAsset[];
+	new_connections: DriftConnection[];
+	missing_connections: DriftConnection[];
+	summary: DriftSummary;
+}
+
+/** A device in the drift report (new or missing) */
+export interface DriftAsset {
+	ip_address: string;
+	mac_address: string | null;
+	device_type: string;
+	vendor: string | null;
+	protocols: string[];
+	confidence: number;
+}
+
+/** A device with changed properties */
+export interface ChangedAsset {
+	ip_address: string;
+	changes: AssetChange[];
+}
+
+/** A single field change between baseline and current */
+export interface AssetChange {
+	field: string;
+	baseline_value: string;
+	current_value: string;
+}
+
+/** A connection in the drift report */
+export interface DriftConnection {
+	src_ip: string;
+	dst_ip: string;
+	src_port: number;
+	dst_port: number;
+	protocol: string;
+}
+
+/** Summary of drift statistics */
+export interface DriftSummary {
+	total_baseline_assets: number;
+	total_current_assets: number;
+	new_asset_count: number;
+	missing_asset_count: number;
+	changed_asset_count: number;
+	new_connection_count: number;
+	missing_connection_count: number;
+	drift_score: number;
+}
+
+// ─── Theme (Phase 11) ────────────────────────────────────
+
+/** Theme mode: dark, light, or follow system preference */
+export type ThemeMode = 'dark' | 'light' | 'system';
+
+/** Persistent user settings */
+export interface UserSettings {
+	theme: ThemeMode;
+}
+
+// ─── Timeline (Phase 11) ─────────────────────────────────
+
+/** Timeline range for the scrubber */
+export interface TimelineRange {
+	earliest: string | null;
+	latest: string | null;
+	connection_count: number;
+}
+
+// ─── Plugins (Phase 11) ──────────────────────────────────
+
+/** A plugin manifest */
+export interface PluginManifest {
+	name: string;
+	version: string;
+	plugin_type: string;
+	description: string;
+	author: string | null;
+}

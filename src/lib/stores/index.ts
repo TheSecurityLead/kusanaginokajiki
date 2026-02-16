@@ -22,7 +22,14 @@ import type {
 	GroupingMode,
 	SignatureSummary,
 	SessionInfo,
-	PhysicalTopology
+	PhysicalTopology,
+	Finding,
+	PurdueAssignment,
+	AnomalyScore,
+	AnalysisSummary,
+	BaselineDiff,
+	ThemeMode,
+	TimelineRange
 } from '$lib/types';
 
 // ─── Core Application State ──────────────────────────────────
@@ -65,6 +72,44 @@ export const physicalTopology = writable<PhysicalTopology>({
 /** Currently selected device IP in physical view (for cross-reference) */
 export const physicalHighlightIp = writable<string | null>(null);
 
+// ─── Security Analysis State (Phase 10) ──────────────────
+
+/** Security findings from last analysis run */
+export const findings = writable<Finding[]>([]);
+
+/** Purdue level assignments from last analysis run */
+export const purdueAssignments = writable<PurdueAssignment[]>([]);
+
+/** Anomaly scores from last analysis run */
+export const anomalies = writable<AnomalyScore[]>([]);
+
+/** Analysis summary from last analysis run */
+export const analysisSummary = writable<AnalysisSummary | null>(null);
+
+// ─── Baseline Drift State (Phase 11) ─────────────────────
+
+/** Last computed baseline diff (null if not run) */
+export const baselineDiff = writable<BaselineDiff | null>(null);
+
+// ─── Theme State (Phase 11) ──────────────────────────────
+
+/** Current theme mode */
+export const themeMode = writable<ThemeMode>('dark');
+
+// ─── Timeline State (Phase 11) ───────────────────────────
+
+/** Timeline range from loaded data */
+export const timelineRange = writable<TimelineRange | null>(null);
+
+/** Current timeline position as a fraction (0.0 = earliest, 1.0 = latest) */
+export const timelinePosition = writable<number>(1.0);
+
+/** Whether timeline playback is active */
+export const timelinePlaying = writable<boolean>(false);
+
+/** Whether the timeline scrubber is enabled (filtering active) */
+export const timelineEnabled = writable<boolean>(false);
+
 // ─── Capture State ────────────────────────────────────────────
 
 /** Current capture status */
@@ -86,7 +131,7 @@ export const captureStats = writable<CaptureStatsEvent>({
 export const selectedAssetId = writable<string | null>(null);
 
 /** Currently active view/tab */
-export type ViewTab = 'topology' | 'physical' | 'inventory' | 'capture' | 'signatures' | 'protocol_stats' | 'export' | 'settings';
+export type ViewTab = 'topology' | 'physical' | 'inventory' | 'capture' | 'signatures' | 'protocol_stats' | 'export' | 'analysis' | 'settings';
 export const activeTab = writable<ViewTab>('topology');
 
 /** Search/filter text for asset inventory */
@@ -264,3 +309,21 @@ export const connectionTree = derived(
 		return nodes;
 	}
 );
+
+/** Set of IPs that are "new" in the baseline diff (for LogicalView highlighting) */
+export const driftNewIps = derived(baselineDiff, ($diff) => {
+	if (!$diff) return new Set<string>();
+	return new Set($diff.new_assets.map((a) => a.ip_address));
+});
+
+/** Set of IPs that are "missing" in the baseline diff */
+export const driftMissingIps = derived(baselineDiff, ($diff) => {
+	if (!$diff) return new Set<string>();
+	return new Set($diff.missing_assets.map((a) => a.ip_address));
+});
+
+/** Set of IPs that are "changed" in the baseline diff */
+export const driftChangedIps = derived(baselineDiff, ($diff) => {
+	if (!$diff) return new Set<string>();
+	return new Set($diff.changed_assets.map((a) => a.ip_address));
+});

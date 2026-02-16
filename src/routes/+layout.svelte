@@ -1,25 +1,75 @@
 <script lang="ts">
 	import '../app.css';
-	import { activeTab } from '$lib/stores';
+	import { activeTab, themeMode } from '$lib/stores';
 	import type { ViewTab } from '$lib/stores';
 	import { assetCount, connectionCount, captureStatus } from '$lib/stores';
+	import { getSettings, saveSettings } from '$lib/utils/tauri';
+	import { onMount } from 'svelte';
+	import { get } from 'svelte/store';
+	import type { ThemeMode } from '$lib/types';
 
 	let { children } = $props();
 
 	const navItems: { id: ViewTab; label: string; icon: string }[] = [
-		{ id: 'topology', label: 'Topology', icon: '⬡' },
-		{ id: 'physical', label: 'Physical', icon: '⬢' },
-		{ id: 'inventory', label: 'Inventory', icon: '☰' },
-		{ id: 'protocol_stats', label: 'Protocols', icon: '▤' },
-		{ id: 'capture', label: 'Capture', icon: '◉' },
-		{ id: 'export', label: 'Export', icon: '⤓' },
-		{ id: 'signatures', label: 'Signatures', icon: '⌘' },
-		{ id: 'settings', label: 'Settings', icon: '⚙' }
+		{ id: 'topology', label: 'Topology', icon: '\u2B21' },
+		{ id: 'physical', label: 'Physical', icon: '\u2B22' },
+		{ id: 'inventory', label: 'Inventory', icon: '\u2630' },
+		{ id: 'protocol_stats', label: 'Protocols', icon: '\u25A4' },
+		{ id: 'capture', label: 'Capture', icon: '\u25C9' },
+		{ id: 'analysis', label: 'Analysis', icon: '\u2691' },
+		{ id: 'export', label: 'Export', icon: '\u2913' },
+		{ id: 'signatures', label: 'Signatures', icon: '\u2318' },
+		{ id: 'settings', label: 'Settings', icon: '\u2699' }
 	];
 
 	function navigate(tab: ViewTab) {
 		activeTab.set(tab);
 	}
+
+	// Apply theme to document root
+	function applyTheme(mode: ThemeMode) {
+		if (mode === 'system') {
+			const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+			document.documentElement.setAttribute('data-theme', prefersDark ? 'dark' : 'light');
+		} else {
+			document.documentElement.setAttribute('data-theme', mode);
+		}
+	}
+
+	async function toggleTheme() {
+		const current = get(themeMode);
+		const next: ThemeMode = current === 'dark' ? 'light' : current === 'light' ? 'system' : 'dark';
+		themeMode.set(next);
+		applyTheme(next);
+
+		try {
+			await saveSettings({ theme: next });
+		} catch {
+			// Settings save may fail in dev mode
+		}
+	}
+
+	let currentTheme = $state<ThemeMode>('dark');
+	themeMode.subscribe(v => currentTheme = v);
+
+	onMount(async () => {
+		try {
+			const settings = await getSettings();
+			const mode = settings.theme as ThemeMode;
+			themeMode.set(mode);
+			applyTheme(mode);
+		} catch {
+			// Expected in browser dev mode — default to dark
+		}
+
+		// Listen for system theme changes
+		window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+			const mode = get(themeMode);
+			if (mode === 'system') {
+				applyTheme('system');
+			}
+		});
+	});
 </script>
 
 <div class="app-shell">
@@ -68,6 +118,16 @@
 					{$captureStatus.toUpperCase()}
 				</span>
 			</div>
+			<button class="theme-toggle" onclick={toggleTheme} title="Toggle theme ({currentTheme})">
+				{#if currentTheme === 'dark'}
+					<span class="theme-icon">&#9789;</span>
+				{:else if currentTheme === 'light'}
+					<span class="theme-icon">&#9788;</span>
+				{:else}
+					<span class="theme-icon">&#9681;</span>
+				{/if}
+				<span class="theme-label">{currentTheme.toUpperCase()}</span>
+			</button>
 		</div>
 	</nav>
 
@@ -214,6 +274,38 @@
 	.text-amber { color: #f59e0b; }
 	.text-slate { color: #64748b; }
 	.text-red { color: #ef4444; }
+
+	/* ── Theme Toggle ───────────────────────────────── */
+
+	.theme-toggle {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		margin-top: 6px;
+		padding: 6px 8px;
+		border: 1px solid var(--gm-border);
+		border-radius: 4px;
+		background: transparent;
+		color: var(--gm-text-muted);
+		font-family: inherit;
+		font-size: 10px;
+		cursor: pointer;
+		transition: all 0.15s;
+	}
+
+	.theme-toggle:hover {
+		background: var(--gm-bg-hover);
+		color: var(--gm-text-primary);
+	}
+
+	.theme-icon {
+		font-size: 14px;
+	}
+
+	.theme-label {
+		letter-spacing: 1px;
+		font-weight: 500;
+	}
 
 	/* ── Main Content ────────────────────────────────── */
 

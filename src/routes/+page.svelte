@@ -16,6 +16,7 @@
 	import ConnectionTree from '$lib/components/ConnectionTree.svelte';
 	import PhysicalView from '$lib/components/PhysicalView.svelte';
 	import ExportView from '$lib/components/ExportView.svelte';
+	import AnalysisView from '$lib/components/AnalysisView.svelte';
 
 	let showTree = $state(true);
 
@@ -143,6 +144,8 @@
 	<ProtocolStats />
 {:else if $activeTab === 'capture'}
 	<CaptureView />
+{:else if $activeTab === 'analysis'}
+	<AnalysisView />
 {:else if $activeTab === 'export'}
 	<ExportView />
 {:else if $activeTab === 'signatures'}

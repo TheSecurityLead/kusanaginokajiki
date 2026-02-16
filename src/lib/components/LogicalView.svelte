@@ -2,6 +2,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { topology, selectedAssetId, groupingMode, physicalHighlightIp, activeTab } from '$lib/stores';
 	import { addFilteredView, addWatchTab } from '$lib/stores';
+	import { driftNewIps, driftMissingIps, driftChangedIps } from '$lib/stores';
 	import type { TopologyGraph, TopologyNode, GroupingMode, Asset } from '$lib/types';
 	import { assets } from '$lib/stores';
 	import {
@@ -14,6 +15,7 @@
 		isOtProtocol
 	} from '$lib/utils/graph';
 	import { openWiresharkForNode, detectWireshark } from '$lib/utils/tauri';
+	import TimelineScrubber from './TimelineScrubber.svelte';
 
 	let wiresharkAvailable = $state(false);
 
@@ -112,6 +114,23 @@
 						'border-color': '#3b82f6',
 						'border-width': 3,
 						'background-color': '#1e3a5f'
+					}
+				},
+				// ── Drift highlighting (baseline comparison) ──
+				{
+					selector: 'node.drift-new',
+					style: {
+						'border-color': '#10b981',
+						'border-width': 3,
+						'border-style': 'double' as any
+					}
+				},
+				{
+					selector: 'node.drift-changed',
+					style: {
+						'border-color': '#f59e0b',
+						'border-width': 3,
+						'border-style': 'double' as any
 					}
 				},
 				// ── Edges ──
@@ -214,6 +233,12 @@
 		assets.subscribe((a) => (currentAssets = a))();
 		const assetMap = new Map(currentAssets.map((a) => [a.ip_address, a]));
 
+		// Get current drift sets for highlighting
+		let newIps = new Set<string>();
+		let changedIps = new Set<string>();
+		driftNewIps.subscribe((s) => (newIps = s))();
+		driftChangedIps.subscribe((s) => (changedIps = s))();
+
 		if (mode !== 'none') {
 			// Collect unique groups
 			const groups = new Set<string>();
@@ -240,6 +265,11 @@
 			const asset = assetMap.get(node.ip_address);
 			const confidence = asset?.confidence ?? 0;
 
+			// Determine drift class for baseline highlighting
+			let driftClass = '';
+			if (newIps.has(node.ip_address)) driftClass = ' drift-new';
+			else if (changedIps.has(node.ip_address)) driftClass = ' drift-changed';
+
 			elements.push({
 				group: 'nodes',
 				data: {
@@ -255,7 +285,7 @@
 					color,
 					...(parentId ? { parent: parentId } : {})
 				},
-				classes: hasOt ? 'device ot' : 'device'
+				classes: (hasOt ? 'device ot' : 'device') + driftClass
 			});
 		}
 
@@ -382,6 +412,13 @@
 		}
 	});
 
+	// Rebuild graph when drift data changes (baseline comparison highlights)
+	const unsubDrift = driftNewIps.subscribe(() => {
+		if (currentGraph.nodes.length > 0) {
+			updateGraph(currentGraph, currentMode);
+		}
+	});
+
 	// Close context menu on any click outside
 	function handleWindowClick() {
 		if (ctxMenu.show) hideContextMenu();
@@ -397,6 +434,7 @@
 		unsubTopo();
 		unsubMode();
 		unsubAssets();
+		unsubDrift();
 		window.removeEventListener('click', handleWindowClick);
 		cy?.destroy();
 	});
@@ -447,6 +485,7 @@
 				<p class="hint">Go to <strong>Capture</strong> &rarr; Import PCAP to get started.</p>
 			</div>
 		{/if}
+		<TimelineScrubber />
 	</div>
 
 	<!-- Context Menu -->

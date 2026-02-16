@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use serde::Serialize;
 use tauri::State;
 
 use gm_topology::TopologyGraph;
@@ -151,4 +152,49 @@ pub fn get_function_code_stats(
     }
 
     Ok(result)
+}
+
+// ─── Timeline (Phase 11) ────────────────────────────────────
+
+/// Timeline range: earliest and latest timestamps across all connections.
+#[derive(Debug, Clone, Serialize)]
+pub struct TimelineRange {
+    pub earliest: Option<String>,
+    pub latest: Option<String>,
+    /// Total number of connections with timestamps
+    pub connection_count: usize,
+}
+
+/// Get the time range of the current dataset.
+///
+/// Returns the earliest and latest timestamps from all connections,
+/// used by the timeline scrubber to set slider bounds.
+#[tauri::command]
+pub fn get_timeline_range(state: State<'_, AppState>) -> Result<TimelineRange, String> {
+    let state_inner = state.inner.lock().map_err(|e| e.to_string())?;
+
+    let mut earliest: Option<&str> = None;
+    let mut latest: Option<&str> = None;
+
+    for conn in &state_inner.connections {
+        let fs = conn.first_seen.as_str();
+        let ls = conn.last_seen.as_str();
+
+        match earliest {
+            None => earliest = Some(fs),
+            Some(e) if fs < e => earliest = Some(fs),
+            _ => {}
+        }
+        match latest {
+            None => latest = Some(ls),
+            Some(l) if ls > l => latest = Some(ls),
+            _ => {}
+        }
+    }
+
+    Ok(TimelineRange {
+        earliest: earliest.map(|s| s.to_string()),
+        latest: latest.map(|s| s.to_string()),
+        connection_count: state_inner.connections.len(),
+    })
 }

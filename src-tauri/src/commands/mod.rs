@@ -8,6 +8,8 @@ pub mod physical;
 pub mod ingest;
 pub mod wireshark;
 pub mod export;
+pub mod analysis;
+pub mod baseline;
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -18,6 +20,7 @@ use gm_parsers::IcsProtocol;
 use gm_signatures::SignatureEngine;
 use gm_db::{Database, OuiLookup, GeoIpLookup};
 use gm_physical::PhysicalTopology;
+use gm_analysis::{Finding, PurdueAssignment, AnomalyScore};
 use serde::{Serialize, Deserialize};
 
 /// Shared application state, managed by Tauri.
@@ -60,6 +63,12 @@ pub struct AppStateInner {
     pub current_session_name: Option<String>,
     /// Physical topology from Cisco config/CAM/CDP/ARP imports
     pub physical_topology: PhysicalTopology,
+    /// Security findings from the last analysis run
+    pub findings: Vec<Finding>,
+    /// Purdue level assignments from the last analysis run
+    pub purdue_assignments: Vec<PurdueAssignment>,
+    /// Anomaly scores from the last analysis run
+    pub anomalies: Vec<AnomalyScore>,
 }
 
 /// Asset information stored in application state.
@@ -367,6 +376,9 @@ impl AppState {
                 current_session_id: None,
                 current_session_name: None,
                 physical_topology: PhysicalTopology::default(),
+                findings: Vec::new(),
+                purdue_assignments: Vec::new(),
+                anomalies: Vec::new(),
             }),
         }
     }
