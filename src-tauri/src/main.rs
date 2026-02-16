@@ -44,7 +44,13 @@ fn main() {
                 tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
                 let cli_args = app_handle.state::<CliArgs>();
-                let args = cli_args.0.lock().unwrap().clone();
+                let args = match cli_args.0.lock() {
+                    Ok(guard) => guard.clone(),
+                    Err(e) => {
+                        log::error!("CLI: failed to read CLI args: {}", e);
+                        return;
+                    }
+                };
 
                 if let Some(ref path) = args.import_pcap {
                     log::info!("CLI: importing PCAP from {}", path);

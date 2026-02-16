@@ -193,9 +193,8 @@ impl SignatureEngine {
 
         for packet in packets {
             for m in self.match_packet(packet) {
-                let existing = best_matches.get(&m.signature_name);
                 // Keep the highest-confidence match for each signature
-                if existing.is_none() || existing.unwrap().confidence < m.confidence {
+                if best_matches.get(&m.signature_name).is_none_or(|e| e.confidence < m.confidence) {
                     best_matches.insert(m.signature_name.clone(), m);
                 }
             }

@@ -58,10 +58,10 @@ pub fn auto_assign_purdue_levels(input: &AnalysisInput) -> Vec<PurdueAssignment>
 
     for asset in &input.assets {
         // Preserve manual assignments
-        if asset.purdue_level.is_some() {
+        if let Some(level) = asset.purdue_level {
             assignments.push(PurdueAssignment {
                 ip_address: asset.ip_address.clone(),
-                level: asset.purdue_level.unwrap(),
+                level,
                 method: PurdueMethod::Manual,
                 reason: "Manually assigned by user".to_string(),
             });

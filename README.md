@@ -1,64 +1,258 @@
-<div align="center"><img src="KusanaginoKajikiLogo.jpg"/></div>
+<div align="center">
+  <img src="KusanaginoKajikiLogo.jpg" alt="Kusanagi Kajiki Logo" width="400"/>
 
-# Kusanagi Kajiki 草薙カジキ
+  # Kusanagi Kajiki 草薙カジキ
 
-**Modern ICS/SCADA passive network discovery and topology visualization tool.**
+  **Passive ICS/SCADA network discovery and topology visualization for OT security assessments.**
 
-A ground-up rewrite of the NSA's [GRASSMARLIN](https://github.com/nsacyber/GRASSMARLIN) (archived 2023), rebuilt with **Tauri 2.0** (Rust backend) and **SvelteKit** (TypeScript frontend) for performance, security, and cross-platform support.
-
-The name is a bilingual nod to the original: 草 (kusa/grass) + marlin (kajiki/カジキ), with Kusanagi (草薙) referencing the legendary Japanese sword.
-
-![License](https://img.shields.io/badge/license-Apache%202.0-blue)
-![Rust](https://img.shields.io/badge/rust-1.77+-orange)
-![Tauri](https://img.shields.io/badge/tauri-2.0-blue)
-
-> **Active Development** — This project is under active development. See the [Roadmap](#roadmap) for current status.
+  ![Rust](https://img.shields.io/badge/rust-1.77+-orange?logo=rust)
+  ![Tauri](https://img.shields.io/badge/tauri-2.0-24C8D8?logo=tauri)
+  ![Svelte](https://img.shields.io/badge/svelte-5-FF3E00?logo=svelte)
+  ![License](https://img.shields.io/badge/license-Apache%202.0-blue)
+  ![Tests](https://img.shields.io/badge/tests-127%20passing-brightgreen)
+</div>
 
 ---
 
-## What It Does
+## What is Kusanagi Kajiki?
 
-Kusanagi Kajiki passively discovers and maps Industrial Control System (ICS) and SCADA network devices by analyzing network traffic. It is designed for OT security assessments where **active scanning is not an option** — maintaining availability of industrial systems is paramount.
+Kusanagi Kajiki is a ground-up rewrite of the NSA's [GRASSMARLIN](https://github.com/nsacyber/GRASSMARLIN) (archived 2023), rebuilt from scratch with a Rust backend (Tauri 2.0) and SvelteKit frontend. It passively discovers and maps Industrial Control System (ICS) and SCADA network devices by analyzing network traffic captures and integrating data from external security tools.
 
-### Core Capabilities
+In operational technology environments, **active scanning can crash PLCs and disrupt physical processes**. Assessors need visibility into OT networks without generating a single packet. Kusanagi Kajiki operates in passive-only mode — it observes captured traffic, identifies devices and protocols, maps network topology, and flags security concerns, all without touching the production network.
 
-- **PCAP Import** — Analyze captured traffic offline with multi-file support
-- **Live Capture** — Real-time packet capture with streaming topology updates
-- **Three Topology Views** — Logical (subnet-grouped), Physical (switch port mapping), and Mesh (Sniffles all-to-all)
-- **YAML Signature Engine** — 54+ extensible fingerprint signatures identifying specific vendor products (not just protocols), with confidence scoring 1-5
-- **Deep Protocol Parsing** — Modbus function codes, DNP3 object types, register mapping, device identification extraction
-- **Physical Topology** — Import Cisco configs, CAM tables, and CDP neighbors to map devices to physical switch ports
-- **Asset Inventory** — Searchable database with vendor-specific identification, MAC OUI lookup, and GeoIP for public IPs
-- **MITRE ATT&CK for ICS** — Map observed behaviors to ATT&CK techniques with severity ratings
-- **Purdue Model Overlay** — Auto-assign Purdue levels, detect and flag cross-zone policy violations
-- **Anomaly Scoring** — Detect role reversals, polling deviations, unexpected devices, and unencrypted OT traffic
-- **External Tool Integration** — Import Zeek logs, Suricata EVE JSON, Nmap XML. Right-click to open in Wireshark.
-- **PDF Assessment Reports** — One-click professional reports with executive summary, topology diagrams, findings, and recommendations
-- **SBOM Export** — CISA BOD 23-01 aligned asset inventories for federal compliance
-- **Baseline Drift Detection** — Diff current assessment against previous baseline, highlight changes
-- **Plugin Architecture** — Extensible via signature packs, importers, exporters, and analyzers
+The tool achieves full feature parity with GRASSMARLIN 3.2 and extends well beyond it with MITRE ATT&CK for ICS detection, Purdue Model enforcement, Zeek/Suricata log ingestion, professional PDF reporting, SBOM/STIX export, baseline drift detection, and a modern dark/light UI. The name is a bilingual nod to the original: 草 (kusa/grass) + marlin (kajiki/カジキ), with Kusanagi (草薙) referencing the legendary sword from Japanese mythology.
 
-### Supported ICS Protocols
+---
 
-| Protocol | Port(s) | Vendor / Standard |
-|----------|---------|-------------------|
-| Modbus TCP | 502 | Schneider Electric, many vendors |
-| DNP3 | 20000 | IEEE 1815 (utilities, substations) |
-| EtherNet/IP (CIP) | 44818, 2222 | Rockwell / Allen-Bradley |
-| BACnet/IP | 47808 | ASHRAE (building automation) |
-| S7comm | 102 | Siemens S7 PLCs |
-| OPC UA | 4840 | OPC Foundation |
-| IEC 60870-5-104 | 2404 | Power grid SCADA |
-| PROFINET | 34962-34964 | Siemens / PI |
-| MQTT | 1883, 8883 | IIoT gateways |
-| HART-IP | 5094 | Process instrumentation |
-| GE SRTP | 18245-18246 | GE PLCs |
-| Wonderware SuiteLink | 5007 | Wonderware SCADA |
-| Foundation Fieldbus HSE | 1089-1091 | Process automation |
+## Key Features
 
-### Signature-Identified Products (partial list)
+### Network Discovery
+- **Multi-PCAP import** with simultaneous file processing and per-packet origin tracking
+- **Live capture** with real-time streaming topology updates, pause/resume, ring buffer, and PCAP save
+- **19 ICS/IT protocol detection** by port, payload signature, and deep packet inspection
+- **Connection tracking** with packet/byte counts, timestamps, and protocol classification
 
-Rockwell ControlLogix, Schneider Modicon M340/Unity, Siemens S7-300/400/1200/1500, ABB 800xA, Honeywell Experion, Emerson DeltaV, GE SRTP devices, Wonderware SuiteLink, CODESYS controllers, and more via the extensible YAML signature engine.
+### Topology Visualization
+- **Logical view** — fcose layout with subnet grouping, compound nodes, filtered sub-views, and watch tabs (N-degree neighborhood)
+- **Physical view** — Cisco switch/port topology from IOS configs, CAM tables, CDP neighbors, and ARP data
+- **Mesh view** — All-to-all connection matrix with protocol and time filters
+- **Timeline scrubber** — Replay topology construction chronologically with playback controls
+
+### Deep Protocol Analysis
+- **Modbus** — MBAP header parsing, function code extraction, read/write classification, register range mapping, FC 8 diagnostics detection, master/slave role identification
+- **DNP3** — Link layer validation, function code extraction, master/outstation detection, unsolicited response (FC 130) flagging, DNP3 address extraction
+- **FC 43/14 Device Identification** — Extracts vendor name and product code directly from Modbus Device ID responses (confidence level 5)
+- **Polling interval detection** — Computes communication periodicity from timestamp analysis
+
+### Device Identification
+- **25 YAML signatures** covering 13 OT protocols and vendor-specific patterns (Rockwell, Schneider, Siemens, ABB, Honeywell, Emerson, GE, Wonderware, CODESYS)
+- **MAC OUI vendor lookup** — IEEE OUI database (~30k entries) maps MAC prefixes to manufacturers
+- **GeoIP enrichment** — Country identification for public IP addresses via DB-IP
+- **Confidence scoring** — 5-level system: port (1) < pattern (2) < OUI (3) < payload (4) < deep parse (5)
+- **Hot-reloadable signature editor** with CodeMirror 6 YAML editing and live test runner
+
+### Security Analysis
+- **MITRE ATT&CK for ICS** — Automated detection of T0855 (unauthorized command messages), T0814 (denial of service via diagnostics), T0856 (alarm setting modification), T0846 (remote system discovery), T0886 (remote services cross-zone)
+- **Purdue Model** — Auto-assigns Purdue levels (L1-L4) based on observed behavior, detects and reports cross-zone communication violations
+- **Anomaly scoring** — Identifies polling interval deviations (CV > 50%), role reversals (slave sending master function codes), and unexpected public IPs in OT networks
+
+### External Tool Integration
+- **Zeek** — Import `conn.log`, `modbus.log`, `dnp3.log`, `s7comm.log` with automatic field mapping
+- **Suricata** — Import EVE JSON (flow and alert event types)
+- **Nmap/Masscan** — Import scan results with `[active-scan]` tagging to distinguish from passive observation
+- **Wireshark** — Auto-detect installation, right-click any node or connection to open in Wireshark, view individual frames with export
+
+### Reporting & Export
+- **PDF assessment reports** — Professional reports with executive summary, asset inventory, protocol analysis, findings table, and recommendations
+- **CSV/JSON export** — Assets, connections, and full topology data
+- **SBOM** — CISA BOD 23-01 aligned software bill of materials for discovered OT assets
+- **STIX 2.1** — Threat intelligence bundles with observed indicators and infrastructure objects
+
+### Session Management
+- **SQLite persistence** — Save/load sessions with full asset history tracking
+- **`.kkj` archives** — Portable ZIP-based session format for sharing assessment data
+- **Baseline drift detection** — Compare current assessment against a saved baseline, quantified drift score, new/missing/changed asset identification
+
+### Advanced
+- **Dark/light/system theme** — Persistent preference with automatic OS detection
+- **CLI** — `--open <file>` (PCAP or .kkj), `--import-pcap <path>` for headless workflows
+- **Plugin architecture** — Manifest-based plugin discovery (stubs for signature packs, importers, exporters, analyzers)
+
+---
+
+## Beyond GRASSMARLIN
+
+Kusanagi Kajiki implements every major GRASSMARLIN 3.2 feature and adds capabilities the original never had:
+
+| Capability | GRASSMARLIN 3.2 | Kusanagi Kajiki |
+|------------|----------------|-----------------|
+| Signature format | XML (opaque) | YAML (human-readable, git-friendly) |
+| Security analysis | None | ATT&CK for ICS + Purdue Model + anomaly scoring |
+| External tool integration | None | Zeek, Suricata, Nmap, Masscan |
+| Reporting | None | PDF assessment reports |
+| Compliance export | None | SBOM (CISA BOD 23-01), STIX 2.1 |
+| Baseline comparison | None | Session drift detection with quantified scoring |
+| Deep protocol parsing | Limited | Modbus FC 43/14 Device ID extraction, DNP3 deep parse |
+| Session format | XML archives | SQLite + portable .kkj ZIP archives |
+| Theming | Java Swing | Modern dark/light with CSS custom properties |
+| CLI support | None | `--open`, `--import-pcap` |
+| Architecture | Monolithic Java | 9 Rust crates + SvelteKit frontend |
+
+---
+
+## Supported Protocols
+
+| Protocol | Port(s) | Detection | Standard / Vendor |
+|----------|---------|-----------|-------------------|
+| Modbus TCP | 502 | Deep parse | Schneider Electric, multi-vendor |
+| DNP3 | 20000 | Deep parse | IEEE 1815 (utilities, substations) |
+| EtherNet/IP (CIP) | 44818, 2222 | Signature | Rockwell / Allen-Bradley |
+| BACnet/IP | 47808 | Signature | ASHRAE (building automation) |
+| S7comm | 102 | Signature | Siemens S7 PLCs |
+| OPC UA | 4840 | Port + Signature | OPC Foundation |
+| IEC 60870-5-104 | 2404 | Port | Power grid SCADA |
+| PROFINET | 34962-34964 | Port | Siemens / PROFIBUS International |
+| MQTT | 1883, 8883 | Port | IIoT gateways |
+| HART-IP | 5094 | Port | Process instrumentation |
+| Foundation Fieldbus HSE | 1089-1091 | Port | Process automation |
+| GE SRTP | 18245-18246 | Port + Signature | GE Automation PLCs |
+| Wonderware SuiteLink | 5007 | Port + Signature | AVEVA / Wonderware |
+
+**Detection depth:** *Port* = identified by TCP/UDP port number. *Signature* = matched by YAML payload/OUI patterns. *Deep parse* = full protocol dissection with function code analysis, device identification, and behavioral profiling.
+
+---
+
+## Screenshots
+
+<!-- TODO: Add screenshot of LogicalView — fcose topology with compound subnet nodes -->
+
+<!-- TODO: Add screenshot of PhysicalView — Cisco switch/port topology -->
+
+<!-- TODO: Add screenshot of InventoryView — asset table with edit panel and confidence scoring -->
+
+<!-- TODO: Add screenshot of AnalysisView — ATT&CK findings and Purdue diagram -->
+
+<!-- TODO: Add screenshot of ExportView — PDF report generation -->
+
+---
+
+## Installation
+
+### Prerequisites
+
+- **Rust** >= 1.77 — [rustup.rs](https://rustup.rs)
+- **Node.js** >= 22 — [nvm](https://github.com/nvm-sh/nvm) recommended
+- **libpcap** development headers (platform-specific, see below)
+
+### Fedora / RHEL (primary development platform)
+
+```bash
+sudo dnf install libpcap-devel webkit2gtk4.1-devel libsoup3-devel javascriptcoregtk4.1-devel
+
+git clone https://github.com/YOUR_USERNAME/KusanagiNoKajiki.git
+cd KusanagiNoKajiki
+
+npm install --legacy-peer-deps
+npm run build
+npm run tauri dev        # Development mode (hot-reload)
+npm run tauri build      # Production binary
+```
+
+> **Note:** `--legacy-peer-deps` is required on Fedora due to a vite/svelte peer dependency conflict.
+
+### Ubuntu / Debian
+
+```bash
+sudo apt install libpcap-dev libwebkit2gtk-4.1-dev \
+  libappindicator3-dev librsvg2-dev patchelf
+
+git clone https://github.com/YOUR_USERNAME/KusanagiNoKajiki.git
+cd KusanagiNoKajiki
+
+npm install
+npm run build
+npm run tauri dev
+```
+
+### macOS
+
+```bash
+brew install libpcap
+xcode-select --install
+
+git clone https://github.com/YOUR_USERNAME/KusanagiNoKajiki.git
+cd KusanagiNoKajiki
+
+npm install
+npm run build
+npm run tauri dev
+```
+
+### Windows
+
+1. Install [Npcap](https://npcap.com) — check "Install Npcap in WinPcap API-compatible Mode"
+2. Download the [Npcap SDK](https://npcap.com/#download) and add `Lib/x64` to your `LIB` environment variable
+
+```powershell
+git clone https://github.com/YOUR_USERNAME/KusanagiNoKajiki.git
+cd KusanagiNoKajiki
+
+npm install
+npm run build
+npm run tauri dev
+```
+
+### Live Capture Without Root (Linux)
+
+```bash
+sudo setcap cap_net_raw,cap_net_admin=eip src-tauri/target/release/kusanaginokajiki
+```
+
+---
+
+## Quick Start
+
+### 1. Import a PCAP
+
+Open the **Capture** tab and click **Import PCAP File(s)**. Multi-file selection is supported — each packet tracks its origin file.
+
+### 2. Explore the Topology
+
+Switch to the **Topology** tab. The logical view renders an interactive graph grouped by subnet. Right-click nodes to watch neighbors, create filtered views, or open in Wireshark. Use the timeline scrubber at the bottom to replay topology construction.
+
+### 3. Inspect Devices
+
+The **Inventory** tab shows all discovered assets with vendor identification, protocols, confidence scores, OUI vendor, country flags, and deep parse details. Click any asset to see Modbus/DNP3 function code analysis, register ranges, and polling intervals.
+
+### 4. Run Security Analysis
+
+Navigate to the **Analysis** tab and click **Run Analysis**. The engine automatically:
+- Maps observed behaviors to MITRE ATT&CK for ICS techniques
+- Assigns Purdue Model levels and flags cross-zone violations
+- Scores anomalies (polling deviations, role reversals, unexpected public IPs)
+
+### 5. Export a Report
+
+Open the **Export** tab to generate:
+- **PDF** — Professional assessment report with findings and recommendations
+- **CSV/JSON** — Raw data export for further analysis
+- **SBOM** — Asset inventory aligned with CISA BOD 23-01
+- **STIX 2.1** — Threat intelligence bundle for sharing
+
+---
+
+## CLI Reference
+
+```bash
+# Open a PCAP file directly
+kusanaginokajiki --open capture.pcap
+
+# Open a session archive
+kusanaginokajiki --open assessment.kkj
+
+# Import a PCAP file on startup
+kusanaginokajiki --import-pcap /path/to/capture.pcap
+```
 
 ---
 
@@ -67,109 +261,76 @@ Rockwell ControlLogix, Schneider Modicon M340/Unity, Siemens S7-300/400/1200/150
 ```
 ┌────────────────────────────────────────────────────────────┐
 │  SvelteKit Frontend (Tauri Webview)                        │
-│  ├── Logical / Physical / Mesh topology views              │
-│  ├── Asset inventory, protocol stats, findings panel       │
-│  ├── Signature editor, report builder, Purdue overlay      │
-│  └── Settings, timeline scrubber, baseline diff            │
+│  ├── LogicalView      (fcose + drift + timeline)           │
+│  ├── PhysicalView     (switch/port Cytoscape)              │
+│  ├── MeshView         (all-to-all mesh)                    │
+│  ├── InventoryView    (table + edit + detail + bulk)       │
+│  ├── CaptureView      (import + live + sessions + ingest)  │
+│  ├── ProtocolStats    (traffic + FCs)                      │
+│  ├── SignatureEditor  (YAML editor)                        │
+│  ├── ExportView       (CSV/JSON/PDF/SBOM/STIX)            │
+│  ├── AnalysisView     (ATT&CK + Purdue + anomaly + drift) │
+│  ├── TimelineScrubber (topology playback)                  │
+│  └── SettingsView     (theme + plugins + CLI)              │
 ├────────────────────────────────────────────────────────────┤
-│  Tauri IPC (Commands + Event Streaming)                    │
+│  Tauri IPC: 59 Commands + Event Streaming                  │
 ├────────────────────────────────────────────────────────────┤
-│  Rust Backend                                              │
-│  ├── gm-capture     (pcap + etherparse)                    │
-│  ├── gm-parsers     (protocol ID + deep parsing)           │
-│  ├── gm-signatures  (YAML fingerprint engine)              │
-│  ├── gm-topology    (petgraph logical graph)               │
-│  ├── gm-physical    (Cisco config → physical topology)     │
-│  ├── gm-ingest      (Zeek, Suricata, Nmap importers)      │
-│  ├── gm-analysis    (ATT&CK, Purdue, anomaly, TLS)        │
-│  ├── gm-report      (PDF, SBOM, STIX 2.1)                 │
-│  └── gm-db          (SQLite persistence)                   │
+│  Rust Backend (9 crates)                                   │
+│  ├── gm-capture     Packet capture (pcap + etherparse)     │
+│  ├── gm-parsers     Protocol ID + Modbus/DNP3 deep parse  │
+│  ├── gm-signatures  YAML signature engine (25 signatures)  │
+│  ├── gm-topology    Logical graph (petgraph)               │
+│  ├── gm-physical    Cisco IOS config/CAM/CDP/ARP parsers   │
+│  ├── gm-ingest      Zeek, Suricata, Nmap, Masscan import  │
+│  ├── gm-analysis    ATT&CK, Purdue, anomaly scoring       │
+│  ├── gm-report      PDF, CSV, JSON, SBOM, STIX export     │
+│  └── gm-db          SQLite persistence, OUI, GeoIP        │
 └────────────────────────────────────────────────────────────┘
 ```
 
----
+### Data Pipeline
 
-## Getting Started
-
-### Prerequisites
-
-- **Rust** >= 1.77 — [Install via rustup](https://rustup.rs)
-- **Node.js** >= 22 — [Install via nvm](https://github.com/nvm-sh/nvm)
-- **libpcap** development headers
-
-#### Platform-specific dependencies
-
-**Linux (Ubuntu/Debian):**
-```bash
-sudo apt install libpcap-dev libwebkit2gtk-4.1-dev \
-  libappindicator3-dev librsvg2-dev patchelf
 ```
-
-**macOS:**
-```bash
-brew install libpcap
-xcode-select --install
-```
-
-**Windows:**
-- Install [Npcap](https://npcap.com) (check "Install Npcap in WinPcap API-compatible Mode")
-- Download the [Npcap SDK](https://npcap.com/#download) and add `Lib/x64` to your `LIB` environment variable
-
-### Build & Run
-
-```bash
-# Clone the repository
-git clone https://github.com/YOUR_USERNAME/kusanagi-kajiki.git
-cd kusanagi-kajiki
-
-# Install frontend dependencies
-npm install
-
-# Run in development mode (hot-reload)
-npm run tauri dev
-
-# Build for production
-npm run tauri build
-```
-
-### Running Without Root (Linux)
-
-For live capture without running as root:
-
-```bash
-sudo setcap cap_net_raw,cap_net_admin=eip src-tauri/target/release/kusanagi-kajiki
+PCAP / Live Capture
+  → gm-capture (L2-L4 parsing)
+  → gm-parsers (protocol identification + deep parse)
+  → gm-signatures (YAML pattern matching, confidence scoring)
+  → gm-topology (petgraph network graph)
+  → OUI / GeoIP enrichment
+  → AppState
+  → gm-analysis (ATT&CK + Purdue + anomaly detection)
+  → gm-db (SQLite persistence)
+  → gm-report (PDF / CSV / SBOM / STIX)
+  → Frontend (Cytoscape topology, tables, charts)
 ```
 
 ---
 
-## Usage
+## Tech Stack
 
-### PCAP Import
+### Rust Backend
+Tauri 2.0, pcap, etherparse, petgraph, serde (JSON/YAML), tokio, thiserror, chrono, uuid, rusqlite (bundled SQLite), maxminddb, regex, quick-xml, genpdf, clap 4, zip.
 
-1. Navigate to the **Capture** tab
-2. Click **Import PCAP File(s)** — multi-select supported
-3. View results across **Topology**, **Inventory**, and **Protocol Stats** tabs
-4. Connection tree panel shows per-node expandable packet details with origin file tracking
+### Frontend
+SvelteKit (Svelte 5), TypeScript (strict), Cytoscape.js + fcose layout, Tailwind CSS 4, CodeMirror 6, @tauri-apps/api + plugins (dialog, shell).
 
-### Cisco Config Import (Physical Topology)
+---
 
-1. Navigate to **Physical View**
-2. Import Cisco IOS configs, `show mac address-table`, `show cdp neighbors`, and `show arp` output
-3. Physical topology renders switch port assignments — "PLC on Gi1/0/14 of SW-PLANT-3"
+## Testing
 
-### Zeek / Suricata Import
+```bash
+# Run all 127 Rust tests
+cd src-tauri && cargo test --all
 
-1. Navigate to **Capture** tab
-2. Click **Import Zeek Logs** or **Import Suricata EVE**
-3. Select `conn.log`, `modbus.log`, `dnp3.log`, or `eve.json`
-4. Data feeds into the same topology and asset pipeline as PCAP
+# Strict clippy (zero warnings)
+cargo clippy --all -- -D warnings
 
-### Assessment Report
+# Frontend type checking
+cd .. && npm run check
 
-1. Complete your analysis (PCAP import, signature matching, Purdue assignment)
-2. Navigate to **Report** tab
-3. Configure branding, assessor name, client name
-4. Click **Generate PDF** — produces a professional report with executive summary, topology diagram, asset inventory, protocol analysis, findings, and recommendations
+# Full verification suite
+npm run build && cd src-tauri && cargo test --all && cargo clippy --all -- -D warnings && cd .. && npm run check
+```
 
 ### Test Data
 
@@ -180,97 +341,14 @@ Public ICS PCAP samples for testing:
 
 ---
 
-## Roadmap
-
-Development follows a phased plan. Phases 0–7 achieve GRASSMARLIN feature parity. Phases 8–11 go beyond the original.
-
-| Phase | Status | Description |
-|-------|--------|-------------|
-| 0 — Foundation | ✅ Done | Project scaffold, interface listing, CI/CD |
-| 1 — PCAP Import | ✅ Done | Multi-PCAP import, L2-L4 parsing, connection tree |
-| 2 — Topology | ✅ Done | Logical/Mesh views, dynamic grouping, filtered views, watch tabs |
-| 3 — Signatures | ✅ Done | YAML fingerprint engine (54+ sigs), confidence scoring, editor |
-| 4 — Deep Parsing | ✅ Done  | Modbus/DNP3 deep inspection, protocol statistics |
-| 5 — Live Capture | ✅ Done | Real-time capture with streaming topology |
-| 6 — Persistence | ✅ Done | SQLite, sessions, MAC OUI, GeoIP, session archives |
-| 7 — Physical Topology | ✅ Done | Cisco config/CAM import, physical switch port view |
-| 8 — Tool Integration | ✅ Done | Wireshark, Zeek, Suricata, Nmap/Masscan import |
-| 9 — Export & Reports | 🔨 Current | PDF reports, SBOM/CISA BOD 23-01, STIX 2.1 |
-| 10 — Security Analysis | ⏳ Planned | MITRE ATT&CK for ICS, Purdue overlay, anomaly scoring, TLS, Shodan |
-| 11 — Advanced | ⏳ Planned | Baseline drift, timeline replay, OPC UA certs, plugins, multi-user, light theme |
-
-See [CLAUDE.md](CLAUDE.md) for the full specification with detailed checklists per phase.
-
----
-
-## GRASSMARLIN Feature Parity
-
-Kusanagi Kajiki implements every major GRASSMARLIN 3.2 feature:
-
-| Original Feature | Status | Kusanagi Kajiki Implementation |
-|------------------|--------|-------------------------------|
-| PCAP import + multi-file | Phase 1 | Multi-select with origin file tracking |
-| Logical topology view | Phase 2 | Cytoscape.js with fcose layout |
-| Physical topology view | Phase 7 | Cisco config/CAM/CDP import |
-| XML fingerprint engine (54 sigs) | Phase 3 | Modernized as YAML with hot-reload |
-| Fingerprint editor (GUI) | Phase 3 | CodeMirror 6 YAML editor + test runner |
-| Confidence scoring (1-5) | Phase 3 | On every identification, color-coded |
-| Device role granularity | Phase 3 | Vendor-specific: "Rockwell ControlLogix L7x" |
-| Dynamic graph grouping | Phase 2 | Right-click regroup by any attribute |
-| Filtered views | Phase 2 | Multiple simultaneous tab views |
-| Watch tabs (N-degree) | Phase 2 | 1-5 hop configurable |
-| Connection tree with packet detail | Phase 1 | Expandable per-node, per-connection, per-packet |
-| GeoIP with country flags | Phase 6 | MaxMind GeoLite2 |
-| MAC OUI vendor lookup | Phase 6 | IEEE OUI database bundled |
-| Wireshark integration | Phase 8 | Right-click → Open in Wireshark |
-| Session save/load | Phase 6 | SQLite + bundled ZIP archives |
-| Cisco config file import | Phase 7 | IOS configs + show commands |
-| Sniffles / Mesh graph | Phase 2 | MeshView with protocol/time filters |
-| Plugin architecture | Phase 11 | Signature packs, importers, exporters |
-
----
-
-## Beyond GRASSMARLIN — New Capabilities
-
-| Feature | Phase | Why It Matters |
-|---------|-------|---------------|
-| YAML signatures (replaces XML) | 3 | Human-readable, git-friendly, community shareable |
-| Zeek/Suricata log ingestion | 8 | Leverage existing sensor infrastructure |
-| MITRE ATT&CK for ICS mapping | 10 | "Here's what's concerning" not just "here's what exists" |
-| Purdue Model overlay + violations | 10 | Cross-zone communication = reportable finding |
-| PDF assessment reports | 9 | What assessors actually deliver to clients |
-| SBOM/CISA BOD 23-01 export | 9 | Federal compliance alignment |
-| Nmap/Masscan result import | 8 | Merge active + passive when permitted |
-| TLS fingerprinting (JA3/JA4) | 10 | "87% of OT traffic is unencrypted" |
-| Anomaly scoring | 10 | Role reversals, polling deviations, new devices |
-| Shodan/Censys cross-reference | 10 | Find internet-exposed OT devices |
-| Baseline drift detection | 11 | Diff assessments over time |
-| PCAP timeline replay | 11 | Watch topology build chronologically |
-| OPC UA certificate analysis | 11 | Expired/self-signed/weak key detection |
-| STIX 2.1 export | 9 | Threat intel sharing |
-| Multi-user session merge | 11 | Multiple assessors, one topology |
-| Dark/light theme | 11 | Control room readability |
-
----
-
 ## Contributing
 
-This project is currently in early development. Contributions welcome once the core architecture stabilizes (Phase 3+).
+Contributions are welcome. Areas where contributions would be most valuable:
 
-Areas where contributions would be most valuable:
-- **YAML signatures** — If you work with ICS/SCADA protocols, writing new fingerprint signatures for vendor products
+- **YAML signatures** — Fingerprint signatures for additional ICS vendor products
+- **Protocol parsers** — Deep parsing for BACnet, EtherNet/IP, S7comm, OPC UA
 - **Test PCAPs** — Sanitized ICS network captures for the test suite
-- **Protocol parsers** — Deep parsing for protocols beyond Modbus/DNP3 (BACnet, EtherNet/IP, S7comm, OPC UA)
-
----
-
-## Acknowledgments
-
-- **NSA Cybersecurity** — Original [GRASSMARLIN](https://github.com/nsacyber/GRASSMARLIN) tool and concept
-- **Step Function I/O** — [rodbus](https://github.com/stepfunc/rodbus) and [dnp3](https://github.com/stepfunc/dnp3) Rust crates
-- **Tauri** — Cross-platform desktop app framework
-- **Cytoscape.js** — Network graph visualization
-- **MITRE** — ATT&CK for ICS framework
+- **Bug reports** — [Open an issue](https://github.com/YOUR_USERNAME/KusanagiNoKajiki/issues)
 
 ---
 
@@ -278,4 +356,16 @@ Areas where contributions would be most valuable:
 
 Apache License 2.0 — See [LICENSE](LICENSE) for details.
 
-*This is an independent project inspired by GRASSMARLIN. It contains no original GRASSMARLIN source code.*
+This is an independent project inspired by GRASSMARLIN. It contains no original GRASSMARLIN source code.
+
+---
+
+## Acknowledgments
+
+- **NSA Cybersecurity** — Original [GRASSMARLIN](https://github.com/nsacyber/GRASSMARLIN) tool and concept
+- **MITRE** — [ATT&CK for ICS](https://attack.mitre.org/matrices/ics/) framework
+- **CISA** — [BOD 23-01](https://www.cisa.gov/binding-operational-directive-23-01) asset visibility guidance
+- **Tauri** — Cross-platform desktop application framework
+- **Cytoscape.js** — Network graph visualization library
+- **DB-IP** — [IP to Country Lite](https://db-ip.com/db/lite.php) database
+- **IEEE** — OUI vendor database

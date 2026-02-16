@@ -44,22 +44,29 @@ pub fn parse_running_config_file(path: &Path) -> Result<PhysicalSwitch, Physical
 }
 
 fn parse_hostname(content: &str) -> String {
-    let re = Regex::new(r"(?m)^hostname\s+(\S+)").unwrap();
+    // Safety: static regex pattern — cannot fail, but handle gracefully anyway
+    let Ok(re) = Regex::new(r"(?m)^hostname\s+(\S+)") else {
+        return "Unknown".to_string();
+    };
     re.captures(content)
         .map(|c| c[1].to_string())
         .unwrap_or_else(|| "Unknown".to_string())
 }
 
 fn parse_ios_version(content: &str) -> Option<String> {
-    let re = Regex::new(r"(?m)^version\s+(.+)").unwrap();
+    let re = Regex::new(r"(?m)^version\s+(.+)").ok()?;
     re.captures(content).map(|c| c[1].trim().to_string())
 }
 
 fn parse_vlan_definitions(content: &str) -> HashMap<u16, String> {
     let mut vlans = HashMap::new();
     // Match "vlan <id>" followed by optional " name <name>"
-    let re_vlan = Regex::new(r"(?m)^vlan\s+(\d+)").unwrap();
-    let re_name = Regex::new(r"(?m)^\s+name\s+(.+)").unwrap();
+    let (Ok(re_vlan), Ok(re_name)) = (
+        Regex::new(r"(?m)^vlan\s+(\d+)"),
+        Regex::new(r"(?m)^\s+name\s+(.+)"),
+    ) else {
+        return vlans;
+    };
 
     let lines: Vec<&str> = content.lines().collect();
     for (i, line) in lines.iter().enumerate() {
@@ -86,7 +93,9 @@ fn parse_interfaces(content: &str) -> Vec<PhysicalPort> {
 
     // Split the config into interface blocks
     // Each block starts with "interface <name>" and ends at the next "!" or "interface"
-    let re_iface = Regex::new(r"(?m)^interface\s+(.+)").unwrap();
+    let Ok(re_iface) = Regex::new(r"(?m)^interface\s+(.+)") else {
+        return ports;
+    };
 
     let lines: Vec<&str> = content.lines().collect();
     let mut i = 0;
@@ -276,7 +285,7 @@ pub fn parse_mac_table(content: &str) -> Result<Vec<MacTableEntry>, PhysicalErro
     // Also handles colon/dash MAC formats
     let re = Regex::new(
         r"(?m)^\s*(\d+)\s+([\da-fA-F]{4}\.[\da-fA-F]{4}\.[\da-fA-F]{4}|[\da-fA-F:.\-]+)\s+(DYNAMIC|STATIC|SELF|dynamic|static|self)\s+(\S+)"
-    ).unwrap();
+    ).map_err(|e| PhysicalError::Parse(format!("MAC table regex: {}", e)))?;
 
     for caps in re.captures_iter(content) {
         let vlan = caps[1].parse::<u16>()
@@ -324,13 +333,14 @@ pub fn parse_cdp_neighbors(content: &str) -> Result<Vec<(String, CdpNeighbor)>, 
     // Split by the separator lines that delimit each neighbor entry
     let entries: Vec<&str> = content.split("-------------------------").collect();
 
-    let re_device_id = Regex::new(r"(?m)Device ID:\s*(.+)").unwrap();
-    let re_ip = Regex::new(r"(?m)IP address:\s*(\S+)").unwrap();
-    let re_platform = Regex::new(r"(?m)Platform:\s*([^,]+)").unwrap();
-    let re_capabilities = Regex::new(r"(?m)Capabilities:\s*(.+)").unwrap();
+    let map_re = |e: regex::Error| PhysicalError::Parse(format!("CDP regex: {}", e));
+    let re_device_id = Regex::new(r"(?m)Device ID:\s*(.+)").map_err(&map_re)?;
+    let re_ip = Regex::new(r"(?m)IP address:\s*(\S+)").map_err(&map_re)?;
+    let re_platform = Regex::new(r"(?m)Platform:\s*([^,]+)").map_err(&map_re)?;
+    let re_capabilities = Regex::new(r"(?m)Capabilities:\s*(.+)").map_err(&map_re)?;
     let re_interface = Regex::new(
         r"(?m)Interface:\s*(\S+),\s*Port ID \(outgoing port\):\s*(\S+)"
-    ).unwrap();
+    ).map_err(&map_re)?;
 
     for entry in &entries {
         let device_id = match re_device_id.captures(entry) {
@@ -395,7 +405,7 @@ pub fn parse_arp_table(content: &str) -> Result<Vec<ArpEntry>, PhysicalError> {
     // Match lines like: "Internet  192.168.1.1   -   001a.2b3c.4d5e  ARPA   Vlan100"
     let re = Regex::new(
         r"(?m)^\s*Internet\s+(\d+\.\d+\.\d+\.\d+)\s+\S+\s+([\da-fA-F]{4}\.[\da-fA-F]{4}\.[\da-fA-F]{4}|[\da-fA-F:.\-]+)\s+\S+\s+(\S+)"
-    ).unwrap();
+    ).map_err(|e| PhysicalError::Parse(format!("ARP regex: {}", e)))?;
 
     for caps in re.captures_iter(content) {
         let ip = caps[1].to_string();
