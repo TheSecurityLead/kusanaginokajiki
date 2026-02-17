@@ -402,9 +402,6 @@ This is a low-severity server-side issue that does not affect Tauri desktop apps
 **Npcap/libpcap linking errors on Windows:**
 Ensure Npcap is installed with "WinPcap API-compatible Mode" checked. Download Npcap SDK, extract it, and set `LIB` environment variable to include the SDK's `Lib/x64` directory.
 
-**`Zone.Identifier` files appearing in git:**
-These are Windows NTFS artifacts. They are blocked by .gitignore. Remove existing ones: `find . -name "*Zone.Identifier" -delete`
-
 ---
 
 ## Contributing
