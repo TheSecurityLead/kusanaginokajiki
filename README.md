@@ -144,6 +144,15 @@ Kusanagi Kajiki implements every major GRASSMARLIN 3.2 feature and adds capabili
 - **Node.js** >= 22 — [nvm](https://github.com/nvm-sh/nvm) recommended
 - **libpcap** development headers (platform-specific, see below)
 
+### Quick Reference — Platform Dependencies
+
+| Platform | System Dependencies | Special Notes |
+|----------|-------------------|---------------|
+| **Fedora/RHEL** | `libpcap-devel webkit2gtk4.1-devel libsoup3-devel javascriptcoregtk4.1-devel` | Primary dev platform |
+| **Ubuntu/Debian** | `libpcap-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf` | |
+| **macOS** | `brew install libpcap` + Xcode CLI tools | |
+| **Windows** | VS C++ Build Tools + Npcap (WinPcap mode) + Npcap SDK | Set `LIB` env var to SDK `Lib/x64` path |
+
 ### Fedora / RHEL (primary development platform)
 
 ```bash
@@ -152,13 +161,13 @@ sudo dnf install libpcap-devel webkit2gtk4.1-devel libsoup3-devel javascriptcore
 git clone https://github.com/TheSecurityLead/KusanagiNoKajiki.git
 cd KusanagiNoKajiki
 
-npm install --legacy-peer-deps
+npm install
 npm run build
 npm run tauri dev        # Development mode (hot-reload)
 npm run tauri build      # Production binary
 ```
 
-> **Note:** `--legacy-peer-deps` is required on Fedora due to a vite/svelte peer dependency conflict.
+> **Note:** If `npm install` fails with peer dependency errors on older npm versions, use `npm install --legacy-peer-deps` as a fallback.
 
 ### Ubuntu / Debian
 
@@ -190,17 +199,52 @@ npm run tauri dev
 
 ### Windows
 
-1. Install [Npcap](https://npcap.com) — check "Install Npcap in WinPcap API-compatible Mode"
-2. Download the [Npcap SDK](https://npcap.com/#download) and add `Lib/x64` to your `LIB` environment variable
+**Prerequisites (install in this order):**
 
+1. **Visual Studio C++ Build Tools** (required — Rust needs `link.exe`):
+   - Download from [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
+   - Select **"Desktop development with C++"** workload
+   - Ensure "MSVC v143 C++ x64/x86 build tools" and "Windows SDK" are checked
+   - Restart terminal after installation
+
+2. **Rust** (if not already installed):
+   - Install via [rustup.rs](https://rustup.rs)
+   - Default toolchain: `stable-x86_64-pc-windows-msvc`
+
+3. **Npcap** (required for packet capture):
+   - Download from [npcap.com](https://npcap.com/#download)
+   - During install, check **"Install Npcap in WinPcap API-compatible Mode"**
+   - Download the **Npcap SDK** from the same page
+   - Extract SDK to e.g. `C:\npcap-sdk`
+   - Set LIB environment variable (PowerShell as admin):
+     ```powershell
+     [System.Environment]::SetEnvironmentVariable("LIB", "C:\npcap-sdk\Lib\x64", "User")
+     ```
+   - Restart terminal after setting LIB
+
+4. **Node.js** (LTS recommended): [nodejs.org](https://nodejs.org)
+
+**Build steps (PowerShell):**
 ```powershell
 git clone https://github.com/TheSecurityLead/KusanagiNoKajiki.git
 cd KusanagiNoKajiki
 
 npm install
 npm run build
-npm run tauri dev
+npm run tauri dev       # development
+npm run tauri build     # production binary
 ```
+
+**If `npm install` fails with ERESOLVE peer dependency conflict:**
+The repo pins `vite@^6.3.0` + `@sveltejs/vite-plugin-svelte@^6.2.4`. If you still get errors:
+```powershell
+Remove-Item -Recurse -Force node_modules -ErrorAction SilentlyContinue
+Remove-Item package-lock.json -ErrorAction SilentlyContinue
+npm install -D vite@^6.3.0 @sveltejs/vite-plugin-svelte@^6.2.4 @sveltejs/kit@^2.16.0 @sveltejs/adapter-static@^3.0.8
+npm install
+npm run build
+```
+Do NOT run `npm audit fix --force` — it creates an infinite downgrade loop.
 
 ### Live Capture Without Root (Linux)
 
@@ -338,6 +382,28 @@ Public ICS PCAP samples for testing:
 - [automayt/ICS-pcap](https://github.com/automayt/ICS-pcap) — Curated Modbus, DNP3, EtherNet/IP, S7comm, BACnet captures
 - [Wireshark Sample Captures](https://wiki.wireshark.org/SampleCaptures) — Various protocol samples
 - [4SICS Geek Lounge](https://www.netresec.com/?page=PCAP4SICS) — Real ICS network traffic
+
+---
+
+## Troubleshooting
+
+**`npm install` fails with ERESOLVE error:**
+Clean install with pinned versions — see Windows Installation section above. Do NOT use `npm audit fix --force`.
+
+**`error: linker 'link.exe' not found` during Rust compilation:**
+Install Visual Studio Build Tools with "Desktop development with C++" workload. VS Code is not sufficient. Restart your terminal after installation.
+
+**`npm run build` says `'vite' is not recognized`:**
+`npm install` did not complete successfully. Fix dependency issues first, then re-run `npm install` and `npm run build`.
+
+**`npm audit` shows cookie vulnerability:**
+This is a low-severity server-side issue that does not affect Tauri desktop apps. Safe to ignore.
+
+**Npcap/libpcap linking errors on Windows:**
+Ensure Npcap is installed with "WinPcap API-compatible Mode" checked. Download Npcap SDK, extract it, and set `LIB` environment variable to include the SDK's `Lib/x64` directory.
+
+**`Zone.Identifier` files appearing in git:**
+These are Windows NTFS artifacts. They are blocked by .gitignore. Remove existing ones: `find . -name "*Zone.Identifier" -delete`
 
 ---
 
