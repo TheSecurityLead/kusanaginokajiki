@@ -82,10 +82,18 @@ pub(crate) fn extract_packet_info(
 }
 
 /// Convert pcap packet header timestamp to chrono DateTime.
+///
+/// Casts are required for cross-platform compatibility: the pcap crate's
+/// `PacketHeader` wraps C's `struct timeval`, where `tv_sec` and `tv_usec`
+/// are `long`. On Linux/macOS (LP64), `long` is 64-bit so these are `i64`.
+/// On Windows (LLP64), `long` is 32-bit so these are `i32`.
+/// `DateTime::from_timestamp` expects `(i64, u32)`, so we cast explicitly
+/// to compile on all platforms.
+#[allow(clippy::unnecessary_cast)] // Casts ARE necessary on Windows (i32→i64), but redundant on Linux (i64→i64)
 pub(crate) fn timestamp_from_pcap(header: pcap::PacketHeader) -> DateTime<Utc> {
     DateTime::from_timestamp(
-        header.ts.tv_sec,
-        (header.ts.tv_usec as u32) * 1000, // microseconds → nanoseconds
+        header.ts.tv_sec as i64,
+        header.ts.tv_usec as u32 * 1000, // microseconds → nanoseconds
     )
     .unwrap_or_else(Utc::now)
 }

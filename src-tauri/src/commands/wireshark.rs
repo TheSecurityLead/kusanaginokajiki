@@ -229,13 +229,27 @@ fn build_display_filter(conn: &super::ConnectionInfo) -> String {
 
 /// Find the Wireshark binary on the system.
 fn find_wireshark_binary() -> Option<PathBuf> {
-    // Check PATH first
-    if let Ok(output) = std::process::Command::new("which")
-        .arg("wireshark")
+    // Check PATH first using platform-appropriate command:
+    // - Unix: `which wireshark`
+    // - Windows: `where.exe wireshark` (plain `which` doesn't exist on Windows)
+    let (cmd, arg) = if cfg!(target_os = "windows") {
+        ("where.exe", "wireshark")
+    } else {
+        ("which", "wireshark")
+    };
+
+    if let Ok(output) = std::process::Command::new(cmd)
+        .arg(arg)
         .output()
     {
         if output.status.success() {
-            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            // `where.exe` may return multiple lines; take the first one
+            let path = String::from_utf8_lossy(&output.stdout)
+                .lines()
+                .next()
+                .unwrap_or("")
+                .trim()
+                .to_string();
             if !path.is_empty() {
                 return Some(PathBuf::from(path));
             }
