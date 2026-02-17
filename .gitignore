@@ -36,3 +36,7 @@ Desktop.ini
 *.pcap
 *.pcapng
 !tests/pcaps/README.md
+
+# Windows NTFS alternate data streams
+*:Zone.Identifier
+*Zone.Identifier
