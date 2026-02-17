@@ -14,6 +14,14 @@
 
 ---
 
+## Demo
+
+![KNK Demo](./demo.gif)
+
+*Passive discovery of ICS/SCADA devices from a PCAP capture — topology visualization, protocol identification, and device fingerprinting in action.*
+
+---
+
 ## What is Kusanagi Kajiki?
 
 Kusanagi Kajiki is a ground-up rewrite of the NSA's [GRASSMARLIN](https://github.com/nsacyber/GRASSMARLIN) (archived 2023), rebuilt from scratch with a Rust backend (Tauri 2.0) and SvelteKit frontend. It passively discovers and maps Industrial Control System (ICS) and SCADA network devices by analyzing network traffic captures and integrating data from external security tools.
@@ -80,6 +88,18 @@ The tool achieves full feature parity with GRASSMARLIN 3.2 and extends well beyo
 
 ---
 
+## What's Next
+
+Active development priorities beyond the current roadmap:
+
+- **PDF Report Generation** — One-click professional assessment reports with executive summary, topology diagrams, asset inventory, and prioritized findings. What OT assessors actually deliver to clients. *(Phase 9, in progress)*
+- **MITRE ATT&CK for ICS Mapping** — Automatically map observed network behaviors to ATT&CK for ICS techniques with severity ratings and recommended mitigations
+- **Purdue Model Enforcement** — Auto-assign Purdue levels based on traffic patterns and device roles, flag cross-zone communication violations as reportable findings
+- **Baseline Drift Detection** — Diff current assessment against a previous baseline to highlight new devices, changed communication patterns, and removed assets over time
+- **Enterprise Integration** — Export pipelines for integration with enterprise OT security platforms, SIEM/SOAR workflows, and vulnerability management systems via STIX 2.1 and structured CSV/JSON
+
+---
+
 ## Beyond GRASSMARLIN
 
 Kusanagi Kajiki implements every major GRASSMARLIN 3.2 feature and adds capabilities the original never had:
@@ -139,6 +159,8 @@ https://youtu.be/nNKyMCLrjEw
 ---
 
 ## Installation
+
+**Quick start:** Clone → `npm install` → drop a PCAP in `tests/pcaps/` → `npm run tauri dev` → import the PCAP from the Capture tab.
 
 ### Prerequisites
 
