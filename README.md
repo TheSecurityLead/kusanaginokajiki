@@ -124,7 +124,7 @@ Kusanagi Kajiki implements every major GRASSMARLIN 3.2 feature and adds capabili
 
 ## Short Demo
 
-https://streamable.com/m8crug
+https://youtu.be/nNKyMCLrjEw
 
 <!-- TODO: Add screenshot of LogicalView — fcose topology with compound subnet nodes -->
 
