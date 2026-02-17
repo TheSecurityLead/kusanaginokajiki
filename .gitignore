@@ -40,3 +40,14 @@ Desktop.ini
 # Windows NTFS alternate data streams
 *:Zone.Identifier
 *Zone.Identifier
+
+# Development prompt files (Claude Code instructions)
+PROMPT-*.md
+
+# Generated guide
+generate_guide.py
+Kusanagi-Kajiki-Guide.pdf
+
+# Claude local config
+CLAUDE.local
+.claude/

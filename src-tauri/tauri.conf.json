@@ -39,11 +39,7 @@
     ]
   },
   "plugins": {
-    "dialog": {
-      "all": true
-    },
-    "shell": {
-      "open": true
-    }
+    "dialog": null,
+    "shell": null
   }
 }
