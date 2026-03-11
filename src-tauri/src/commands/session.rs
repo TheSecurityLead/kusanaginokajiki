@@ -90,6 +90,12 @@ pub async fn save_session(
     )
     .map_err(|e| e.to_string())?;
 
+    // Scope to active project if one is set
+    if let Some(project_id) = inner.current_project_id {
+        db.assign_session_to_project(&session_id, project_id)
+            .map_err(|e| e.to_string())?;
+    }
+
     log::info!("Saved session '{}' ({}) with {} assets, {} connections",
         name, session_id, inner.assets.len(), inner.connections.len());
 
@@ -170,7 +176,7 @@ pub async fn load_session(
     })
 }
 
-/// List all saved sessions.
+/// List saved sessions. When a project is active, returns only that project's sessions.
 #[tauri::command]
 pub async fn list_sessions(
     state: State<'_, AppState>,
@@ -178,7 +184,11 @@ pub async fn list_sessions(
     let inner = state.inner.lock().map_err(|e| e.to_string())?;
     let db = inner.db.as_ref().ok_or("Database not available")?;
 
-    let rows = db.list_sessions().map_err(|e| e.to_string())?;
+    let rows = match inner.current_project_id {
+        Some(project_id) => db.list_sessions_for_project(project_id).map_err(|e| e.to_string())?,
+        None => db.list_sessions().map_err(|e| e.to_string())?,
+    };
+
     Ok(rows
         .into_iter()
         .map(|r| SessionInfo {

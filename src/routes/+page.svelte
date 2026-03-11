@@ -18,6 +18,7 @@
 	import ExportView from '$lib/components/ExportView.svelte';
 	import AnalysisView from '$lib/components/AnalysisView.svelte';
 	import CommunicationPatterns from '$lib/components/CommunicationPatterns.svelte';
+	import ProjectsView from '$lib/components/ProjectsView.svelte';
 
 	let showTree = $state(true);
 
@@ -40,7 +41,9 @@
 	}
 </script>
 
-{#if $connections.length > 0 && ($activeTab === 'topology' || $activeTab === 'inventory')}
+{#if $activeTab === 'projects'}
+	<ProjectsView />
+{:else if $connections.length > 0 && ($activeTab === 'topology' || $activeTab === 'inventory')}
 	<div class="split-layout">
 		{#if showTree}
 			<div class="tree-panel">

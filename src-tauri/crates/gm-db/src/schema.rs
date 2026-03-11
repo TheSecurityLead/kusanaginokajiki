@@ -5,6 +5,19 @@ use crate::error::DbError;
 
 /// All CREATE TABLE statements for the Kusanagi Kajiki database.
 const SCHEMA_SQL: &str = r#"
+CREATE TABLE IF NOT EXISTS projects (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    name             TEXT NOT NULL,
+    client_name      TEXT NOT NULL DEFAULT '',
+    site_name        TEXT NOT NULL DEFAULT '',
+    assessor_name    TEXT NOT NULL DEFAULT '',
+    engagement_start TEXT NOT NULL DEFAULT '',
+    engagement_end   TEXT NOT NULL DEFAULT '',
+    notes            TEXT NOT NULL DEFAULT '',
+    created_at       TEXT NOT NULL,
+    updated_at       TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS sessions (
     id              TEXT PRIMARY KEY,
     name            TEXT NOT NULL,
@@ -13,7 +26,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     updated_at      TEXT NOT NULL,
     asset_count     INTEGER NOT NULL DEFAULT 0,
     connection_count INTEGER NOT NULL DEFAULT 0,
-    metadata        TEXT NOT NULL DEFAULT '{}'
+    metadata        TEXT NOT NULL DEFAULT '{}',
+    project_id      INTEGER REFERENCES projects(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS assets (
@@ -101,6 +115,19 @@ pub fn initialize(conn: &Connection) -> Result<(), DbError> {
     conn.execute_batch("PRAGMA foreign_keys=ON;")?;
     // Apply schema
     conn.execute_batch(SCHEMA_SQL)?;
+
+    // Migration: add project_id to sessions if it doesn't exist (existing databases).
+    // SQLite does not support ALTER TABLE ADD COLUMN IF NOT EXISTS, so we probe first.
+    let has_project_id = conn
+        .prepare("SELECT project_id FROM sessions LIMIT 0")
+        .is_ok();
+    if !has_project_id {
+        conn.execute(
+            "ALTER TABLE sessions ADD COLUMN project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE",
+            [],
+        )?;
+    }
+
     log::info!("Database schema initialized");
     Ok(())
 }
@@ -123,6 +150,7 @@ mod tests {
             .filter_map(|r| r.ok())
             .collect();
 
+        assert!(tables.contains(&"projects".to_string()));
         assert!(tables.contains(&"sessions".to_string()));
         assert!(tables.contains(&"assets".to_string()));
         assert!(tables.contains(&"connections".to_string()));

@@ -29,7 +29,8 @@ import type {
 	AnalysisSummary,
 	BaselineDiff,
 	ThemeMode,
-	TimelineRange
+	TimelineRange,
+	Project
 } from '$lib/types';
 
 // ─── Core Application State ──────────────────────────────────
@@ -131,8 +132,11 @@ export const captureStats = writable<CaptureStatsEvent>({
 export const selectedAssetId = writable<string | null>(null);
 
 /** Currently active view/tab */
-export type ViewTab = 'topology' | 'physical' | 'inventory' | 'capture' | 'signatures' | 'protocol_stats' | 'export' | 'analysis' | 'settings' | 'comm_patterns';
-export const activeTab = writable<ViewTab>('topology');
+export type ViewTab = 'projects' | 'topology' | 'physical' | 'inventory' | 'capture' | 'signatures' | 'protocol_stats' | 'export' | 'analysis' | 'settings' | 'comm_patterns';
+export const activeTab = writable<ViewTab>('projects');
+
+/** Currently active project (null if no project selected) */
+export const activeProject = writable<Project | null>(null);
 
 /** Search/filter text for asset inventory */
 export const assetFilter = writable<string>('');

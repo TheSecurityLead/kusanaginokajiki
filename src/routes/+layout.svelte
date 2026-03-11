@@ -1,7 +1,8 @@
 <script lang="ts">
 	import '../app.css';
-	import { activeTab, themeMode } from '$lib/stores';
+	import { activeTab, themeMode, activeProject } from '$lib/stores';
 	import type { ViewTab } from '$lib/stores';
+	import { clearActiveProject } from '$lib/utils/tauri';
 	import { assetCount, connectionCount, captureStatus } from '$lib/stores';
 	import { getSettings, saveSettings } from '$lib/utils/tauri';
 	import { onMount } from 'svelte';
@@ -11,6 +12,7 @@
 	let { children } = $props();
 
 	const navItems: { id: ViewTab; label: string; icon: string }[] = [
+		{ id: 'projects', label: 'Projects', icon: '\u{1F4C1}' },
 		{ id: 'topology', label: 'Topology', icon: '\u2B21' },
 		{ id: 'physical', label: 'Physical', icon: '\u2B22' },
 		{ id: 'inventory', label: 'Inventory', icon: '\u2630' },
@@ -52,6 +54,16 @@
 
 	let currentTheme = $state<ThemeMode>('dark');
 	themeMode.subscribe(v => currentTheme = v);
+
+	async function handleClearProject() {
+		try {
+			await clearActiveProject();
+		} catch {
+			// ignore errors in dev mode
+		}
+		activeProject.set(null);
+		activeTab.set('projects');
+	}
 
 	onMount(async () => {
 		try {
@@ -96,6 +108,21 @@
 				</button>
 			{/each}
 		</div>
+
+		<!-- Active project strip -->
+		{#if $activeProject}
+			<div class="active-project-strip">
+				<div class="active-project-info">
+					<span class="active-project-label">Project</span>
+					<span class="active-project-name">{$activeProject.name}</span>
+					{#if $activeProject.client_name}
+						<span class="active-project-client">{$activeProject.client_name}</span>
+					{/if}
+				</div>
+				<button class="active-project-close" title="Close project"
+					onclick={handleClearProject}>&#10005;</button>
+			</div>
+		{/if}
 
 		<!-- Status bar at bottom of sidebar -->
 		<div class="sidebar-status">
@@ -306,6 +333,69 @@
 	.theme-label {
 		letter-spacing: 1px;
 		font-weight: 500;
+	}
+
+	/* ── Active Project Strip ────────────────────────── */
+
+	.active-project-strip {
+		margin: 0 8px 4px;
+		padding: 8px 10px;
+		background: rgba(16, 185, 129, 0.08);
+		border: 1px solid rgba(16, 185, 129, 0.25);
+		border-radius: 6px;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 6px;
+	}
+
+	.active-project-info {
+		display: flex;
+		flex-direction: column;
+		gap: 1px;
+		min-width: 0;
+	}
+
+	.active-project-label {
+		font-size: 9px;
+		font-weight: 600;
+		color: #10b981;
+		text-transform: uppercase;
+		letter-spacing: 1px;
+	}
+
+	.active-project-name {
+		font-size: 11px;
+		font-weight: 600;
+		color: var(--gm-text-primary);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.active-project-client {
+		font-size: 10px;
+		color: var(--gm-text-muted);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.active-project-close {
+		background: transparent;
+		border: none;
+		color: var(--gm-text-muted);
+		font-size: 10px;
+		cursor: pointer;
+		padding: 2px 4px;
+		border-radius: 3px;
+		flex-shrink: 0;
+		transition: all 0.1s;
+	}
+
+	.active-project-close:hover {
+		background: rgba(239, 68, 68, 0.15);
+		color: #ef4444;
 	}
 
 	/* ── Main Content ────────────────────────────────── */

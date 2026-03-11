@@ -14,6 +14,7 @@ pub mod schema;
 pub mod sessions;
 pub mod assets;
 pub mod connections;
+pub mod projects;
 pub mod oui;
 pub mod geoip;
 
@@ -21,6 +22,7 @@ pub use error::DbError;
 pub use sessions::SessionRow;
 pub use assets::{AssetRow, HistoryRow};
 pub use connections::ConnectionRow;
+pub use projects::{Project, ProjectInput, ProjectSummary};
 pub use oui::OuiLookup;
 pub use geoip::GeoIpLookup;
 
@@ -132,6 +134,43 @@ impl Database {
 
     pub fn list_connections(&self, session_id: &str) -> Result<Vec<ConnectionRow>, DbError> {
         connections::list_connections(&self.conn, session_id)
+    }
+
+    // ─── Project Operations ────────────────────────────────────
+
+    pub fn create_project(&self, input: &ProjectInput) -> Result<Project, DbError> {
+        projects::create_project(&self.conn, input)
+    }
+
+    pub fn get_project(&self, id: i64) -> Result<Project, DbError> {
+        projects::get_project(&self.conn, id)
+    }
+
+    pub fn list_projects(&self) -> Result<Vec<ProjectSummary>, DbError> {
+        projects::list_projects(&self.conn)
+    }
+
+    pub fn update_project(&self, id: i64, input: &ProjectInput) -> Result<Project, DbError> {
+        projects::update_project(&self.conn, id, input)
+    }
+
+    pub fn delete_project(&self, id: i64) -> Result<(), DbError> {
+        projects::delete_project(&self.conn, id)
+    }
+
+    pub fn assign_session_to_project(
+        &self,
+        session_id: &str,
+        project_id: i64,
+    ) -> Result<(), DbError> {
+        projects::assign_session_to_project(&self.conn, session_id, project_id)
+    }
+
+    pub fn list_sessions_for_project(
+        &self,
+        project_id: i64,
+    ) -> Result<Vec<SessionRow>, DbError> {
+        projects::list_sessions_for_project(&self.conn, project_id)
     }
 }
 

@@ -867,3 +867,30 @@ export interface PatternAnomaly {
 	description: string;
 	severity: string;
 }
+
+// ─── Projects ─────────────────────────────────────────────
+
+/** A named engagement project (top-level container for sessions). */
+export interface Project {
+	id: number;
+	name: string;
+	client_name: string;
+	site_name: string;
+	assessor_name: string;
+	engagement_start: string;
+	engagement_end: string;
+	notes: string;
+	created_at: string;
+	updated_at: string;
+}
+
+/** Lightweight project summary for the project list view. */
+export interface ProjectSummary {
+	id: number;
+	name: string;
+	client_name: string;
+	site_name: string;
+	session_count: number;
+	created_at: string;
+	updated_at: string;
+}

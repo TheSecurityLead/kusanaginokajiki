@@ -4,6 +4,7 @@ pub mod data;
 pub mod processor;
 pub mod signatures;
 pub mod session;
+pub mod projects;
 pub mod physical;
 pub mod ingest;
 pub mod wireshark;
@@ -67,6 +68,8 @@ pub struct AppStateInner {
     pub current_session_id: Option<String>,
     /// Currently loaded session name
     pub current_session_name: Option<String>,
+    /// Active project ID (None if no project selected)
+    pub current_project_id: Option<i64>,
     /// Physical topology from Cisco/JunOS/Aruba config/CAM/CDP/ARP imports
     pub physical_topology: PhysicalTopology,
     /// Traffic-inferred topology from packet analysis
@@ -457,6 +460,7 @@ impl AppState {
                 db,
                 current_session_id: None,
                 current_session_name: None,
+                current_project_id: None,
                 physical_topology: PhysicalTopology::default(),
                 inferred_topology: None,
                 findings: Vec::new(),

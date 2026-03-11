@@ -44,7 +44,9 @@ import type {
 	CriticalityAssessment,
 	NamingSuggestion,
 	ConnectionStats,
-	PatternAnomaly
+	PatternAnomaly,
+	Project,
+	ProjectSummary
 } from '$lib/types';
 
 // ─── System Commands ──────────────────────────────────────────
@@ -475,4 +477,75 @@ export async function getConnectionStats(): Promise<ConnectionStats[]> {
 /** Get detected communication pattern anomalies for the current dataset */
 export async function getPatternAnomalies(): Promise<PatternAnomaly[]> {
 	return invoke<PatternAnomaly[]>('get_pattern_anomalies');
+}
+
+// ─── Projects ─────────────────────────────────────────────
+
+/** Create a new project */
+export async function createProject(
+	name: string,
+	clientName?: string,
+	siteName?: string,
+	assessorName?: string,
+	engagementStart?: string,
+	engagementEnd?: string,
+	notes?: string
+): Promise<Project> {
+	return invoke<Project>('create_project', {
+		name,
+		clientName: clientName ?? null,
+		siteName: siteName ?? null,
+		assessorName: assessorName ?? null,
+		engagementStart: engagementStart ?? null,
+		engagementEnd: engagementEnd ?? null,
+		notes: notes ?? null
+	});
+}
+
+/** List all projects with session counts */
+export async function listProjects(): Promise<ProjectSummary[]> {
+	return invoke<ProjectSummary[]>('list_projects');
+}
+
+/** Get a single project by ID */
+export async function getProject(id: number): Promise<Project> {
+	return invoke<Project>('get_project', { id });
+}
+
+/** Update a project's metadata */
+export async function updateProject(
+	id: number,
+	name: string,
+	clientName?: string,
+	siteName?: string,
+	assessorName?: string,
+	engagementStart?: string,
+	engagementEnd?: string,
+	notes?: string
+): Promise<Project> {
+	return invoke<Project>('update_project', {
+		id,
+		name,
+		clientName: clientName ?? null,
+		siteName: siteName ?? null,
+		assessorName: assessorName ?? null,
+		engagementStart: engagementStart ?? null,
+		engagementEnd: engagementEnd ?? null,
+		notes: notes ?? null
+	});
+}
+
+/** Delete a project (cascades to sessions) */
+export async function deleteProject(id: number): Promise<void> {
+	return invoke('delete_project', { id });
+}
+
+/** Set the active project — subsequent session operations are scoped to it */
+export async function setActiveProject(id: number): Promise<Project> {
+	return invoke<Project>('set_active_project', { id });
+}
+
+/** Clear the active project */
+export async function clearActiveProject(): Promise<void> {
+	return invoke('clear_active_project');
 }

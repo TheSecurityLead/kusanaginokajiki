@@ -166,6 +166,14 @@ fn main() {
             // Communication Pattern Analysis
             commands::patterns::get_connection_stats,
             commands::patterns::get_pattern_anomalies,
+            // Project Management
+            commands::projects::create_project,
+            commands::projects::list_projects,
+            commands::projects::get_project,
+            commands::projects::update_project,
+            commands::projects::delete_project,
+            commands::projects::set_active_project,
+            commands::projects::clear_active_project,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
