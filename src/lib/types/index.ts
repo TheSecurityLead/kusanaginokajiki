@@ -322,6 +322,8 @@ export interface DeepParseInfo {
 	bacnet: BacnetDetail | null;
 	iec104: Iec104Detail | null;
 	profinet_dcp: ProfinetDcpDetail | null;
+	lldp: LldpDetail | null;
+	snmp: SnmpDetail | null;
 }
 
 /** EtherNet/IP aggregated details for a device */
@@ -376,6 +378,86 @@ export interface ProfinetDcpDetail {
 	role: string;
 	/** Station name from DCP Name-of-Station block */
 	device_name: string | null;
+}
+
+/** LLDP (Link Layer Discovery Protocol) aggregated details for a device */
+export interface LldpDetail {
+	/** System name (hostname) from LLDP Type 5 */
+	system_name: string | null;
+	/** System description (model + OS + firmware) from LLDP Type 6 */
+	system_description: string | null;
+	/** Chassis identifier (MAC address or local string) */
+	chassis_id: string | null;
+	/** Port identifier */
+	port_id: string | null;
+	/** Human-readable capability summary, e.g. "Bridge, Router" */
+	capability_summary: string | null;
+	/** Management addresses advertised by the device */
+	management_addresses: string[];
+	/** VLAN IDs from IEEE 802.1 org-specific TLVs */
+	vlan_ids: number[];
+	/** Vendor name inferred from description or OUI */
+	vendor: string | null;
+	/** Model name inferred from description */
+	model: string | null;
+	/** Firmware/software version inferred from description */
+	firmware: string | null;
+}
+
+/** SNMP device identity extracted from GET-Response packets */
+export interface SnmpDetail {
+	/** sysDescr — free-text description of the device */
+	sys_descr: string | null;
+	/** sysName — administratively assigned hostname */
+	sys_name: string | null;
+	/** sysLocation — physical location string */
+	sys_location: string | null;
+	/** sysObjectID — vendor's authoritative OID for this device type */
+	sys_object_id: string | null;
+	/** sysUpTime in centiseconds */
+	sys_uptime_cs: number | null;
+	/** sysContact — contact person / email */
+	sys_contact: string | null;
+	/** Vendor name inferred from enterprise OID */
+	vendor: string | null;
+}
+
+/** Redundancy protocol frame observed in the capture */
+export interface RedundancyInfo {
+	/** Protocol family: "mrp" | "rstp" | "hsr" | "prp" | "dlr" */
+	protocol: 'mrp' | 'rstp' | 'hsr' | 'prp' | 'dlr';
+	/** Device role in the ring (e.g. "ring-manager", "root-bridge") */
+	role: string | null;
+	/** Ring / domain identifier */
+	ring_id: number | null;
+	/** Priority for manager election */
+	priority: number | null;
+	/** Source MAC address of the sending device */
+	source_mac: string;
+	/** Human-readable frame summary */
+	details: string;
+	/** True if this device is the ring manager / root bridge */
+	is_manager: boolean;
+	/** True if a topology change event was observed */
+	topology_change: boolean;
+}
+
+/** Switch port security finding */
+export interface SwitchSecurityFinding {
+	/** Finding category */
+	finding_type: string;
+	/** Human-readable title */
+	title: string;
+	/** Severity level */
+	severity: 'info' | 'low' | 'medium' | 'high' | 'critical';
+	/** Description explaining the risk */
+	description: string;
+	/** IPs of affected switches / assets */
+	affected_assets: string[];
+	/** Evidence collected */
+	evidence: string;
+	/** Recommended remediation step */
+	remediation: string;
 }
 
 /** Modbus protocol details for a device */

@@ -23,6 +23,13 @@ pub mod default_creds;
 pub mod risk;
 pub mod naming;
 pub mod comm_patterns;
+pub mod infrastructure;
+pub mod switch_security;
+
+pub use infrastructure::{InfrastructureRole, classify_infrastructure};
+pub use switch_security::{
+    SwitchFindingType, SwitchSecurityFinding, SwitchSecurityInput, assess_switch_security,
+};
 
 use serde::{Serialize, Deserialize};
 use uuid::Uuid;

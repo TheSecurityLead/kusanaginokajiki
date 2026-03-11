@@ -46,7 +46,9 @@ import type {
 	ConnectionStats,
 	PatternAnomaly,
 	Project,
-	ProjectSummary
+	ProjectSummary,
+	RedundancyInfo,
+	SwitchSecurityFinding
 } from '$lib/types';
 
 // ─── System Commands ──────────────────────────────────────────
@@ -477,6 +479,16 @@ export async function getConnectionStats(): Promise<ConnectionStats[]> {
 /** Get detected communication pattern anomalies for the current dataset */
 export async function getPatternAnomalies(): Promise<PatternAnomaly[]> {
 	return invoke<PatternAnomaly[]>('get_pattern_anomalies');
+}
+
+/** Get observed Layer-2 redundancy protocol frames (MRP/RSTP/HSR/PRP/DLR) */
+export async function getRedundancyProtocols(): Promise<RedundancyInfo[]> {
+	return invoke<RedundancyInfo[]>('get_redundancy_protocols');
+}
+
+/** Run switch port security assessment and return findings */
+export async function getSwitchSecurityFindings(): Promise<SwitchSecurityFinding[]> {
+	return invoke<SwitchSecurityFinding[]>('get_switch_security_findings');
 }
 
 // ─── Projects ─────────────────────────────────────────────

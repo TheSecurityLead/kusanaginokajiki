@@ -24,6 +24,7 @@ use gm_signatures::SignatureEngine;
 use gm_db::{Database, OuiLookup, GeoIpLookup};
 use gm_physical::{PhysicalTopology, InferredTopology};
 use gm_analysis::{Finding, PurdueAssignment, AnomalyScore, ConnectionStats, PatternAnomaly};
+use gm_parsers::RedundancyInfo;
 use serde::{Serialize, Deserialize};
 
 /// Shared application state, managed by Tauri.
@@ -84,6 +85,8 @@ pub struct AppStateInner {
     pub connection_stats: Vec<ConnectionStats>,
     /// Communication pattern anomalies (computed alongside connection_stats)
     pub pattern_anomalies: Vec<PatternAnomaly>,
+    /// Redundancy protocol frames observed (MRP/RSTP/HSR/PRP/DLR)
+    pub redundancy_protocols: Vec<RedundancyInfo>,
 }
 
 /// Asset information stored in application state.
@@ -195,6 +198,10 @@ pub struct DeepParseInfo {
     pub iec104: Option<Iec104Detail>,
     /// PROFINET DCP details (present if device speaks PROFINET DCP)
     pub profinet_dcp: Option<ProfinetDcpDetail>,
+    /// LLDP details (present if device advertised itself via LLDP)
+    pub lldp: Option<LldpDetail>,
+    /// SNMP device identity (present if device responded to SNMP GET)
+    pub snmp: Option<SnmpDetail>,
 }
 
 /// EtherNet/IP aggregated details for a device.
@@ -241,6 +248,50 @@ pub struct ProfinetDcpDetail {
     pub role: String,
     /// Station name from DCP Name-of-Station block
     pub device_name: Option<String>,
+}
+
+/// LLDP (Link Layer Discovery Protocol) details for a device.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LldpDetail {
+    /// System name (hostname) from LLDP Type 5
+    pub system_name: Option<String>,
+    /// System description from LLDP Type 6
+    pub system_description: Option<String>,
+    /// Chassis identifier (MAC or string)
+    pub chassis_id: Option<String>,
+    /// Port identifier
+    pub port_id: Option<String>,
+    /// Capability summary string, e.g. "Bridge, Router"
+    pub capability_summary: Option<String>,
+    /// Management addresses advertised
+    pub management_addresses: Vec<String>,
+    /// VLAN IDs from 802.1 org-specific TLVs
+    pub vlan_ids: Vec<u16>,
+    /// Vendor inferred from description
+    pub vendor: Option<String>,
+    /// Model inferred from description
+    pub model: Option<String>,
+    /// Firmware version inferred from description
+    pub firmware: Option<String>,
+}
+
+/// SNMP device identity extracted from GET-Response packets.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SnmpDetail {
+    /// sysDescr — free-text description of the device
+    pub sys_descr: Option<String>,
+    /// sysName — administratively assigned hostname
+    pub sys_name: Option<String>,
+    /// sysLocation — physical location string
+    pub sys_location: Option<String>,
+    /// sysObjectID — vendor's authoritative OID for this device type
+    pub sys_object_id: Option<String>,
+    /// sysUpTime in centiseconds
+    pub sys_uptime_cs: Option<u32>,
+    /// sysContact — contact person / email
+    pub sys_contact: Option<String>,
+    /// Vendor name inferred from enterprise OID
+    pub vendor: Option<String>,
 }
 
 /// IEC 60870-5-104 aggregated details for a device.
@@ -468,6 +519,7 @@ impl AppState {
                 anomalies: Vec::new(),
                 connection_stats: Vec::new(),
                 pattern_anomalies: Vec::new(),
+                redundancy_protocols: Vec::new(),
             }),
         }
     }

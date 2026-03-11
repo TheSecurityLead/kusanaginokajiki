@@ -81,6 +81,128 @@ pub(crate) fn extract_packet_info(
     })
 }
 
+/// Try to extract an LLDP frame from raw Ethernet data.
+///
+/// LLDP uses Ethertype 0x88CC and is a Layer-2-only protocol — it has no IP
+/// header. Returns a synthetic `ParsedPacket` with:
+/// - `src_ip` = `"lldp:<mac>"` (the sending device's MAC)
+/// - `dst_ip` = `"lldp:broadcast"`
+/// - `payload` = the LLDP PDU (everything after the 14-byte Ethernet header)
+///
+/// Returns None if the frame is not LLDP or is too short.
+pub(crate) fn try_extract_lldp_packet(
+    raw_data: &[u8],
+    timestamp: chrono::DateTime<chrono::Utc>,
+    origin_file: &str,
+) -> Option<ParsedPacket> {
+    // Need at least 14 bytes for Ethernet header
+    if raw_data.len() < 14 {
+        return None;
+    }
+    // Check Ethertype at bytes 12-13 (skip VLAN tag 0x8100 if present)
+    let (ethertype_offset, payload_start) = if raw_data[12] == 0x81 && raw_data[13] == 0x00 && raw_data.len() >= 18 {
+        (14, 18) // 802.1Q VLAN tag
+    } else {
+        (12, 14)
+    };
+    if raw_data[ethertype_offset] != 0x88 || raw_data[ethertype_offset + 1] != 0xCC {
+        return None;
+    }
+
+    let dst_mac: [u8; 6] = raw_data[0..6].try_into().ok()?;
+    let src_mac: [u8; 6] = raw_data[6..12].try_into().ok()?;
+
+    let src_mac_str = ParsedPacket::format_mac(&src_mac);
+    let dst_mac_str = ParsedPacket::format_mac(&dst_mac);
+
+    Some(ParsedPacket {
+        timestamp,
+        src_mac: Some(src_mac_str.clone()),
+        dst_mac: Some(dst_mac_str),
+        // Use a sentinel prefix so the processor can identify LLDP packets
+        src_ip: format!("lldp:{}", src_mac_str),
+        dst_ip: "lldp:broadcast".to_string(),
+        transport: crate::packet::TransportProtocol::Other,
+        src_port: 0,
+        dst_port: 0,
+        length: raw_data.len(),
+        payload: raw_data[payload_start..].to_vec(),
+        origin_file: origin_file.to_string(),
+    })
+}
+
+/// Try to extract a Layer-2 redundancy protocol frame from raw Ethernet data.
+///
+/// Handles MRP, RSTP, HSR, PRP, and DLR frames — all of which lack an IP
+/// header and are identified by dst MAC or Ethertype.
+///
+/// Returns a synthetic `ParsedPacket` with:
+/// - `src_ip` = `"redundancy:<proto>"` (e.g. "redundancy:mrp", "redundancy:rstp")
+/// - `dst_ip` = `"redundancy:multicast"`
+/// - `payload` = frame bytes after the 14-byte Ethernet header
+///
+/// Returns None if the frame is not a known redundancy protocol or is too short.
+///
+/// NOTE: Detection logic is inlined here (not delegated to gm-parsers) to avoid
+/// a circular dependency: gm-parsers → gm-capture → gm-parsers.
+pub(crate) fn try_extract_redundancy_packet(
+    raw_data: &[u8],
+    timestamp: chrono::DateTime<chrono::Utc>,
+    origin_file: &str,
+) -> Option<ParsedPacket> {
+    if raw_data.len() < 14 {
+        return None;
+    }
+    let dst = &raw_data[0..6];
+    let ethertype = u16::from_be_bytes([raw_data[12], raw_data[13]]);
+
+    // RSTP/STP: dst 01:80:C2:00:00:00, length < 1500, LLC DSAP=0x42
+    let proto_hint = if dst == [0x01, 0x80, 0xC2, 0x00, 0x00, 0x00]
+        && ethertype < 1500
+        && raw_data.len() >= 17
+        && raw_data[14] == 0x42
+        && raw_data[15] == 0x42
+    {
+        "rstp"
+    } else if ethertype == 0x88E3
+        || (dst[0..5] == [0x01, 0x15, 0x4E, 0x00, 0x01] && (dst[5] == 0x01 || dst[5] == 0x02))
+    {
+        "mrp"
+    } else if ethertype == 0x892F
+        || (dst[0..5] == [0x01, 0x15, 0x4E, 0x00, 0x01] && (0x20..=0x2F).contains(&dst[5]))
+    {
+        "hsr"
+    } else if ethertype == 0x88FB || dst == [0x01, 0x15, 0x4E, 0x00, 0x01, 0x00] {
+        "prp"
+    } else if ethertype == 0x80E1 || dst == [0x01, 0x21, 0x6C, 0x00, 0x00, 0x01] {
+        "dlr"
+    } else {
+        return None;
+    };
+
+    let src_mac: [u8; 6] = raw_data[6..12].try_into().ok()?;
+    let dst_mac: [u8; 6] = raw_data[0..6].try_into().ok()?;
+
+    let src_mac_str = ParsedPacket::format_mac(&src_mac);
+    let dst_mac_str = ParsedPacket::format_mac(&dst_mac);
+
+    Some(ParsedPacket {
+        timestamp,
+        src_mac: Some(src_mac_str.clone()),
+        dst_mac: Some(dst_mac_str),
+        // Encode the protocol hint in src_ip so the processor can route it
+        src_ip: format!("redundancy:{proto_hint}"),
+        dst_ip: "redundancy:multicast".to_string(),
+        transport: crate::packet::TransportProtocol::Other,
+        src_port: 0,
+        dst_port: 0,
+        length: raw_data.len(),
+        // Payload = everything after the 14-byte Ethernet header
+        payload: raw_data[14..].to_vec(),
+        origin_file: origin_file.to_string(),
+    })
+}
+
 /// Convert pcap packet header timestamp to chrono DateTime.
 ///
 /// Casts are required for cross-platform compatibility: the pcap crate's

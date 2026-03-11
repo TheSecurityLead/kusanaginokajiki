@@ -173,6 +173,7 @@ pub async fn import_pcap(
     let connection_list = processor.get_connections();
     let packet_summaries = processor.get_packet_summaries();
     let (connection_stats, pattern_anomalies) = processor.build_pattern_results();
+    let redundancy_protocols = processor.build_redundancy_info();
     let asset_count = assets.len();
     let connection_count = connection_list.len();
     let protocols_detected = processor.get_protocols_detected();
@@ -191,6 +192,7 @@ pub async fn import_pcap(
     state_inner.deep_parse_info = deep_parse_info;
     state_inner.connection_stats = connection_stats;
     state_inner.pattern_anomalies = pattern_anomalies;
+    state_inner.redundancy_protocols = redundancy_protocols;
     state_inner.imported_files.extend(imported_files);
     state_inner.imported_files.sort();
     state_inner.imported_files.dedup();
@@ -534,6 +536,7 @@ fn flush_batch(
         let connections = processor.get_connections();
         let packet_summaries = processor.get_packet_summaries();
         let (connection_stats, pattern_anomalies) = processor.build_pattern_results();
+        let redundancy_protocols = processor.build_redundancy_info();
         let asset_count = assets.len();
         let connection_count = connections.len();
         let total_packets = processor.total_packets;
@@ -549,6 +552,7 @@ fn flush_batch(
         inner.deep_parse_info = deep_parse_info;
         inner.connection_stats = connection_stats;
         inner.pattern_anomalies = pattern_anomalies;
+        inner.redundancy_protocols = redundancy_protocols;
 
         // Compute PPS
         let elapsed = prev_stat_time.elapsed().as_secs_f64();

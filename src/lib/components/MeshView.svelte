@@ -175,8 +175,13 @@
 
 	const unsubTopo = topology.subscribe(() => {});
 
-	onMount(() => {
-		initCytoscape();
+	onMount(async () => {
+		await initCytoscape();
+		// Render any topology that arrived while Cytoscape was initializing
+		const topo = $topology;
+		if (topo.nodes.length > 0) {
+			updateMesh(topo);
+		}
 	});
 
 	onDestroy(() => {
@@ -319,7 +324,7 @@
 		flex: 1;
 		position: relative;
 		background: var(--gm-bg-primary);
-		background-image: radial-gradient(circle, #1e293b 1px, transparent 1px);
+		background-image: radial-gradient(circle, var(--gm-bg-dot) 1px, transparent 1px);
 		background-size: 24px 24px;
 	}
 

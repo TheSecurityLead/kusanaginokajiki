@@ -8,7 +8,7 @@
 		activeTab,
 		assets
 	} from '$lib/stores';
-	import type { PhysicalTopology, PhysicalSwitch, PhysicalPort, InferredTopology } from '$lib/types';
+	import type { PhysicalTopology, PhysicalSwitch, PhysicalPort, InferredTopology, RedundancyInfo } from '$lib/types';
 	import {
 		importCiscoConfig,
 		importMacTable,
@@ -20,16 +20,34 @@
 		importMacTableAuto,
 		importNeighborTable,
 		runTopologyInference,
-		getInferredTopology
+		getInferredTopology,
+		getRedundancyProtocols
 	} from '$lib/utils/tauri';
 
 	let graphContainer: HTMLDivElement;
 	let cy: any = null;
 
 	// ── Tab State ───────────────────────────────────────
-	let activePhysicalTab = $state<'imported' | 'inferred'>('imported');
+	let activePhysicalTab = $state<'imported' | 'inferred' | 'redundancy'>('imported');
 	let inferredTopology = $state<InferredTopology | null>(null);
 	let inferring = $state(false);
+
+	// ── Redundancy State ─────────────────────────────────
+	let redundancyProtocols = $state<RedundancyInfo[]>([]);
+	let loadingRedundancy = $state(false);
+
+	let redundancyProtocolNames = $derived([...new Set(redundancyProtocols.map(r => r.protocol))]);
+
+	async function loadRedundancy() {
+		loadingRedundancy = true;
+		try {
+			redundancyProtocols = await getRedundancyProtocols();
+		} catch {
+			redundancyProtocols = [];
+		} finally {
+			loadingRedundancy = false;
+		}
+	}
 
 	// ── Import State ───────────────────────────────────
 	let importType = $state<'config' | 'mac' | 'cdp' | 'arp'>('config');
@@ -538,16 +556,25 @@
 					class:active={activePhysicalTab === 'inferred'}
 					onclick={() => (activePhysicalTab = 'inferred')}
 				>Inferred</button>
+				<button
+					class="tab-btn"
+					class:active={activePhysicalTab === 'redundancy'}
+					onclick={() => { activePhysicalTab = 'redundancy'; loadRedundancy(); }}
+				>Ring Redundancy</button>
 			</div>
 			<span class="toolbar-sep"></span>
 			{#if activePhysicalTab === 'imported'}
 				<span class="switch-count">{currentTopo.switches.length} switches</span>
 				<span class="link-count">{currentTopo.links.length} links</span>
 				<span class="device-count">{Object.keys(currentTopo.device_locations).length} mapped devices</span>
-			{:else}
+			{:else if activePhysicalTab === 'inferred'}
 				<span class="switch-count">{inferredTopology?.subnets.length ?? 0} subnets</span>
 				<span class="link-count">{inferredTopology?.gateways.length ?? 0} gateways</span>
 				<span class="device-count">{inferredTopology?.switch_candidates.length ?? 0} switch candidates</span>
+			{:else}
+				<span class="switch-count">{redundancyProtocols.length} devices</span>
+				<span class="link-count">{redundancyProtocols.filter(r => r.is_manager).length} managers</span>
+				<span class="device-count">{redundancyProtocols.filter(r => r.topology_change).length} TC events</span>
 			{/if}
 		</div>
 		<div class="toolbar-section">
@@ -837,7 +864,7 @@
 			<span class="legend-dot" style="background: #ef4444"></span> Highlighted
 		</span>
 	</div>
-	{:else}
+	{:else if activePhysicalTab === 'inferred'}
 	<!-- ── Inferred Tab ───────────────────────────────── -->
 	<div class="inferred-container">
 		{#if !inferredTopology}
@@ -946,6 +973,79 @@
 						{/each}
 					</div>
 				{/if}
+			</div>
+		{/if}
+	</div>
+	{:else}
+	<!-- ── Ring Redundancy Tab ─────────────────────────── -->
+	<div class="inferred-container">
+		{#if loadingRedundancy}
+			<div class="inferred-empty">
+				<div class="empty-icon">&#x23F3;</div>
+				<h3>Loading...</h3>
+			</div>
+		{:else if redundancyProtocols.length === 0}
+			<div class="inferred-empty">
+				<div class="empty-icon">&#x1F4E1;</div>
+				<h3>No Redundancy Frames Detected</h3>
+				<p>No MRP, RSTP, HSR, PRP, or DLR frames were observed in the current capture. Import a PCAP that contains ring redundancy traffic to see topology change events and ring manager roles.</p>
+				<button class="import-btn" onclick={loadRedundancy}>Refresh</button>
+			</div>
+		{:else}
+			<div class="inferred-content">
+				<!-- Summary by protocol -->
+				<div class="inferred-section">
+					<h3 class="inferred-section-title">Protocols Detected ({redundancyProtocolNames.length})</h3>
+					<div class="redundancy-protocol-badges">
+						{#each redundancyProtocolNames as proto}
+							{@const count = redundancyProtocols.filter(r => r.protocol === proto).length}
+							{@const hasManager = redundancyProtocols.some(r => r.protocol === proto && r.is_manager)}
+							{@const hasTc = redundancyProtocols.some(r => r.protocol === proto && r.topology_change)}
+							<div class="redundancy-badge" class:has-tc={hasTc}>
+								<span class="proto-name">{proto.toUpperCase()}</span>
+								<span class="proto-count">{count} devices</span>
+								{#if hasManager}<span class="proto-flag manager">Manager</span>{/if}
+								{#if hasTc}<span class="proto-flag tc-flag">TC</span>{/if}
+							</div>
+						{/each}
+					</div>
+				</div>
+
+				<!-- Device list -->
+				<div class="inferred-section">
+					<h3 class="inferred-section-title">Participating Devices ({redundancyProtocols.length})</h3>
+					{#each redundancyProtocols as r}
+						<div class="inferred-card" class:tc-card={r.topology_change}>
+							<div class="card-header">
+								<span class="card-network">{r.source_mac}</span>
+								<span class="card-badge">{r.protocol.toUpperCase()}</span>
+								{#if r.is_manager}<span class="card-badge" style="background: #d97706; color: #fff">Manager</span>{/if}
+								{#if r.topology_change}<span class="card-badge" style="background: #ef4444; color: #fff">TC</span>{/if}
+							</div>
+							{#if r.role}
+								<div class="card-detail">
+									<span class="card-label">Role</span>
+									<span class="card-value">{r.role}</span>
+								</div>
+							{/if}
+							{#if r.priority != null}
+								<div class="card-detail">
+									<span class="card-label">Priority</span>
+									<span class="card-value">{r.priority} (0x{r.priority.toString(16).padStart(4,'0').toUpperCase()})</span>
+								</div>
+							{/if}
+							{#if r.ring_id != null}
+								<div class="card-detail">
+									<span class="card-label">Ring ID / Seq</span>
+									<span class="card-value">{r.ring_id}</span>
+								</div>
+							{/if}
+							<div class="card-detail" style="margin-top: 4px">
+								<span class="card-value" style="color: var(--gm-text-muted); font-size: 0.75rem">{r.details}</span>
+							</div>
+						</div>
+					{/each}
+				</div>
 			</div>
 		{/if}
 	</div>
@@ -1194,7 +1294,7 @@
 		flex: 1;
 		position: relative;
 		background: var(--gm-bg-primary);
-		background-image: radial-gradient(circle, #1e293b 1px, transparent 1px);
+		background-image: radial-gradient(circle, var(--gm-bg-dot) 1px, transparent 1px);
 		background-size: 24px 24px;
 	}
 
@@ -1598,5 +1698,60 @@
 
 	.ip-chip.muted {
 		opacity: 0.6;
+	}
+
+	/* ── Ring Redundancy Tab ─────────────────────────────── */
+
+	.redundancy-protocol-badges {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+	}
+
+	.redundancy-badge {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 6px 10px;
+		background: var(--gm-bg-secondary);
+		border: 1px solid var(--gm-border);
+		border-radius: 6px;
+		font-size: 11px;
+	}
+
+	.redundancy-badge.has-tc {
+		border-color: #ef4444;
+	}
+
+	.proto-name {
+		font-weight: 700;
+		color: #38bdf8;
+		font-family: monospace;
+	}
+
+	.proto-count {
+		color: var(--gm-text-muted);
+		font-size: 10px;
+	}
+
+	.proto-flag {
+		font-size: 9px;
+		padding: 1px 5px;
+		border-radius: 3px;
+		font-weight: 600;
+	}
+
+	.proto-flag.manager {
+		background: #d97706;
+		color: #fff;
+	}
+
+	.proto-flag.tc-flag {
+		background: #ef4444;
+		color: #fff;
+	}
+
+	.tc-card {
+		border-color: #ef444455;
 	}
 </style>

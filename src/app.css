@@ -57,6 +57,13 @@
   --gm-drift-new: #10b981;
   --gm-drift-missing: #ef4444;
   --gm-drift-changed: #f59e0b;
+
+  /* Graph canvas dot grid color */
+  --gm-bg-dot: #1e293b;
+  /* Tertiary surface (code blocks, nested cards) */
+  --gm-bg-tertiary: #0f172a;
+  /* Accent (code/filter text) */
+  --gm-accent: #38bdf8;
 }
 
 /* ─── Light Theme ─────────────────────────────────────────── */
@@ -79,6 +86,13 @@
 
   /* Severity stays the same (already high contrast) */
   --gm-severity-info: #94a3b8;
+
+  /* Graph canvas dot — subtle on light backgrounds */
+  --gm-bg-dot: #e2e8f0;
+  /* Tertiary surface — light */
+  --gm-bg-tertiary: #f1f5f9;
+  /* Accent — slightly darker for light bg */
+  --gm-accent: #0284c7;
 }
 
 [data-theme="light"] ::-webkit-scrollbar-track {

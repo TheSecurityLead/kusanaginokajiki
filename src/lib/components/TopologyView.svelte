@@ -270,7 +270,7 @@
 		position: relative;
 		background: var(--gm-bg-primary);
 		/* Subtle grid pattern */
-		background-image: radial-gradient(circle, #1e293b 1px, transparent 1px);
+		background-image: radial-gradient(circle, var(--gm-bg-dot) 1px, transparent 1px);
 		background-size: 24px 24px;
 	}
 

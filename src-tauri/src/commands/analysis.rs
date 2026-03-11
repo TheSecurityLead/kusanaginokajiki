@@ -14,6 +14,7 @@ use gm_analysis::{
     Finding, PurdueAssignment, AnomalyScore,
     CredentialChecker, CriticalityAssessment, NamingSuggestion,
     DefaultCredential,
+    SwitchSecurityFinding, SwitchSecurityInput, assess_switch_security,
 };
 
 use super::AppState;
@@ -246,4 +247,76 @@ pub fn get_naming_suggestions(
     let state_inner = state.inner.lock().map_err(|e| e.to_string())?;
     let input = build_analysis_input(&state_inner);
     Ok(gm_analysis::suggest_names_all(&input.assets))
+}
+
+/// Run switch port security assessment against the current dataset.
+///
+/// Uses asset list, protocol observations, redundancy frames, LLDP VLAN data,
+/// and default credential matches to produce actionable switch security findings.
+#[tauri::command]
+pub fn get_switch_security_findings(
+    state: State<'_, AppState>,
+) -> Result<Vec<SwitchSecurityFinding>, String> {
+    let state_inner = state.inner.lock().map_err(|e| e.to_string())?;
+
+    // Build asset snapshots
+    let assets: Vec<AssetSnapshot> = state_inner.assets.iter().map(|a| AssetSnapshot {
+        ip_address: a.ip_address.clone(),
+        device_type: a.device_type.clone(),
+        protocols: a.protocols.clone(),
+        purdue_level: a.purdue_level,
+        is_public_ip: a.is_public_ip,
+        tags: a.tags.clone(),
+        vendor: a.vendor.clone(),
+    }).collect();
+
+    // Build protocols_by_ip from asset protocol lists
+    let protocols_by_ip = state_inner.assets.iter()
+        .map(|a| (a.ip_address.clone(), a.protocols.clone()))
+        .collect();
+
+    // Collect redundancy protocol names and topology change flag
+    let redundancy_protocols_seen: Vec<String> = state_inner.redundancy_protocols
+        .iter()
+        .map(|r| r.protocol.hint().to_string())
+        .collect();
+
+    let topology_change_seen = state_inner.redundancy_protocols
+        .iter()
+        .any(|r| r.topology_change);
+
+    // Collect VLAN IDs from LLDP data
+    let vlan_ids_seen: Vec<u16> = state_inner.deep_parse_info
+        .values()
+        .filter_map(|dp| dp.lldp.as_ref())
+        .flat_map(|lldp| lldp.vlan_ids.iter().copied())
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect();
+
+    // Find switches that match default credentials
+    let checker = CredentialChecker::new()?;
+    let default_cred_switch_ips: Vec<String> = state_inner.assets.iter()
+        .filter(|a| {
+            let dt = a.device_type.to_lowercase();
+            dt.contains("switch")
+        })
+        .filter(|a| {
+            let vendor = a.vendor.as_deref().unwrap_or("");
+            let product = a.product_family.as_deref().unwrap_or("");
+            !checker.check_device(vendor, product).is_empty()
+        })
+        .map(|a| a.ip_address.clone())
+        .collect();
+
+    let input = SwitchSecurityInput {
+        assets: &assets,
+        protocols_by_ip,
+        redundancy_protocols_seen,
+        topology_change_seen,
+        vlan_ids_seen,
+        default_cred_switch_ips,
+    };
+
+    Ok(assess_switch_security(&input))
 }

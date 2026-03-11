@@ -163,9 +163,11 @@ fn main() {
             commands::analysis::get_credential_warnings,
             commands::analysis::get_criticality,
             commands::analysis::get_naming_suggestions,
+            commands::analysis::get_switch_security_findings,
             // Communication Pattern Analysis
             commands::patterns::get_connection_stats,
             commands::patterns::get_pattern_anomalies,
+            commands::patterns::get_redundancy_protocols,
             // Project Management
             commands::projects::create_project,
             commands::projects::list_projects,

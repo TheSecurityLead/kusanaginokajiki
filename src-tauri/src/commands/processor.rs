@@ -17,6 +17,9 @@ use gm_parsers::{
     BacnetRole, BacnetService, BacnetObjectType,
     Iec104Role, AsduTypeId,
     ProfinetRole,
+    LldpInfo, parse_lldp,
+    RedundancyInfo, parse_redundancy,
+    SnmpDeviceInfo, parse_snmp_response,
 };
 use gm_signatures::{PacketData, SignatureEngine};
 use gm_topology::TopologyBuilder;
@@ -27,7 +30,8 @@ use super::{
     AssetInfo, AssetSignatureMatch, ConnectionInfo, PacketSummary, infer_device_type,
     DeepParseInfo, ModbusDetail, Dnp3Detail, FunctionCodeStat, RegisterRangeInfo,
     ModbusDeviceIdInfo, ModbusRelationship, Dnp3Relationship, PollingInterval,
-    EnipDetail, S7Detail, BacnetDetail, Iec104Detail, ProfinetDcpDetail,
+    EnipDetail, S7Detail, BacnetDetail, Iec104Detail, ProfinetDcpDetail, LldpDetail,
+    SnmpDetail,
 };
 
 /// Well-known OT/ICS service ports — if a device listens on one of these,
@@ -105,6 +109,18 @@ pub struct PacketProcessor {
     // Signature matching data — accumulated per-IP
     ip_packets: HashMap<String, Vec<PacketData>>,
 
+    /// LLDP info keyed by the sender MAC address (e.g. "aa:bb:cc:dd:ee:ff").
+    /// Multiple LLDP frames from the same device are merged (last-write-wins).
+    lldp_by_mac: HashMap<String, LldpInfo>,
+
+    /// Redundancy protocol frames observed. Keyed by source MAC; last-write-wins
+    /// within each MAC so we keep the most recent frame per sender.
+    redundancy_by_mac: HashMap<String, RedundancyInfo>,
+
+    /// SNMP device identity extracted from GET-Response packets.
+    /// Keyed by the responding device's IP (src_ip when src_port == 161).
+    snmp_device_info: HashMap<String, SnmpDeviceInfo>,
+
     /// Communication pattern analyzer — collects timestamps per connection pair
     pattern_analyzer: PatternAnalyzer,
 
@@ -155,6 +171,9 @@ impl PacketProcessor {
             profinet_roles: HashMap::new(),
             profinet_device_names: HashMap::new(),
             ip_packets: HashMap::new(),
+            lldp_by_mac: HashMap::new(),
+            redundancy_by_mac: HashMap::new(),
+            snmp_device_info: HashMap::new(),
             pattern_analyzer: PatternAnalyzer::new(),
             total_packets: 0,
         }
@@ -162,6 +181,28 @@ impl PacketProcessor {
 
     /// Process a single packet through the pipeline.
     pub fn process_packet(&mut self, packet: &ParsedPacket) {
+        // LLDP packets have a sentinel src_ip of "lldp:<mac>" — handle them
+        // separately before the IP-based pipeline since they carry no IP header.
+        if packet.src_ip.starts_with("lldp:") {
+            if let Some(ref mac) = packet.src_mac {
+                if let Some(lldp_info) = parse_lldp(&packet.payload) {
+                    self.lldp_by_mac.insert(mac.clone(), lldp_info);
+                }
+            }
+            return;
+        }
+
+        // Redundancy protocol packets (MRP/RSTP/HSR/PRP/DLR) use the sentinel
+        // prefix "redundancy:<proto>" in src_ip. Parse and store by source MAC.
+        if let Some(proto_hint) = packet.src_ip.strip_prefix("redundancy:") {
+            if let Some(ref mac) = packet.src_mac {
+                if let Some(info) = parse_redundancy(&packet.payload, proto_hint, mac) {
+                    self.redundancy_by_mac.insert(mac.clone(), info);
+                }
+            }
+            return;
+        }
+
         let protocol = identify_protocol(packet);
         let proto_str = format!("{:?}", protocol);
         self.all_protocols.insert(proto_str.clone());
@@ -286,6 +327,16 @@ impl PacketProcessor {
                 DeepParseResult::ProfinetDcp(ref info) => {
                     self.process_profinet_dcp(packet, info);
                 }
+                // LLDP is handled by the early-return above; deep_parse()
+                // never returns Lldp since it's not an IP-layer protocol.
+                DeepParseResult::Lldp(_) => {}
+            }
+        }
+
+        // SNMP GET-Response: extract device identity from responses (src port 161)
+        if packet.src_port == 161 && !packet.payload.is_empty() {
+            if let Some(dev_info) = parse_snmp_response(&packet.payload) {
+                self.snmp_device_info.insert(packet.src_ip.clone(), dev_info);
             }
         }
 
@@ -897,7 +948,59 @@ impl PacketProcessor {
                 .iec104 = Some(iec104_detail);
         }
 
+        // Aggregate LLDP data: match by MAC address
+        // asset_macs maps IP → MAC; we need the reverse to look up by MAC
+        for (ip, mac) in &self.asset_macs {
+            if let Some(lldp_info) = self.lldp_by_mac.get(mac) {
+                let mgmt_addrs: Vec<String> = lldp_info
+                    .management_addresses
+                    .iter()
+                    .map(|a| format!("{} ({})", a.address, a.addr_type))
+                    .collect();
+                let lldp_detail = LldpDetail {
+                    system_name: lldp_info.system_name.clone(),
+                    system_description: lldp_info.system_description.clone(),
+                    chassis_id: lldp_info.chassis_id.clone(),
+                    port_id: lldp_info.port_id.clone(),
+                    capability_summary: lldp_info.capability_summary.clone(),
+                    management_addresses: mgmt_addrs,
+                    vlan_ids: lldp_info.vlan_ids.clone(),
+                    vendor: lldp_info.vendor.clone(),
+                    model: lldp_info.model.clone(),
+                    firmware: lldp_info.firmware.clone(),
+                };
+                deep_parse_info
+                    .entry(ip.clone())
+                    .or_default()
+                    .lldp = Some(lldp_detail);
+            }
+        }
+
+        // Aggregate SNMP device identity (keyed directly by IP)
+        for (ip, snmp_info) in &self.snmp_device_info {
+            let snmp_detail = SnmpDetail {
+                sys_descr: snmp_info.sys_descr.clone(),
+                sys_name: snmp_info.sys_name.clone(),
+                sys_location: snmp_info.sys_location.clone(),
+                sys_object_id: snmp_info.sys_object_id.clone(),
+                sys_uptime_cs: snmp_info.sys_uptime_cs,
+                sys_contact: snmp_info.sys_contact.clone(),
+                vendor: snmp_info.vendor.clone(),
+            };
+            deep_parse_info
+                .entry(ip.clone())
+                .or_default()
+                .snmp = Some(snmp_detail);
+        }
+
         deep_parse_info
+    }
+
+    /// Collect all observed redundancy protocol frames as a flat list.
+    ///
+    /// Returns one `RedundancyInfo` per unique source MAC (last-frame-wins).
+    pub fn build_redundancy_info(&self) -> Vec<RedundancyInfo> {
+        self.redundancy_by_mac.values().cloned().collect()
     }
 
     /// Run signature matching and build the final asset list.
@@ -1000,6 +1103,40 @@ impl PacketProcessor {
                 }
             }
 
+            // LLDP enrichment (confidence 4 — better than OUI/port, lower than deep parse)
+            let mut hostname: Option<String> = None;
+            if let Some(mac_addr) = self.asset_macs.get(ip) {
+                if let Some(lldp) = self.lldp_by_mac.get(mac_addr) {
+                    if let Some(ref sn) = lldp.system_name {
+                        hostname = Some(sn.clone());
+                    }
+                    if vendor.is_none() {
+                        if let Some(ref lv) = lldp.vendor {
+                            vendor = Some(lv.clone());
+                            if confidence < 4 { confidence = 4; }
+                        }
+                    }
+                    if product_family.is_none() {
+                        if let Some(ref lm) = lldp.model {
+                            product_family = Some(lm.clone());
+                        }
+                    }
+                    // If LLDP capabilities indicate bridge-only, classify as switch
+                    if let (Some(cap), Some(en)) = (lldp.capabilities, lldp.enabled_capabilities) {
+                        use gm_parsers::lldp::caps;
+                        let active = if en != 0 { en } else { cap };
+                        let is_bridge = active & caps::BRIDGE != 0;
+                        let is_router = active & caps::ROUTER != 0;
+                        if is_bridge && !is_router && device_type == "unknown" {
+                            device_type = "switch".to_string();
+                        }
+                        if is_router && device_type == "unknown" {
+                            device_type = "router".to_string();
+                        }
+                    }
+                }
+            }
+
             // GeoIP enrichment
             let is_public_ip = GeoIpLookup::is_public_ip(ip);
             let country = geoip_lookup.lookup_country(ip);
@@ -1008,7 +1145,7 @@ impl PacketProcessor {
                 id: ip.clone(),
                 ip_address: ip.clone(),
                 mac_address: self.asset_macs.get(ip).cloned(),
-                hostname: None,
+                hostname,
                 device_type,
                 vendor,
                 protocols: protocols.iter().map(|p| format!("{:?}", p).to_lowercase()).collect(),

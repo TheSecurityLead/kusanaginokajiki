@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { filteredAssets, assetFilter, selectedAssetId, selectedAsset, protocolFilter, assets } from '$lib/stores';
 	import { getDeepParseInfo, getAssets, updateAsset, bulkUpdateAssets, getCredentialWarnings } from '$lib/utils/tauri';
-	import type { DeviceType, IcsProtocol, DeepParseInfo, AssetUpdate, Asset, EnipDetail, S7Detail, BacnetDetail, Iec104Detail, ProfinetDcpDetail, DefaultCredential } from '$lib/types';
+	import type { DeviceType, IcsProtocol, DeepParseInfo, AssetUpdate, Asset, EnipDetail, S7Detail, BacnetDetail, Iec104Detail, ProfinetDcpDetail, LldpDetail, DefaultCredential } from '$lib/types';
 
 	const deviceTypeLabels: Record<DeviceType, string> = {
 		plc: 'PLC',
@@ -289,9 +289,90 @@
 	// Pagination for the asset table — prevents DOM overload on large datasets.
 	const INV_PAGE_SIZE = 50;
 	let invPage = $state(0);
-	let invTotalPages = $derived(Math.max(1, Math.ceil($filteredAssets.length / INV_PAGE_SIZE)));
+
+	// ── Sortable Columns ──────────────────────────────────────────
+	type ColKey = 'ip' | 'mac' | 'type' | 'confidence' | 'vendor' | 'oui' | 'product' |
+	              'protocols' | 'country' | 'packets' | 'purdue' | 'first_seen' | 'last_seen';
+
+	const allColumns: { key: ColKey; label: string }[] = [
+		{ key: 'ip', label: 'IP Address' },
+		{ key: 'mac', label: 'MAC Address' },
+		{ key: 'type', label: 'Type' },
+		{ key: 'confidence', label: 'Confidence' },
+		{ key: 'vendor', label: 'Vendor' },
+		{ key: 'oui', label: 'OUI' },
+		{ key: 'product', label: 'Product' },
+		{ key: 'protocols', label: 'Protocols' },
+		{ key: 'country', label: 'Country' },
+		{ key: 'packets', label: 'Packets' },
+		{ key: 'purdue', label: 'Purdue Level' },
+		{ key: 'first_seen', label: 'First Seen' },
+		{ key: 'last_seen', label: 'Last Seen' },
+	];
+
+	let visibleColumns = $state<Set<ColKey>>(new Set(['ip', 'mac', 'type', 'confidence', 'vendor', 'oui']));
+	let showColumnPicker = $state(false);
+	let sortColumn = $state<ColKey | ''>('');
+	let sortDirection = $state<'asc' | 'desc'>('asc');
+
+	function compareIps(a: string, b: string): number {
+		const pa = a.split('.').map(Number);
+		const pb = b.split('.').map(Number);
+		for (let i = 0; i < 4; i++) {
+			if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) - (pb[i] || 0);
+		}
+		return 0;
+	}
+
+	function toggleSort(key: ColKey) {
+		if (sortColumn === key) {
+			if (sortDirection === 'asc') {
+				sortDirection = 'desc';
+			} else {
+				sortColumn = '';
+				sortDirection = 'asc';
+			}
+		} else {
+			sortColumn = key;
+			sortDirection = 'asc';
+		}
+		invPage = 0;
+	}
+
+	function toggleColumnVisibility(key: ColKey) {
+		const next = new Set(visibleColumns);
+		if (next.has(key)) { next.delete(key); } else { next.add(key); }
+		visibleColumns = next;
+	}
+
+	let sortedAssets = $derived.by(() => {
+		const list = [...$filteredAssets];
+		if (!sortColumn) return list;
+		const dir = sortDirection === 'asc' ? 1 : -1;
+		list.sort((a, b) => {
+			switch (sortColumn) {
+				case 'ip': return dir * compareIps(a.ip_address, b.ip_address);
+				case 'mac': return dir * (a.mac_address ?? '').localeCompare(b.mac_address ?? '');
+				case 'type': return dir * a.device_type.localeCompare(b.device_type);
+				case 'confidence': return dir * (a.confidence - b.confidence);
+				case 'vendor': return dir * (a.vendor ?? '').localeCompare(b.vendor ?? '');
+				case 'oui': return dir * (a.oui_vendor ?? '').localeCompare(b.oui_vendor ?? '');
+				case 'product': return dir * (a.product_family ?? '').localeCompare(b.product_family ?? '');
+				case 'protocols': return dir * a.protocols.join(',').localeCompare(b.protocols.join(','));
+				case 'country': return dir * (a.country ?? '').localeCompare(b.country ?? '');
+				case 'packets': return dir * (a.packet_count - b.packet_count);
+				case 'purdue': return dir * ((a.purdue_level ?? -1) - (b.purdue_level ?? -1));
+				case 'first_seen': return dir * a.first_seen.localeCompare(b.first_seen);
+				case 'last_seen': return dir * a.last_seen.localeCompare(b.last_seen);
+				default: return 0;
+			}
+		});
+		return list;
+	});
+
+	let invTotalPages = $derived(Math.max(1, Math.ceil(sortedAssets.length / INV_PAGE_SIZE)));
 	let pagedAssets = $derived(
-		$filteredAssets.slice(invPage * INV_PAGE_SIZE, (invPage + 1) * INV_PAGE_SIZE)
+		sortedAssets.slice(invPage * INV_PAGE_SIZE, (invPage + 1) * INV_PAGE_SIZE)
 	);
 
 	// Reset to page 0 whenever the filter changes.
@@ -320,6 +401,24 @@
 					<option value={proto}>{proto.toUpperCase()}</option>
 				{/each}
 			</select>
+			<div class="col-picker-wrap">
+				<button class="col-picker-btn" onclick={() => showColumnPicker = !showColumnPicker}>
+					Columns ▾
+				</button>
+				{#if showColumnPicker}
+					<div class="col-picker-dropdown">
+						{#each allColumns as col}
+							<label class="col-picker-item">
+								<input type="checkbox"
+									checked={visibleColumns.has(col.key)}
+									onchange={() => toggleColumnVisibility(col.key)}
+								/>
+								{col.label}
+							</label>
+						{/each}
+					</div>
+				{/if}
+			</div>
 			<span class="result-count">{$filteredAssets.length} assets</span>
 		</div>
 	</div>
@@ -367,16 +466,71 @@
 									onchange={selectAll}
 								/>
 							</th>
-							<th>IP Address</th>
-							<th>MAC Address</th>
-							<th>Type</th>
-							<th>Confidence</th>
-							<th>Vendor</th>
-							<th>OUI</th>
-							<th>Product</th>
-							<th>Protocols</th>
-							<th>Country</th>
-							<th>Packets</th>
+							{#if visibleColumns.has('ip')}
+								<th class="sortable-th" class:sort-active={sortColumn === 'ip'} onclick={() => toggleSort('ip')}>
+									IP Address {#if sortColumn === 'ip'}<span class="sort-arrow">{sortDirection === 'asc' ? '▲' : '▼'}</span>{/if}
+								</th>
+							{/if}
+							{#if visibleColumns.has('mac')}
+								<th class="sortable-th" class:sort-active={sortColumn === 'mac'} onclick={() => toggleSort('mac')}>
+									MAC Address {#if sortColumn === 'mac'}<span class="sort-arrow">{sortDirection === 'asc' ? '▲' : '▼'}</span>{/if}
+								</th>
+							{/if}
+							{#if visibleColumns.has('type')}
+								<th class="sortable-th" class:sort-active={sortColumn === 'type'} onclick={() => toggleSort('type')}>
+									Type {#if sortColumn === 'type'}<span class="sort-arrow">{sortDirection === 'asc' ? '▲' : '▼'}</span>{/if}
+								</th>
+							{/if}
+							{#if visibleColumns.has('confidence')}
+								<th class="sortable-th" class:sort-active={sortColumn === 'confidence'} onclick={() => toggleSort('confidence')}>
+									Confidence {#if sortColumn === 'confidence'}<span class="sort-arrow">{sortDirection === 'asc' ? '▲' : '▼'}</span>{/if}
+								</th>
+							{/if}
+							{#if visibleColumns.has('vendor')}
+								<th class="sortable-th" class:sort-active={sortColumn === 'vendor'} onclick={() => toggleSort('vendor')}>
+									Vendor {#if sortColumn === 'vendor'}<span class="sort-arrow">{sortDirection === 'asc' ? '▲' : '▼'}</span>{/if}
+								</th>
+							{/if}
+							{#if visibleColumns.has('oui')}
+								<th class="sortable-th" class:sort-active={sortColumn === 'oui'} onclick={() => toggleSort('oui')}>
+									OUI {#if sortColumn === 'oui'}<span class="sort-arrow">{sortDirection === 'asc' ? '▲' : '▼'}</span>{/if}
+								</th>
+							{/if}
+							{#if visibleColumns.has('product')}
+								<th class="sortable-th" class:sort-active={sortColumn === 'product'} onclick={() => toggleSort('product')}>
+									Product {#if sortColumn === 'product'}<span class="sort-arrow">{sortDirection === 'asc' ? '▲' : '▼'}</span>{/if}
+								</th>
+							{/if}
+							{#if visibleColumns.has('protocols')}
+								<th class="sortable-th" class:sort-active={sortColumn === 'protocols'} onclick={() => toggleSort('protocols')}>
+									Protocols {#if sortColumn === 'protocols'}<span class="sort-arrow">{sortDirection === 'asc' ? '▲' : '▼'}</span>{/if}
+								</th>
+							{/if}
+							{#if visibleColumns.has('country')}
+								<th class="sortable-th" class:sort-active={sortColumn === 'country'} onclick={() => toggleSort('country')}>
+									Country {#if sortColumn === 'country'}<span class="sort-arrow">{sortDirection === 'asc' ? '▲' : '▼'}</span>{/if}
+								</th>
+							{/if}
+							{#if visibleColumns.has('packets')}
+								<th class="sortable-th" class:sort-active={sortColumn === 'packets'} onclick={() => toggleSort('packets')}>
+									Packets {#if sortColumn === 'packets'}<span class="sort-arrow">{sortDirection === 'asc' ? '▲' : '▼'}</span>{/if}
+								</th>
+							{/if}
+							{#if visibleColumns.has('purdue')}
+								<th class="sortable-th" class:sort-active={sortColumn === 'purdue'} onclick={() => toggleSort('purdue')}>
+									Purdue {#if sortColumn === 'purdue'}<span class="sort-arrow">{sortDirection === 'asc' ? '▲' : '▼'}</span>{/if}
+								</th>
+							{/if}
+							{#if visibleColumns.has('first_seen')}
+								<th class="sortable-th" class:sort-active={sortColumn === 'first_seen'} onclick={() => toggleSort('first_seen')}>
+									First Seen {#if sortColumn === 'first_seen'}<span class="sort-arrow">{sortDirection === 'asc' ? '▲' : '▼'}</span>{/if}
+								</th>
+							{/if}
+							{#if visibleColumns.has('last_seen')}
+								<th class="sortable-th" class:sort-active={sortColumn === 'last_seen'} onclick={() => toggleSort('last_seen')}>
+									Last Seen {#if sortColumn === 'last_seen'}<span class="sort-arrow">{sortDirection === 'asc' ? '▲' : '▼'}</span>{/if}
+								</th>
+							{/if}
 						</tr>
 					</thead>
 					<tbody>
@@ -394,52 +548,83 @@
 										onclick={(e) => toggleSelect(asset.id, e)}
 									/>
 								</td>
-								<td class="cell-ip">
-									{asset.ip_address}
-									{#if asset.is_public_ip}
-										<span class="public-badge" title="Public IP">PUB</span>
-									{/if}
-								</td>
-								<td class="cell-mac">{asset.mac_address ?? '—'}</td>
-								<td>
-									<span
-										class="device-badge"
-										style="color: {deviceTypeColors[asset.device_type]};
-										       background: {deviceTypeColors[asset.device_type]}18"
-									>
-										{deviceTypeLabels[asset.device_type]}
-									</span>
-								</td>
-								<td>
-									{#if asset.confidence > 0}
+								{#if visibleColumns.has('ip')}
+									<td class="cell-ip">
+										{asset.ip_address}
+										{#if asset.is_public_ip}
+											<span class="public-badge" title="Public IP">PUB</span>
+										{/if}
+									</td>
+								{/if}
+								{#if visibleColumns.has('mac')}
+									<td class="cell-mac">{asset.mac_address ?? '—'}</td>
+								{/if}
+								{#if visibleColumns.has('type')}
+									<td>
 										<span
-											class="confidence-badge"
-											style="color: {confidenceColors[asset.confidence] ?? '#64748b'};
-											       background: {(confidenceColors[asset.confidence] ?? '#64748b')}18"
-											title="{confidenceLabels[asset.confidence] ?? '?'} ({asset.confidence}/5)"
+											class="device-badge"
+											style="color: {deviceTypeColors[asset.device_type]};
+											       background: {deviceTypeColors[asset.device_type]}18"
 										>
-											{asset.confidence}/5
+											{deviceTypeLabels[asset.device_type]}
 										</span>
-									{:else}
-										<span class="confidence-none">—</span>
-									{/if}
-								</td>
-								<td class="cell-vendor">{asset.vendor ?? '—'}</td>
-								<td class="cell-vendor cell-oui">{asset.oui_vendor ?? '—'}</td>
-								<td class="cell-vendor">{asset.product_family ?? '—'}</td>
-								<td class="cell-protocols">
-									{#each asset.protocols as proto}
-										<span class="proto-tag">{proto}</span>
-									{/each}
-								</td>
-								<td class="cell-country">
-									{#if asset.country}
-										<span title={asset.country}>{countryFlag(asset.country)}</span>
-									{:else}
-										—
-									{/if}
-								</td>
-								<td class="cell-numeric">{asset.packet_count.toLocaleString()}</td>
+									</td>
+								{/if}
+								{#if visibleColumns.has('confidence')}
+									<td>
+										{#if asset.confidence > 0}
+											<span
+												class="confidence-badge"
+												style="color: {confidenceColors[asset.confidence] ?? '#64748b'};
+												       background: {(confidenceColors[asset.confidence] ?? '#64748b')}18"
+												title="{confidenceLabels[asset.confidence] ?? '?'} ({asset.confidence}/5)"
+											>
+												{asset.confidence}/5
+											</span>
+										{:else}
+											<span class="confidence-none">—</span>
+										{/if}
+									</td>
+								{/if}
+								{#if visibleColumns.has('vendor')}
+									<td class="cell-vendor">{asset.vendor ?? '—'}</td>
+								{/if}
+								{#if visibleColumns.has('oui')}
+									<td class="cell-vendor cell-oui">{asset.oui_vendor ?? '—'}</td>
+								{/if}
+								{#if visibleColumns.has('product')}
+									<td class="cell-vendor">{asset.product_family ?? '—'}</td>
+								{/if}
+								{#if visibleColumns.has('protocols')}
+									<td class="cell-protocols">
+										{#each asset.protocols as proto}
+											<span class="proto-tag">{proto}</span>
+										{/each}
+									</td>
+								{/if}
+								{#if visibleColumns.has('country')}
+									<td class="cell-country">
+										{#if asset.country}
+											<span title={asset.country}>{countryFlag(asset.country)}</span>
+										{:else}
+											—
+										{/if}
+									</td>
+								{/if}
+								{#if visibleColumns.has('packets')}
+									<td class="cell-numeric">{asset.packet_count.toLocaleString()}</td>
+								{/if}
+								{#if visibleColumns.has('purdue')}
+									<td class="cell-numeric">
+										{asset.purdue_level !== null && asset.purdue_level !== undefined ? `L${asset.purdue_level}` : '—'}
+									</td>
+								{/if}
+								{#if visibleColumns.has('first_seen')}
+									<td class="cell-date">{asset.first_seen.slice(0, 19).replace('T', ' ')}</td>
+								{/if}
+								{#if visibleColumns.has('last_seen')}
+									<td class="cell-date">{asset.last_seen.slice(0, 19).replace('T', ' ')}</td>
+								{/if}
 							</tr>
 						{/each}
 					</tbody>
@@ -970,6 +1155,123 @@
 								{/if}
 							</div>
 						{/if}
+
+						<!-- LLDP Detail -->
+						{#if deepParseInfo.lldp}
+							{@const lldp = deepParseInfo.lldp as LldpDetail}
+							<div class="detail-section">
+								<h4 class="section-title" style="color: #38bdf8">LLDP Discovery</h4>
+								{#if lldp.system_name}
+									<div class="detail-row">
+										<span class="detail-label">System Name</span>
+										<span class="detail-value highlight">{lldp.system_name}</span>
+									</div>
+								{/if}
+								{#if lldp.vendor}
+									<div class="detail-row">
+										<span class="detail-label">Vendor</span>
+										<span class="detail-value">{lldp.vendor}</span>
+									</div>
+								{/if}
+								{#if lldp.model}
+									<div class="detail-row">
+										<span class="detail-label">Model</span>
+										<span class="detail-value highlight">{lldp.model}</span>
+									</div>
+								{/if}
+								{#if lldp.firmware}
+									<div class="detail-row">
+										<span class="detail-label">Firmware</span>
+										<span class="detail-value">{lldp.firmware}</span>
+									</div>
+								{/if}
+								{#if lldp.capability_summary}
+									<div class="detail-row">
+										<span class="detail-label">Capabilities</span>
+										<span class="detail-value">{lldp.capability_summary}</span>
+									</div>
+								{/if}
+								{#if lldp.chassis_id}
+									<div class="detail-row">
+										<span class="detail-label">Chassis ID</span>
+										<span class="detail-value">{lldp.chassis_id}</span>
+									</div>
+								{/if}
+								{#if lldp.port_id}
+									<div class="detail-row">
+										<span class="detail-label">Port ID</span>
+										<span class="detail-value">{lldp.port_id}</span>
+									</div>
+								{/if}
+								{#if lldp.management_addresses.length > 0}
+									<div class="detail-row">
+										<span class="detail-label">Mgmt Addrs</span>
+										<span class="detail-value">{lldp.management_addresses.join(', ')}</span>
+									</div>
+								{/if}
+								{#if lldp.vlan_ids.length > 0}
+									<div class="detail-row">
+										<span class="detail-label">VLANs</span>
+										<span class="detail-value">{lldp.vlan_ids.join(', ')}</span>
+									</div>
+								{/if}
+								{#if lldp.system_description}
+									<div class="detail-subsection">
+										<h5 class="subsection-title">System Description</h5>
+										<div class="lldp-description">{lldp.system_description}</div>
+									</div>
+								{/if}
+							</div>
+						{/if}
+
+						{#if deepParseInfo.snmp}
+							{@const snmp = deepParseInfo.snmp}
+							<div class="detail-section">
+								<h4 class="section-title" style="color: #a78bfa">SNMP Identity</h4>
+								{#if snmp.sys_name}
+									<div class="detail-row">
+										<span class="detail-label">sysName</span>
+										<span class="detail-value">{snmp.sys_name}</span>
+									</div>
+								{/if}
+								{#if snmp.vendor}
+									<div class="detail-row">
+										<span class="detail-label">Vendor (OID)</span>
+										<span class="detail-value">{snmp.vendor}</span>
+									</div>
+								{/if}
+								{#if snmp.sys_location}
+									<div class="detail-row">
+										<span class="detail-label">Location</span>
+										<span class="detail-value">{snmp.sys_location}</span>
+									</div>
+								{/if}
+								{#if snmp.sys_contact}
+									<div class="detail-row">
+										<span class="detail-label">Contact</span>
+										<span class="detail-value">{snmp.sys_contact}</span>
+									</div>
+								{/if}
+								{#if snmp.sys_object_id}
+									<div class="detail-row">
+										<span class="detail-label">sysObjectID</span>
+										<span class="detail-value" style="font-family: monospace; font-size: 0.75rem">{snmp.sys_object_id}</span>
+									</div>
+								{/if}
+								{#if snmp.sys_uptime_cs != null}
+									<div class="detail-row">
+										<span class="detail-label">Uptime</span>
+										<span class="detail-value">{(snmp.sys_uptime_cs / 100 / 3600).toFixed(1)} hours</span>
+									</div>
+								{/if}
+								{#if snmp.sys_descr}
+									<div class="detail-subsection">
+										<h5 class="subsection-title">sysDescr</h5>
+										<div class="lldp-description">{snmp.sys_descr}</div>
+									</div>
+								{/if}
+							</div>
+						{/if}
 					{/if}
 				</div>
 			</div>
@@ -1053,6 +1355,62 @@
 		font-size: 10px;
 		color: var(--gm-text-muted);
 		white-space: nowrap;
+	}
+
+	/* ── Column Picker ───────────────────────────── */
+
+	.col-picker-wrap {
+		position: relative;
+	}
+
+	.col-picker-btn {
+		padding: 5px 10px;
+		background: var(--gm-bg-panel);
+		border: 1px solid var(--gm-border);
+		border-radius: 4px;
+		color: var(--gm-text-secondary);
+		font-family: inherit;
+		font-size: 11px;
+		cursor: pointer;
+		white-space: nowrap;
+		transition: all 0.15s;
+	}
+
+	.col-picker-btn:hover {
+		background: var(--gm-bg-hover);
+		color: var(--gm-text-primary);
+	}
+
+	.col-picker-dropdown {
+		position: absolute;
+		top: calc(100% + 4px);
+		right: 0;
+		z-index: 100;
+		background: var(--gm-bg-panel);
+		border: 1px solid var(--gm-border);
+		border-radius: 6px;
+		padding: 6px;
+		min-width: 160px;
+		box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+		display: flex;
+		flex-direction: column;
+		gap: 1px;
+	}
+
+	.col-picker-item {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 4px 8px;
+		font-size: 11px;
+		color: var(--gm-text-secondary);
+		cursor: pointer;
+		border-radius: 3px;
+	}
+
+	.col-picker-item:hover {
+		background: var(--gm-bg-hover);
+		color: var(--gm-text-primary);
 	}
 
 	/* ── Bulk Operations Bar ──────────────────────── */
@@ -1158,6 +1516,33 @@
 	}
 
 	.th-check { width: 32px; }
+
+	.sortable-th {
+		cursor: pointer;
+		user-select: none;
+		transition: background 0.1s, color 0.1s;
+	}
+
+	.sortable-th:hover {
+		background: var(--gm-bg-hover);
+		color: var(--gm-text-primary);
+	}
+
+	.sort-active {
+		color: var(--gm-text-primary) !important;
+	}
+
+	.sort-arrow {
+		font-size: 8px;
+		margin-left: 3px;
+		vertical-align: middle;
+	}
+
+	.cell-date {
+		font-size: 10px;
+		color: var(--gm-text-muted);
+		white-space: nowrap;
+	}
 
 	.asset-table td {
 		padding: 7px 12px;
@@ -1746,6 +2131,22 @@
 	}
 
 	.cred-copy { margin-top: 8px; }
+
+	/* ── LLDP description block ─────────────────────────── */
+
+	.lldp-description {
+		font-size: 0.75rem;
+		color: var(--gm-text-secondary);
+		font-family: 'JetBrains Mono', monospace;
+		background: var(--gm-bg-tertiary);
+		border: 1px solid var(--gm-border);
+		border-radius: 4px;
+		padding: 6px 8px;
+		white-space: pre-wrap;
+		word-break: break-word;
+		line-height: 1.5;
+		margin-top: 4px;
+	}
 
 	/* ── Bulk Input Fields ──────────────────────────────── */
 

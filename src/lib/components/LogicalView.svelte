@@ -500,8 +500,12 @@
 		if (ctxMenu.show) hideContextMenu();
 	}
 
-	onMount(() => {
-		initCytoscape();
+	onMount(async () => {
+		await initCytoscape();
+		// Render any topology that arrived while Cytoscape was initializing
+		if (currentGraph.nodes.length > 0) {
+			updateGraph(currentGraph, currentMode);
+		}
 		checkWireshark();
 		window.addEventListener('click', handleWindowClick);
 	});
@@ -754,7 +758,7 @@
 		flex: 1;
 		position: relative;
 		background: var(--gm-bg-primary);
-		background-image: radial-gradient(circle, #1e293b 1px, transparent 1px);
+		background-image: radial-gradient(circle, var(--gm-bg-dot) 1px, transparent 1px);
 		background-size: 24px 24px;
 		overflow: hidden;
 	}
@@ -899,7 +903,7 @@
 		align-items: center;
 		gap: 10px;
 		padding: 10px 16px;
-		background: rgba(15, 23, 42, 0.95);
+		background: var(--gm-bg-panel);
 		border: 1px solid #f59e0b;
 		border-radius: 6px;
 		color: #f59e0b;
@@ -917,7 +921,7 @@
 	.large-net-msg {
 		flex: 1;
 		min-width: 200px;
-		color: #e2e8f0;
+		color: var(--gm-text-primary);
 	}
 
 	.large-net-btn {

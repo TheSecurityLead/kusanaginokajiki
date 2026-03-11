@@ -30,6 +30,8 @@ pub mod vendor_tables;
 pub mod iec104;
 pub mod profinet_dcp;
 pub mod snmp;
+pub mod lldp;
+pub mod redundancy;
 
 pub use protocol::{IcsProtocol, identify_protocol, identify_by_port};
 pub use modbus::{
@@ -46,6 +48,13 @@ pub use s7comm::{parse as parse_s7, S7Info, CotpPduType, CotpParams, S7PduType, 
 pub use bacnet::{parse as parse_bacnet, BacnetInfo, BvlcFunction, BacnetPduType, BacnetService, BacnetObjectType, BacnetIAm, BacnetRole};
 pub use iec104::{parse as parse_iec104, Iec104Info, Iec104FrameType, Iec104Role, UFrameFunction, AsduTypeId, CauseOfTransmission};
 pub use profinet_dcp::{parse as parse_profinet_dcp, ProfinetDcpInfo, DcpServiceId, DcpServiceType, DcpDeviceInfo, ProfinetRole};
+pub use lldp::{parse as parse_lldp, LldpInfo, LldpMgmtAddress};
+pub use snmp::{parse_snmp_community, SnmpInfo, parse_snmp_response, SnmpDeviceInfo};
+pub use redundancy::{
+    parse as parse_redundancy,
+    detect_protocol as detect_redundancy_protocol,
+    RedundancyProtocol, RedundancyInfo,
+};
 
 use gm_capture::ParsedPacket;
 use serde::Serialize;
@@ -72,6 +81,8 @@ pub enum DeepParseResult {
     Iec104(Iec104Info),
     /// PROFINET DCP deep parse result
     ProfinetDcp(ProfinetDcpInfo),
+    /// LLDP (Link Layer Discovery Protocol) parse result
+    Lldp(LldpInfo),
 }
 
 /// Attempt to deep-parse a packet based on its identified protocol.
