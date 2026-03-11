@@ -55,13 +55,8 @@ CLAUDE.local
 # Development prompt files
 PROMPT-*.md
 UPDATE_README.md
-CLAUDE_local.md
 .claude/
 generate_guide.py
 Kusanagi-Kajiki-Guide.pdf
 *:Zone.Identifier
 *Zone.Identifier
-CLAUDE.md
-CLAUDE.md
-docs/
-CLAUDE.md
