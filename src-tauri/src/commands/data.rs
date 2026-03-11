@@ -8,33 +8,97 @@ use super::{
     DeepParseInfo, FunctionCodeStat,
 };
 
+/// Maximum nodes returned by get_topology. Excess nodes (by packet count) are
+/// dropped to prevent the webview from being asked to render a massive graph.
+const MAX_TOPOLOGY_NODES: usize = 5_000;
+/// Maximum edges returned by get_topology.
+const MAX_TOPOLOGY_EDGES: usize = 20_000;
+/// Maximum assets returned by get_assets.
+const MAX_ASSETS: usize = 10_000;
+/// Maximum connections returned by get_connections.
+const MAX_CONNECTIONS: usize = 10_000;
+
 /// Get the current network topology graph for visualization.
+///
+/// Nodes are capped at MAX_TOPOLOGY_NODES (5 000) by packet_count descending.
+/// Edges are then filtered to only include connections between remaining nodes
+/// and capped at MAX_TOPOLOGY_EDGES (20 000) by packet_count descending.
+/// For smaller datasets the full graph is returned unchanged.
 #[tauri::command]
 pub fn get_topology(state: State<'_, AppState>) -> Result<TopologyGraph, String> {
     let state_inner = state.inner.lock().map_err(|e| e.to_string())?;
-    Ok(state_inner.topology.clone())
+    let topo = &state_inner.topology;
+
+    if topo.nodes.len() <= MAX_TOPOLOGY_NODES && topo.edges.len() <= MAX_TOPOLOGY_EDGES {
+        return Ok(topo.clone());
+    }
+
+    // Cap nodes: keep the highest-traffic devices.
+    let mut nodes = topo.nodes.clone();
+    nodes.sort_by(|a, b| b.packet_count.cmp(&a.packet_count));
+    nodes.truncate(MAX_TOPOLOGY_NODES);
+
+    // Build a set of the retained node IDs so we can filter edges cheaply.
+    let retained: HashSet<&str> = nodes.iter().map(|n| n.id.as_str()).collect();
+
+    // Filter edges to connections between retained nodes, then cap.
+    let mut edges: Vec<_> = topo.edges.iter()
+        .filter(|e| retained.contains(e.source.as_str()) && retained.contains(e.target.as_str()))
+        .cloned()
+        .collect();
+    edges.sort_by(|a, b| b.packet_count.cmp(&a.packet_count));
+    edges.truncate(MAX_TOPOLOGY_EDGES);
+
+    Ok(TopologyGraph { nodes, edges })
 }
 
 /// Get all discovered assets.
+///
+/// Capped at MAX_ASSETS (10 000) by packet_count descending for datasets with
+/// an unusually high number of unique IPs (e.g. scan traffic in a large PCAP).
 #[tauri::command]
 pub fn get_assets(state: State<'_, AppState>) -> Result<Vec<AssetInfo>, String> {
     let state_inner = state.inner.lock().map_err(|e| e.to_string())?;
-    Ok(state_inner.assets.clone())
+
+    if state_inner.assets.len() <= MAX_ASSETS {
+        return Ok(state_inner.assets.clone());
+    }
+
+    let mut assets = state_inner.assets.clone();
+    assets.sort_by(|a, b| b.packet_count.cmp(&a.packet_count));
+    assets.truncate(MAX_ASSETS);
+    Ok(assets)
 }
 
 /// Get all observed connections.
+///
+/// Capped at MAX_CONNECTIONS (10 000) by packet_count descending.
 #[tauri::command]
 pub fn get_connections(state: State<'_, AppState>) -> Result<Vec<ConnectionInfo>, String> {
     let state_inner = state.inner.lock().map_err(|e| e.to_string())?;
-    Ok(state_inner.connections.clone())
+
+    if state_inner.connections.len() <= MAX_CONNECTIONS {
+        return Ok(state_inner.connections.clone());
+    }
+
+    let mut conns = state_inner.connections.clone();
+    conns.sort_by(|a, b| b.packet_count.cmp(&a.packet_count));
+    conns.truncate(MAX_CONNECTIONS);
+    Ok(conns)
 }
 
 /// Compute protocol breakdown statistics from current connections.
+///
+/// Single-pass O(n_connections): accumulates stats and unique-device sets for
+/// all protocols in one loop, avoiding the previous O(protocols × connections)
+/// double-loop.
 #[tauri::command]
 pub fn get_protocol_stats(state: State<'_, AppState>) -> Result<Vec<ProtocolStatInfo>, String> {
     let state_inner = state.inner.lock().map_err(|e| e.to_string())?;
 
     let mut stats: HashMap<String, ProtocolStatInfo> = HashMap::new();
+    // Track unique devices per protocol in the same pass.
+    let mut devices_per_proto: HashMap<String, HashSet<String>> = HashMap::new();
 
     for conn in &state_inner.connections {
         let entry = stats.entry(conn.protocol.clone()).or_insert_with(|| {
@@ -46,22 +110,20 @@ pub fn get_protocol_stats(state: State<'_, AppState>) -> Result<Vec<ProtocolStat
                 unique_devices: 0,
             }
         });
-
         entry.packet_count += conn.packet_count;
         entry.byte_count += conn.byte_count;
         entry.connection_count += 1;
+
+        let dev = devices_per_proto.entry(conn.protocol.clone()).or_default();
+        dev.insert(conn.src_ip.clone());
+        dev.insert(conn.dst_ip.clone());
     }
 
-    // Count unique devices per protocol
-    for (proto, stat) in &mut stats {
-        let mut devices: HashSet<String> = HashSet::new();
-        for conn in &state_inner.connections {
-            if &conn.protocol == proto {
-                devices.insert(conn.src_ip.clone());
-                devices.insert(conn.dst_ip.clone());
-            }
+    // Merge unique device counts into stats.
+    for (proto, dev_set) in &devices_per_proto {
+        if let Some(stat) = stats.get_mut(proto) {
+            stat.unique_devices = dev_set.len() as u64;
         }
-        stat.unique_devices = devices.len() as u64;
     }
 
     let mut result: Vec<ProtocolStatInfo> = stats.into_values().collect();
@@ -71,6 +133,8 @@ pub fn get_protocol_stats(state: State<'_, AppState>) -> Result<Vec<ProtocolStat
 }
 
 /// Get packet summaries for a specific connection (for the connection tree detail view).
+///
+/// Already capped at 1000 per connection during ingestion (see processor.rs).
 #[tauri::command]
 pub fn get_connection_packets(
     connection_id: String,
@@ -169,6 +233,7 @@ pub struct TimelineRange {
 ///
 /// Returns the earliest and latest timestamps from all connections,
 /// used by the timeline scrubber to set slider bounds.
+/// Scans all connections (not capped) to ensure accurate bounds.
 #[tauri::command]
 pub fn get_timeline_range(state: State<'_, AppState>) -> Result<TimelineRange, String> {
     let state_inner = state.inner.lock().map_err(|e| e.to_string())?;

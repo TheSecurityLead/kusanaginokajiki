@@ -278,12 +278,27 @@
 	function handleFilterInput(event: Event) {
 		const target = event.target as HTMLInputElement;
 		assetFilter.set(target.value);
+		invPage = 0;
 	}
 
 	function formatInterval(ms: number): string {
 		if (ms < 1000) return `${ms.toFixed(0)}ms`;
 		return `${(ms / 1000).toFixed(1)}s`;
 	}
+
+	// Pagination for the asset table — prevents DOM overload on large datasets.
+	const INV_PAGE_SIZE = 50;
+	let invPage = $state(0);
+	let invTotalPages = $derived(Math.max(1, Math.ceil($filteredAssets.length / INV_PAGE_SIZE)));
+	let pagedAssets = $derived(
+		$filteredAssets.slice(invPage * INV_PAGE_SIZE, (invPage + 1) * INV_PAGE_SIZE)
+	);
+
+	// Reset to page 0 whenever the filter changes.
+	$effect(() => {
+		$filteredAssets; // track dependency
+		invPage = 0;
+	});
 </script>
 
 <div class="inventory-container">
@@ -365,7 +380,7 @@
 						</tr>
 					</thead>
 					<tbody>
-						{#each $filteredAssets as asset}
+						{#each pagedAssets as asset}
 							<tr
 								class="asset-row"
 								class:selected={$selectedAssetId === asset.id}
@@ -429,6 +444,19 @@
 						{/each}
 					</tbody>
 				</table>
+				{#if invTotalPages > 1}
+					<div class="inv-pagination">
+						<button class="inv-page-btn" disabled={invPage === 0} onclick={() => { invPage = 0; }}>«</button>
+						<button class="inv-page-btn" disabled={invPage === 0} onclick={() => { invPage -= 1; }}>‹</button>
+						<span class="inv-page-info">
+							{invPage + 1} / {invTotalPages}
+							&nbsp;·&nbsp;
+							{invPage * INV_PAGE_SIZE + 1}–{Math.min((invPage + 1) * INV_PAGE_SIZE, $filteredAssets.length)} of {$filteredAssets.length}
+						</span>
+						<button class="inv-page-btn" disabled={invPage >= invTotalPages - 1} onclick={() => { invPage += 1; }}>›</button>
+						<button class="inv-page-btn" disabled={invPage >= invTotalPages - 1} onclick={() => { invPage = invTotalPages - 1; }}>»</button>
+					</div>
+				{/if}
 			{/if}
 		</div>
 
@@ -1729,5 +1757,45 @@
 		border-radius: 4px;
 		color: var(--gm-text-primary, #f1f5f9);
 		width: 120px;
+	}
+
+	/* ── Asset table pagination ─────────────────── */
+
+	.inv-pagination {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 6px;
+		padding: 8px 12px;
+		border-top: 1px solid var(--gm-border, #334155);
+		background: var(--gm-bg-secondary, #1e293b);
+	}
+
+	.inv-page-btn {
+		padding: 3px 9px;
+		background: var(--gm-bg-panel, #0f172a);
+		border: 1px solid var(--gm-border, #334155);
+		border-radius: 4px;
+		color: var(--gm-text-secondary, #94a3b8);
+		font-family: inherit;
+		font-size: 12px;
+		cursor: pointer;
+		transition: all 0.15s;
+	}
+
+	.inv-page-btn:hover:not(:disabled) {
+		background: var(--gm-bg-hover, #1e293b);
+		color: var(--gm-text-primary, #f1f5f9);
+	}
+
+	.inv-page-btn:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+
+	.inv-page-info {
+		font-size: 11px;
+		color: var(--gm-text-muted, #64748b);
+		white-space: nowrap;
 	}
 </style>

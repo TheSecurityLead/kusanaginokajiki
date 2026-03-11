@@ -138,6 +138,11 @@ fn build_analysis_input(state: &super::AppStateInner) -> AnalysisInput {
     }
 }
 
+/// Maximum findings returned by get_findings — nobody reads 50 000 findings.
+const MAX_FINDINGS: usize = 1_000;
+/// Maximum anomaly scores returned by get_anomalies.
+const MAX_ANOMALIES: usize = 500;
+
 /// Run the full security analysis pipeline.
 ///
 /// Detects ATT&CK techniques, auto-assigns Purdue levels, scores anomalies.
@@ -154,13 +159,16 @@ pub fn run_analysis(state: State<'_, AppState>) -> Result<AnalysisResult, String
     state_inner.purdue_assignments = result.purdue_assignments.clone();
     state_inner.anomalies = result.anomalies.clone();
 
-    // Apply auto-assigned Purdue levels to assets (only where not manually set)
-    for assignment in &result.purdue_assignments {
-        if let Some(asset) = state_inner.assets.iter_mut()
-            .find(|a| a.ip_address == assignment.ip_address)
-        {
-            if asset.purdue_level.is_none() {
-                asset.purdue_level = Some(assignment.level);
+    // Apply auto-assigned Purdue levels to assets (only where not manually set).
+    // Build a lookup map first so this is O(assignments) not O(assets × assignments).
+    let purdue_map: std::collections::HashMap<&str, u8> = result.purdue_assignments.iter()
+        .map(|a| (a.ip_address.as_str(), a.level))
+        .collect();
+
+    for asset in &mut state_inner.assets {
+        if asset.purdue_level.is_none() {
+            if let Some(&level) = purdue_map.get(asset.ip_address.as_str()) {
+                asset.purdue_level = Some(level);
             }
         }
     }
@@ -168,11 +176,14 @@ pub fn run_analysis(state: State<'_, AppState>) -> Result<AnalysisResult, String
     Ok(result)
 }
 
-/// Get all findings from the last analysis run.
+/// Get findings from the last analysis run (capped at MAX_FINDINGS = 1 000).
 #[tauri::command]
 pub fn get_findings(state: State<'_, AppState>) -> Result<Vec<Finding>, String> {
     let state_inner = state.inner.lock().map_err(|e| e.to_string())?;
-    Ok(state_inner.findings.clone())
+    if state_inner.findings.len() <= MAX_FINDINGS {
+        return Ok(state_inner.findings.clone());
+    }
+    Ok(state_inner.findings[..MAX_FINDINGS].to_vec())
 }
 
 /// Get Purdue level assignments from the last analysis run.
@@ -182,11 +193,14 @@ pub fn get_purdue_assignments(state: State<'_, AppState>) -> Result<Vec<PurdueAs
     Ok(state_inner.purdue_assignments.clone())
 }
 
-/// Get anomaly scores from the last analysis run.
+/// Get anomaly scores from the last analysis run (capped at MAX_ANOMALIES = 500).
 #[tauri::command]
 pub fn get_anomalies(state: State<'_, AppState>) -> Result<Vec<AnomalyScore>, String> {
     let state_inner = state.inner.lock().map_err(|e| e.to_string())?;
-    Ok(state_inner.anomalies.clone())
+    if state_inner.anomalies.len() <= MAX_ANOMALIES {
+        return Ok(state_inner.anomalies.clone());
+    }
+    Ok(state_inner.anomalies[..MAX_ANOMALIES].to_vec())
 }
 
 /// Get credential warnings for all discovered devices.

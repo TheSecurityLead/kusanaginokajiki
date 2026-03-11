@@ -1,11 +1,18 @@
 //! Communication pattern analysis: per-connection timing statistics and anomaly detection.
 //!
-//! `PatternAnalyzer` accumulates per-packet timestamps in O(1) and computes
-//! interval statistics (mean, std dev, CV, min, max) in O(n log n) when
-//! `compute_stats()` is called.  Designed to handle 1 M+ packets efficiently.
+//! `PatternAnalyzer` accumulates per-packet data using Welford's online algorithm
+//! for O(1) per-packet cost and O(1) memory per connection pair regardless of
+//! packet count.  No timestamp vectors are stored — intervals are computed
+//! incrementally as each packet arrives.
+//!
+//! `compute_stats()` is O(n_connections) and returns at most 500 entries
+//! (top by packet count) to prevent serialisation from overwhelming the webview.
 
 use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
+
+/// Maximum number of `ConnectionStats` entries returned by `compute_stats()`.
+const MAX_STATS_RETURNED: usize = 500;
 
 /// Per-connection-pair timing and traffic statistics.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -57,7 +64,86 @@ pub struct PatternAnomaly {
 // Internal map key: (src_ip, dst_ip, dst_port, protocol)
 type ConnKey = (String, String, u16, String);
 
+/// Per-connection accumulator using Welford's online algorithm.
+///
+/// Stores O(1) state regardless of packet count: no timestamp vectors.
+struct ConnEntry {
+    packet_count: u64,
+    byte_count: u64,
+    first_seen: f64,
+    last_seen: f64,
+    /// Previous packet timestamp (seconds) for computing the next interval.
+    prev_ts: Option<f64>,
+    /// Number of inter-packet intervals recorded so far.
+    interval_count: u64,
+    /// Welford running mean of intervals (milliseconds).
+    mean_ms: f64,
+    /// Welford running M2 — sum of squared deviations from mean (ms²).
+    m2_ms: f64,
+    /// Minimum interval seen (milliseconds).
+    min_ms: f64,
+    /// Maximum interval seen (milliseconds).
+    max_ms: f64,
+}
+
+impl ConnEntry {
+    fn new(timestamp_secs: f64, bytes: u64) -> Self {
+        Self {
+            packet_count: 1,
+            byte_count: bytes,
+            first_seen: timestamp_secs,
+            last_seen: timestamp_secs,
+            prev_ts: Some(timestamp_secs),
+            interval_count: 0,
+            mean_ms: 0.0,
+            m2_ms: 0.0,
+            min_ms: f64::INFINITY,
+            max_ms: f64::NEG_INFINITY,
+        }
+    }
+
+    fn update(&mut self, timestamp_secs: f64, bytes: u64) {
+        self.packet_count += 1;
+        self.byte_count += bytes;
+
+        // Track true first/last regardless of packet arrival order.
+        if timestamp_secs < self.first_seen {
+            self.first_seen = timestamp_secs;
+        }
+        if timestamp_secs > self.last_seen {
+            self.last_seen = timestamp_secs;
+        }
+
+        // Welford's online update for the inter-packet interval.
+        // Skip negative intervals — they indicate out-of-order arrival.
+        if let Some(prev) = self.prev_ts {
+            let interval_ms = (timestamp_secs - prev) * 1000.0;
+            if interval_ms >= 0.0 {
+                self.interval_count += 1;
+                let n = self.interval_count as f64;
+                // Welford: mean and M2 update
+                let delta = interval_ms - self.mean_ms;
+                self.mean_ms += delta / n;
+                let delta2 = interval_ms - self.mean_ms;
+                self.m2_ms += delta * delta2;
+
+                if interval_ms < self.min_ms {
+                    self.min_ms = interval_ms;
+                }
+                if interval_ms > self.max_ms {
+                    self.max_ms = interval_ms;
+                }
+            }
+        }
+
+        self.prev_ts = Some(timestamp_secs);
+    }
+}
+
 /// Accumulates per-packet timing data and computes communication pattern statistics.
+///
+/// All computation is O(1) per packet (Welford's online algorithm).
+/// No timestamp vectors are stored — memory is bounded regardless of packet count.
 ///
 /// # Usage
 /// ```
@@ -70,8 +156,7 @@ type ConnKey = (String, String, u16, String);
 /// assert_eq!(stats.len(), 1);
 /// ```
 pub struct PatternAnalyzer {
-    /// (src_ip, dst_ip, dst_port, protocol) → (timestamps_secs, byte_count)
-    data: HashMap<ConnKey, (Vec<f64>, u64)>,
+    data: HashMap<ConnKey, ConnEntry>,
 }
 
 impl PatternAnalyzer {
@@ -81,7 +166,7 @@ impl PatternAnalyzer {
         }
     }
 
-    /// Record a single packet. O(1) — appends timestamp to a Vec.
+    /// Record a single packet.  O(1) — updates Welford accumulators in place.
     pub fn record_packet(
         &mut self,
         src_ip: &str,
@@ -97,54 +182,48 @@ impl PatternAnalyzer {
             port,
             protocol.to_string(),
         );
-        let entry = self.data.entry(key).or_insert_with(|| (Vec::new(), 0));
-        entry.0.push(timestamp_secs);
-        entry.1 += bytes;
+        match self.data.entry(key) {
+            std::collections::hash_map::Entry::Occupied(mut e) => {
+                e.get_mut().update(timestamp_secs, bytes);
+            }
+            std::collections::hash_map::Entry::Vacant(e) => {
+                e.insert(ConnEntry::new(timestamp_secs, bytes));
+            }
+        }
     }
 
     /// Compute statistics for all tracked connection pairs.
     ///
-    /// Sorts timestamps in-place (O(n log n) per pair), then derives interval
-    /// statistics.  Results are sorted by descending packet count.
-    pub fn compute_stats(&mut self) -> Vec<ConnectionStats> {
-        let mut result = Vec::with_capacity(self.data.len());
+    /// O(n_connections) — derives stats from pre-computed Welford accumulators.
+    /// Returns at most `MAX_STATS_RETURNED` (500) entries sorted by descending
+    /// packet count to keep the serialised JSON payload manageable.
+    pub fn compute_stats(&self) -> Vec<ConnectionStats> {
+        let mut result = Vec::with_capacity(self.data.len().min(MAX_STATS_RETURNED + 1));
 
-        for ((src_ip, dst_ip, port, protocol), (timestamps, byte_count)) in &mut self.data {
-            if timestamps.is_empty() {
-                continue;
-            }
-
-            timestamps.sort_by(|a, b| a.total_cmp(b));
-
-            let packet_count = timestamps.len() as u64;
-            let first_seen = timestamps[0];
-            let last_seen = *timestamps.last().unwrap();
-            let duration_secs = last_seen - first_seen;
-
-            // Inter-packet intervals in milliseconds
-            let intervals: Vec<f64> = timestamps
-                .windows(2)
-                .map(|w| (w[1] - w[0]) * 1000.0)
-                .collect();
+        for ((src_ip, dst_ip, port, protocol), entry) in &self.data {
+            let duration_secs = entry.last_seen - entry.first_seen;
 
             let (avg_interval_ms, std_interval_ms, min_interval_ms, max_interval_ms, is_periodic) =
-                if intervals.is_empty() {
+                if entry.interval_count == 0 {
                     (0.0, 0.0, 0.0, 0.0, false)
                 } else {
-                    let n = intervals.len() as f64;
-                    let mean = intervals.iter().sum::<f64>() / n;
-                    let variance = intervals.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / n;
+                    let mean = entry.mean_ms;
+                    // Population variance from Welford M2.
+                    let variance = if entry.interval_count > 1 {
+                        entry.m2_ms / entry.interval_count as f64
+                    } else {
+                        0.0
+                    };
                     let std_dev = variance.sqrt();
-                    let min = intervals.iter().cloned().fold(f64::INFINITY, f64::min);
-                    let max = intervals.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+                    let min = if entry.min_ms.is_finite() { entry.min_ms } else { 0.0 };
+                    let max = if entry.max_ms.is_finite() { entry.max_ms } else { 0.0 };
                     let cv = if mean > 0.0 { std_dev / mean } else { f64::INFINITY };
-                    // Periodic: low coefficient of variation and enough samples
-                    let periodic = cv < 0.3 && intervals.len() >= 5;
+                    let periodic = cv < 0.3 && entry.interval_count >= 5;
                     (mean, std_dev, min, max, periodic)
                 };
 
             let packets_per_sec = if duration_secs > 0.0 {
-                packet_count as f64 / duration_secs
+                entry.packet_count as f64 / duration_secs
             } else {
                 0.0
             };
@@ -154,10 +233,10 @@ impl PatternAnalyzer {
                 dst_ip: dst_ip.clone(),
                 protocol: protocol.clone(),
                 port: *port,
-                packet_count,
-                byte_count: *byte_count,
-                first_seen,
-                last_seen,
+                packet_count: entry.packet_count,
+                byte_count: entry.byte_count,
+                first_seen: entry.first_seen,
+                last_seen: entry.last_seen,
                 duration_secs,
                 avg_interval_ms,
                 std_interval_ms,
@@ -168,7 +247,9 @@ impl PatternAnalyzer {
             });
         }
 
+        // Sort descending by packet count, then cap to avoid massive JSON payloads.
         result.sort_by(|a, b| b.packet_count.cmp(&a.packet_count));
+        result.truncate(MAX_STATS_RETURNED);
         result
     }
 
@@ -291,7 +372,7 @@ mod tests {
 
     #[test]
     fn test_empty_analyzer() {
-        let mut analyzer = PatternAnalyzer::new();
+        let analyzer = PatternAnalyzer::new();
         let stats = analyzer.compute_stats();
         assert!(stats.is_empty());
         let anomalies = PatternAnalyzer::detect_anomalies(&stats);
@@ -409,5 +490,43 @@ mod tests {
             .iter()
             .any(|a| matches!(a.anomaly_type, PatternAnomalyType::IrregularPolling));
         assert!(has_irregular, "Expected IrregularPolling anomaly for bursty traffic");
+    }
+
+    #[test]
+    fn test_no_memory_growth_on_large_packet_count() {
+        // Simulate 1M packets on a single connection — should not exhaust memory.
+        let mut analyzer = PatternAnalyzer::new();
+        for i in 0..1_000_000_u64 {
+            analyzer.record_packet(
+                "10.0.0.1",
+                "10.0.0.2",
+                502,
+                "Modbus",
+                i as f64 * 0.001,
+                60,
+            );
+        }
+        let stats = analyzer.compute_stats();
+        assert_eq!(stats.len(), 1);
+        assert_eq!(stats[0].packet_count, 1_000_000);
+        // ~1ms average interval expected
+        assert!((stats[0].avg_interval_ms - 1.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_compute_stats_capped_at_500() {
+        // 600 distinct connection pairs — result must be capped at 500.
+        let mut analyzer = PatternAnalyzer::new();
+        for i in 0..600_u32 {
+            let dst = format!("10.0.{}.{}", i / 256, i % 256);
+            // Give higher-numbered connections more packets so sort order is predictable.
+            for j in 0..=i {
+                analyzer.record_packet("10.1.0.1", &dst, 502, "Modbus", f64::from(j), 60);
+            }
+        }
+        let stats = analyzer.compute_stats();
+        assert_eq!(stats.len(), 500, "compute_stats must cap at MAX_STATS_RETURNED");
+        // Top entry should have the most packets (connection i=599 → 600 packets).
+        assert_eq!(stats[0].packet_count, 600);
     }
 }

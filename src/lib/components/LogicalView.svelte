@@ -22,6 +22,13 @@
 	let wiresharkAvailable = $state(false);
 	let layout = $state<'fcose' | 'purdue'>('fcose');
 
+	/** fcose becomes too slow above this node count — show a warning instead. */
+	const FCOSE_NODE_LIMIT = 2000;
+	/** Whether the current graph exceeds the layout limit. */
+	let largeNetworkWarning = $state(false);
+	/** User acknowledged and wants layout anyway. */
+	let forceLayout = $state(false);
+
 	// Check if Wireshark is installed on mount
 	async function checkWireshark() {
 		try {
@@ -363,9 +370,17 @@
 	function runLayout() {
 		if (!cy || cy.nodes('.device').length === 0) return;
 
+		const nodeCount = cy.nodes('.device').length;
+
 		if (layout === 'purdue') {
+			// Purdue layout is fast (grid placement) — no node count limit.
+			largeNetworkWarning = false;
 			cy.layout({ name: 'purdue' }).run();
+		} else if (nodeCount > FCOSE_NODE_LIMIT && !forceLayout) {
+			// fcose on large graphs freezes the webview — warn instead of running.
+			largeNetworkWarning = true;
 		} else {
+			largeNetworkWarning = false;
 			cy.layout({
 				name: 'fcose',
 				animate: true,
@@ -567,6 +582,32 @@
 				<h3>No Topology Data</h3>
 				<p>Import a PCAP file or start a live capture to visualize network topology.</p>
 				<p class="hint">Go to <strong>Capture</strong> &rarr; Import PCAP to get started.</p>
+			</div>
+		{/if}
+		{#if largeNetworkWarning}
+			<div class="large-network-banner">
+				<span class="large-net-icon">&#9888;</span>
+				<span class="large-net-msg">
+					Large network ({$topology.nodes.length.toLocaleString()} devices).
+					Force-directed layout may freeze the UI.
+				</span>
+				<button class="large-net-btn" onclick={() => {
+					forceLayout = true;
+					largeNetworkWarning = false;
+					runLayout();
+				}}>
+					Run Layout Anyway
+				</button>
+				<button class="large-net-btn secondary" onclick={() => {
+					layout = 'purdue';
+					largeNetworkWarning = false;
+					runLayout();
+				}}>
+					Use Purdue Layout
+				</button>
+				<button class="large-net-dismiss" onclick={() => { largeNetworkWarning = false; }}>
+					&times;
+				</button>
 			</div>
 		{/if}
 		<TimelineScrubber />
@@ -844,5 +885,81 @@
 		width: 8px;
 		height: 8px;
 		border-radius: 50%;
+	}
+
+	/* ── Large-network warning banner ──────────── */
+
+	.large-network-banner {
+		position: absolute;
+		top: 16px;
+		left: 50%;
+		transform: translateX(-50%);
+		z-index: 20;
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 10px 16px;
+		background: rgba(15, 23, 42, 0.95);
+		border: 1px solid #f59e0b;
+		border-radius: 6px;
+		color: #f59e0b;
+		font-size: 12px;
+		box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+		max-width: 600px;
+		flex-wrap: wrap;
+	}
+
+	.large-net-icon {
+		font-size: 16px;
+		flex-shrink: 0;
+	}
+
+	.large-net-msg {
+		flex: 1;
+		min-width: 200px;
+		color: #e2e8f0;
+	}
+
+	.large-net-btn {
+		padding: 4px 12px;
+		background: #f59e0b;
+		border: none;
+		border-radius: 4px;
+		color: #0f172a;
+		font-family: inherit;
+		font-size: 11px;
+		font-weight: 600;
+		cursor: pointer;
+		white-space: nowrap;
+		flex-shrink: 0;
+	}
+
+	.large-net-btn:hover {
+		background: #fbbf24;
+	}
+
+	.large-net-btn.secondary {
+		background: transparent;
+		border: 1px solid #f59e0b;
+		color: #f59e0b;
+	}
+
+	.large-net-btn.secondary:hover {
+		background: rgba(245, 158, 11, 0.1);
+	}
+
+	.large-net-dismiss {
+		padding: 2px 6px;
+		background: transparent;
+		border: none;
+		color: #64748b;
+		font-size: 16px;
+		cursor: pointer;
+		flex-shrink: 0;
+		line-height: 1;
+	}
+
+	.large-net-dismiss:hover {
+		color: #94a3b8;
 	}
 </style>

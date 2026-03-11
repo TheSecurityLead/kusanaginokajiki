@@ -21,11 +21,16 @@
 	// Expanded row for histogram
 	let expandedKey = $state<string | null>(null);
 
+	// Pagination
+	const PAGE_SIZE = 50;
+	let currentPage = $state(0);
+
 	// ── Data Loading ──────────────────────────────────────────────
 
 	async function load() {
 		loading = true;
 		error = null;
+		currentPage = 0;
 		try {
 			const [s, a] = await Promise.all([getConnectionStats(), getPatternAnomalies()]);
 			stats = s;
@@ -46,18 +51,38 @@
 		return `${s.src_ip}|${s.dst_ip}|${s.port}|${s.protocol}`;
 	}
 
-	/** Count anomalies matching a connection */
+	/**
+	 * Pre-computed anomaly lookup map: connection key → anomaly list.
+	 * O(1) per lookup instead of O(anomalies) per row.
+	 */
+	let anomalyMap = $derived(
+		anomalies.reduce((map, a) => {
+			const key = `${a.src_ip}|${a.dst_ip}|${a.port}`;
+			const existing = map.get(key);
+			if (existing) {
+				existing.push(a);
+			} else {
+				map.set(key, [a]);
+			}
+			return map;
+		}, new Map<string, typeof anomalies>())
+	);
+
+	/** Count anomalies matching a connection — O(1) via pre-computed map */
 	function anomalyCount(s: ConnectionStats): number {
-		return anomalies.filter(
-			(a) => a.src_ip === s.src_ip && a.dst_ip === s.dst_ip && a.port === s.port
-		).length;
+		return (anomalyMap.get(`${s.src_ip}|${s.dst_ip}|${s.port}`) ?? []).length;
+	}
+
+	/** Get anomalies for a connection — O(1) via pre-computed map */
+	function getRowAnomalies(s: ConnectionStats): typeof anomalies {
+		return anomalyMap.get(`${s.src_ip}|${s.dst_ip}|${s.port}`) ?? [];
 	}
 
 	/** All unique protocols in loaded stats */
 	let protocols = $derived([...new Set(stats.map((s) => s.protocol))].sort());
 
-	/** Filtered + sorted rows */
-	let rows = $derived(
+	/** Filtered + sorted rows (all pages) */
+	let filteredRows = $derived(
 		stats
 			.filter((s) => {
 				if (protocolFilter && s.protocol !== protocolFilter) return false;
@@ -77,6 +102,13 @@
 			})
 	);
 
+	/** Current page of rows — only these are rendered in the DOM */
+	let rows = $derived(
+		filteredRows.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE)
+	);
+
+	let totalPages = $derived(Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE)));
+
 	function setSort(col: keyof ConnectionStats) {
 		if (sortCol === col) {
 			sortAsc = !sortAsc;
@@ -84,6 +116,7 @@
 			sortCol = col;
 			sortAsc = false;
 		}
+		currentPage = 0;
 	}
 
 	function toggleExpand(key: string) {
@@ -175,7 +208,7 @@
 		<div class="toolbar-section">
 			<h2 class="view-title">Communication Patterns</h2>
 			<span class="toolbar-sep"></span>
-			<span class="row-count">{rows.length} / {stats.length} connections</span>
+			<span class="row-count">{filteredRows.length} / {stats.length} connections</span>
 		</div>
 		<div class="toolbar-section">
 			<label class="filter-label">
@@ -268,9 +301,7 @@
 					{#each rows as s (rowKey(s))}
 						{@const key = rowKey(s)}
 						{@const aCount = anomalyCount(s)}
-						{@const rowAnomalies = anomalies.filter(
-							(a) => a.src_ip === s.src_ip && a.dst_ip === s.dst_ip && a.port === s.port
-						)}
+						{@const rowAnomalies = getRowAnomalies(s)}
 						<tr
 							class="data-row"
 							class:anomalous={aCount > 0}
@@ -379,6 +410,36 @@
 				</tbody>
 			</table>
 		</div>
+		{#if totalPages > 1}
+			<div class="pagination-bar">
+				<button
+					class="page-btn"
+					disabled={currentPage === 0}
+					onclick={() => { currentPage = 0; }}
+				>«</button>
+				<button
+					class="page-btn"
+					disabled={currentPage === 0}
+					onclick={() => { currentPage -= 1; }}
+				>‹</button>
+				<span class="page-info">
+					Page {currentPage + 1} of {totalPages}
+					&nbsp;·&nbsp;
+					rows {currentPage * PAGE_SIZE + 1}–{Math.min((currentPage + 1) * PAGE_SIZE, filteredRows.length)}
+					of {filteredRows.length}
+				</span>
+				<button
+					class="page-btn"
+					disabled={currentPage >= totalPages - 1}
+					onclick={() => { currentPage += 1; }}
+				>›</button>
+				<button
+					class="page-btn"
+					disabled={currentPage >= totalPages - 1}
+					onclick={() => { currentPage = totalPages - 1; }}
+				>»</button>
+			</div>
+		{/if}
 	{/if}
 </div>
 
@@ -757,5 +818,46 @@
 		font-size: 11px;
 		color: var(--gm-text-secondary);
 		line-height: 1.4;
+	}
+
+	/* ── Pagination ──────────────────────────────── */
+
+	.pagination-bar {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 6px;
+		padding: 8px 16px;
+		border-top: 1px solid var(--gm-border);
+		background: var(--gm-bg-secondary);
+		flex-shrink: 0;
+	}
+
+	.page-btn {
+		padding: 3px 10px;
+		background: var(--gm-bg-panel);
+		border: 1px solid var(--gm-border);
+		border-radius: 4px;
+		color: var(--gm-text-secondary);
+		font-family: inherit;
+		font-size: 12px;
+		cursor: pointer;
+		transition: all 0.15s;
+	}
+
+	.page-btn:hover:not(:disabled) {
+		background: var(--gm-bg-hover);
+		color: var(--gm-text-primary);
+	}
+
+	.page-btn:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+
+	.page-info {
+		font-size: 11px;
+		color: var(--gm-text-muted);
+		white-space: nowrap;
 	}
 </style>

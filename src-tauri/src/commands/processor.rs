@@ -1060,9 +1060,8 @@ impl PacketProcessor {
 
     /// Compute per-connection-pair statistics and detect pattern anomalies.
     ///
-    /// Returns `(stats, anomalies)`.  Sorts timestamps in the internal
-    /// `PatternAnalyzer` in-place so this should only be called once
-    /// after all packets have been processed.
+    /// Returns `(stats, anomalies)` derived from Welford accumulators.
+    /// Safe to call multiple times — no mutable state in PatternAnalyzer.
     pub fn build_pattern_results(&mut self) -> (Vec<ConnectionStats>, Vec<PatternAnomaly>) {
         let stats = self.pattern_analyzer.compute_stats();
         let anomalies = PatternAnalyzer::detect_anomalies(&stats);
