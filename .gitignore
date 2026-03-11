@@ -51,3 +51,13 @@ Kusanagi-Kajiki-Guide.pdf
 # Claude local config
 CLAUDE.local
 .claude/
+
+# Development prompt files
+PROMPT-*.md
+UPDATE_README.md
+CLAUDE_local.md
+.claude/
+generate_guide.py
+Kusanagi-Kajiki-Guide.pdf
+*:Zone.Identifier
+*Zone.Identifier
