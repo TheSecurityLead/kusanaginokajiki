@@ -21,6 +21,7 @@ use gm_parsers::{
 use gm_signatures::{PacketData, SignatureEngine};
 use gm_topology::TopologyBuilder;
 use gm_db::{OuiLookup, GeoIpLookup};
+use gm_analysis::{ConnectionStats, PatternAnomaly, PatternAnalyzer};
 
 use super::{
     AssetInfo, AssetSignatureMatch, ConnectionInfo, PacketSummary, infer_device_type,
@@ -104,6 +105,9 @@ pub struct PacketProcessor {
     // Signature matching data — accumulated per-IP
     ip_packets: HashMap<String, Vec<PacketData>>,
 
+    /// Communication pattern analyzer — collects timestamps per connection pair
+    pattern_analyzer: PatternAnalyzer,
+
     pub total_packets: u64,
 }
 
@@ -151,6 +155,7 @@ impl PacketProcessor {
             profinet_roles: HashMap::new(),
             profinet_device_names: HashMap::new(),
             ip_packets: HashMap::new(),
+            pattern_analyzer: PatternAnalyzer::new(),
             total_packets: 0,
         }
     }
@@ -294,6 +299,18 @@ impl PacketProcessor {
             packet.length as u64,
         );
 
+        // Record packet for communication pattern analysis (O(1))
+        let ts_epoch_pattern = packet.timestamp.timestamp() as f64
+            + packet.timestamp.timestamp_subsec_nanos() as f64 / 1_000_000_000.0;
+        self.pattern_analyzer.record_packet(
+            &packet.src_ip,
+            &packet.dst_ip,
+            packet.dst_port,
+            &proto_str,
+            ts_epoch_pattern,
+            packet.length as u64,
+        );
+
         // Accumulate signature matching data (PacketData per IP)
         let pkt_data = PacketData {
             src_ip: packet.src_ip.clone(),
@@ -308,14 +325,18 @@ impl PacketProcessor {
             length: packet.length,
         };
 
-        self.ip_packets
-            .entry(packet.src_ip.clone())
-            .or_default()
-            .push(pkt_data.clone());
-        self.ip_packets
-            .entry(packet.dst_ip.clone())
-            .or_default()
-            .push(pkt_data);
+        // Cap signature-matching packet storage at 200 per IP.
+        // The signature engine only needs a small sample to identify a device;
+        // storing all packets would consume gigabytes for large captures.
+        const IP_PACKET_CAP: usize = 200;
+        let src_entry = self.ip_packets.entry(packet.src_ip.clone()).or_default();
+        if src_entry.len() < IP_PACKET_CAP {
+            src_entry.push(pkt_data.clone());
+        }
+        let dst_entry = self.ip_packets.entry(packet.dst_ip.clone()).or_default();
+        if dst_entry.len() < IP_PACKET_CAP {
+            dst_entry.push(pkt_data);
+        }
     }
 
     /// Process Modbus deep parse result for a packet.
@@ -1035,6 +1056,17 @@ impl PacketProcessor {
     /// Get protocols detected so far.
     pub fn get_protocols_detected(&self) -> Vec<String> {
         self.all_protocols.iter().cloned().collect()
+    }
+
+    /// Compute per-connection-pair statistics and detect pattern anomalies.
+    ///
+    /// Returns `(stats, anomalies)`.  Sorts timestamps in the internal
+    /// `PatternAnalyzer` in-place so this should only be called once
+    /// after all packets have been processed.
+    pub fn build_pattern_results(&mut self) -> (Vec<ConnectionStats>, Vec<PatternAnomaly>) {
+        let stats = self.pattern_analyzer.compute_stats();
+        let anomalies = PatternAnalyzer::detect_anomalies(&stats);
+        (stats, anomalies)
     }
 
 }

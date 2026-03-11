@@ -19,10 +19,19 @@ pub mod attack;
 pub mod purdue;
 pub mod anomaly;
 pub mod error;
+pub mod default_creds;
+pub mod risk;
+pub mod naming;
+pub mod comm_patterns;
 
 use serde::{Serialize, Deserialize};
 use uuid::Uuid;
 use chrono::Utc;
+
+pub use default_creds::{DefaultCredential, CredentialChecker};
+pub use risk::{CriticalityLevel, CriticalityAssessment, assess_criticality, assess_all as assess_criticality_all};
+pub use naming::{NamingSuggestion, suggest_name, suggest_all as suggest_names_all};
+pub use comm_patterns::{ConnectionStats, PatternAnomaly, PatternAnomalyType, PatternAnalyzer};
 
 /// A security finding produced by analysis.
 ///

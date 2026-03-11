@@ -27,6 +27,7 @@ import type {
 	SessionInfo,
 	AssetUpdate,
 	PhysicalTopology,
+	InferredTopology,
 	IngestImportResult,
 	WiresharkInfo,
 	FrameRow,
@@ -38,7 +39,12 @@ import type {
 	BaselineDiff,
 	UserSettings,
 	TimelineRange,
-	PluginManifest
+	PluginManifest,
+	DefaultCredential,
+	CriticalityAssessment,
+	NamingSuggestion,
+	ConnectionStats,
+	PatternAnomaly
 } from '$lib/types';
 
 // ─── System Commands ──────────────────────────────────────────
@@ -58,6 +64,32 @@ export async function getAppInfo(): Promise<{ version: string; rust_version: str
 /** Import one or more PCAP files and parse their contents */
 export async function importPcap(paths: string[]): Promise<ImportResult> {
 	return invoke<ImportResult>('import_pcap', { paths });
+}
+
+/** Cancel an in-progress PCAP import */
+export async function cancelImport(): Promise<void> {
+	return invoke('cancel_import');
+}
+
+export interface ImportProgressEvent {
+	current_file: string;
+	file_index: number;
+	file_count: number;
+	packets_processed: number;
+	bytes_processed: number;
+	file_size: number;
+	progress_percent: number;
+	elapsed_secs: number;
+}
+
+/** Subscribe to import progress events. Returns an unlisten function. */
+export async function onImportProgress(
+	callback: (progress: ImportProgressEvent) => void
+): Promise<() => void> {
+	const unlisten = await listen<ImportProgressEvent>('import_progress', (event) => {
+		callback(event.payload);
+	});
+	return unlisten;
 }
 
 // ─── Topology ─────────────────────────────────────────────────
@@ -247,6 +279,31 @@ export async function clearPhysicalTopology(): Promise<void> {
 	return invoke('clear_physical_topology');
 }
 
+/** Auto-detect vendor and import network device config (Cisco/JunOS/HP-Aruba) */
+export async function importNetworkConfig(path: string): Promise<PhysicalTopology> {
+	return invoke<PhysicalTopology>('import_network_config', { path });
+}
+
+/** Auto-detect vendor and import MAC address table */
+export async function importMacTableAuto(path: string, switchHostname: string): Promise<PhysicalTopology> {
+	return invoke<PhysicalTopology>('import_mac_table_auto', { path, switchHostname });
+}
+
+/** Auto-detect LLDP/CDP format and import neighbor table */
+export async function importNeighborTable(path: string, switchHostname: string): Promise<PhysicalTopology> {
+	return invoke<PhysicalTopology>('import_neighbor_table', { path, switchHostname });
+}
+
+/** Run traffic-inferred topology analysis from the current dataset */
+export async function runTopologyInference(): Promise<InferredTopology> {
+	return invoke<InferredTopology>('run_topology_inference');
+}
+
+/** Get the last computed inferred topology */
+export async function getInferredTopology(): Promise<InferredTopology | null> {
+	return invoke<InferredTopology | null>('get_inferred_topology');
+}
+
 // ─── External Tool Import (Phase 8) ─────────────────────────────
 
 /** Import Zeek TSV log files (conn.log, modbus.log, dnp3.log, s7comm.log) */
@@ -365,6 +422,23 @@ export async function getAnomalies(): Promise<AnomalyScore[]> {
 	return invoke<AnomalyScore[]>('get_anomalies');
 }
 
+// ─── Phase 13A Quick-Win Features ───────────────────────────────
+
+/** Get default credential warnings for discovered devices */
+export async function getCredentialWarnings(): Promise<DefaultCredential[]> {
+	return invoke<DefaultCredential[]>('get_credential_warnings');
+}
+
+/** Get criticality assessments for all assets */
+export async function getCriticality(): Promise<CriticalityAssessment[]> {
+	return invoke<CriticalityAssessment[]>('get_criticality');
+}
+
+/** Get naming suggestions for all assets */
+export async function getNamingSuggestions(): Promise<NamingSuggestion[]> {
+	return invoke<NamingSuggestion[]>('get_naming_suggestions');
+}
+
 // ─── Settings (Phase 11) ────────────────────────────────────────
 
 /** Load user settings from disk */
@@ -389,4 +463,16 @@ export async function getTimelineRange(): Promise<TimelineRange> {
 /** List plugins found in the plugins directory */
 export async function listPlugins(): Promise<PluginManifest[]> {
 	return invoke<PluginManifest[]>('list_plugins');
+}
+
+// ─── Communication Patterns ──────────────────────────────
+
+/** Get per-connection timing statistics for the current dataset */
+export async function getConnectionStats(): Promise<ConnectionStats[]> {
+	return invoke<ConnectionStats[]>('get_connection_stats');
+}
+
+/** Get detected communication pattern anomalies for the current dataset */
+export async function getPatternAnomalies(): Promise<PatternAnomaly[]> {
+	return invoke<PatternAnomaly[]>('get_pattern_anomalies');
 }

@@ -15,6 +15,7 @@
 		{ id: 'physical', label: 'Physical', icon: '\u2B22' },
 		{ id: 'inventory', label: 'Inventory', icon: '\u2630' },
 		{ id: 'protocol_stats', label: 'Protocols', icon: '\u25A4' },
+		{ id: 'comm_patterns', label: 'Comm Patterns', icon: '\u2306' },
 		{ id: 'capture', label: 'Capture', icon: '\u25C9' },
 		{ id: 'analysis', label: 'Analysis', icon: '\u2691' },
 		{ id: 'export', label: 'Export', icon: '\u2913' },

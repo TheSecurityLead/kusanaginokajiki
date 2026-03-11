@@ -19,6 +19,9 @@ pub enum CaptureError {
 
     #[error("Parse error: {0}")]
     Parse(String),
+
+    #[error("Import cancelled by user")]
+    Cancelled,
 }
 
 // Allow conversion from pcap errors

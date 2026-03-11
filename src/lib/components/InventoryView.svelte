@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { filteredAssets, assetFilter, selectedAssetId, selectedAsset, protocolFilter, assets } from '$lib/stores';
-	import { getDeepParseInfo, getAssets, updateAsset, bulkUpdateAssets } from '$lib/utils/tauri';
-	import type { DeviceType, IcsProtocol, DeepParseInfo, AssetUpdate, Asset, EnipDetail, S7Detail, BacnetDetail, Iec104Detail, ProfinetDcpDetail } from '$lib/types';
+	import { getDeepParseInfo, getAssets, updateAsset, bulkUpdateAssets, getCredentialWarnings } from '$lib/utils/tauri';
+	import type { DeviceType, IcsProtocol, DeepParseInfo, AssetUpdate, Asset, EnipDetail, S7Detail, BacnetDetail, Iec104Detail, ProfinetDcpDetail, DefaultCredential } from '$lib/types';
 
 	const deviceTypeLabels: Record<DeviceType, string> = {
 		plc: 'PLC',
@@ -83,7 +83,75 @@
 	let showBulkPanel = $state(false);
 	let bulkDeviceType = $state<string>('');
 	let bulkPurdueLevel = $state<string>('');
+	let bulkTag = $state('');
+	let bulkNotes = $state('');
 	let bulkSaving = $state(false);
+
+	// Wireshark filter / toast state
+	let toastMessage = $state('');
+	let toastTimer: ReturnType<typeof setTimeout> | null = null;
+
+	function showToast(msg: string) {
+		toastMessage = msg;
+		if (toastTimer) clearTimeout(toastTimer);
+		toastTimer = setTimeout(() => { toastMessage = ''; }, 2000);
+	}
+
+	function copyWiresharkFilter(filter: string) {
+		navigator.clipboard.writeText(filter).then(() => showToast('Copied!'));
+	}
+
+	function getOtPort(protocols: string[]): number | null {
+		const portMap: Record<string, number> = {
+			modbus: 502, dnp3: 20000, ethernet_ip: 44818,
+			s7comm: 102, bacnet: 47808, iec104: 2404, profinet: 34964,
+			opc_ua: 4840
+		};
+		for (const p of protocols) {
+			const port = portMap[p.toLowerCase()];
+			if (port) return port;
+		}
+		return null;
+	}
+
+	// Default credential warnings for selected asset
+	let credWarnings = $state<DefaultCredential[]>([]);
+	let loadingCreds = $state(false);
+
+	$effect(() => {
+		const asset = $selectedAsset;
+		if (asset) {
+			loadCredWarnings();
+		} else {
+			credWarnings = [];
+		}
+	});
+
+	async function loadCredWarnings() {
+		loadingCreds = true;
+		try {
+			const all = await getCredentialWarnings();
+			const asset = $selectedAsset;
+			if (asset) {
+				const vendor = (asset.vendor ?? asset.oui_vendor ?? '').toLowerCase();
+				const product = (asset.product_family ?? '').toLowerCase();
+				// Filter client-side by vendor/product if we have them, otherwise show all
+				if (vendor || product) {
+					credWarnings = all.filter(cw => {
+						const cwVendor = cw.vendor.toLowerCase();
+						return vendor ? cwVendor.includes(vendor) || vendor.includes(cwVendor) : false;
+					});
+				} else {
+					credWarnings = [];
+				}
+			} else {
+				credWarnings = [];
+			}
+		} catch {
+			credWarnings = [];
+		}
+		loadingCreds = false;
+	}
 
 	// Load deep parse info when selected asset changes
 	$effect(() => {
@@ -185,6 +253,8 @@
 		const updates: AssetUpdate = {};
 		if (bulkDeviceType) updates.device_type = bulkDeviceType;
 		if (bulkPurdueLevel) updates.purdue_level = parseInt(bulkPurdueLevel);
+		if (bulkTag.trim()) updates.tags = [bulkTag.trim()];
+		if (bulkNotes.trim()) updates.notes = bulkNotes.trim();
 		if (Object.keys(updates).length === 0) {
 			bulkSaving = false;
 			return;
@@ -197,6 +267,8 @@
 			showBulkPanel = false;
 			bulkDeviceType = '';
 			bulkPurdueLevel = '';
+			bulkTag = '';
+			bulkNotes = '';
 		} catch (err) {
 			console.error('Bulk update failed:', err);
 		}
@@ -253,7 +325,9 @@
 					<option value={level.toString()}>{purdueLabels[level]}</option>
 				{/each}
 			</select>
-			<button class="bulk-apply" onclick={applyBulkUpdate} disabled={bulkSaving || (!bulkDeviceType && !bulkPurdueLevel)}>
+			<input class="bulk-input" type="text" placeholder="Add tag..." bind:value={bulkTag} />
+			<input class="bulk-input" type="text" placeholder="Set notes..." bind:value={bulkNotes} />
+			<button class="bulk-apply" onclick={applyBulkUpdate} disabled={bulkSaving || (!bulkDeviceType && !bulkPurdueLevel && !bulkTag.trim() && !bulkNotes.trim())}>
 				Apply
 			</button>
 			<button class="bulk-cancel" onclick={() => { selectedIds = new Set(); showBulkPanel = false; }}>
@@ -521,6 +595,44 @@
 									{/each}
 								</div>
 							{/if}
+						</div>
+					{/if}
+
+					<!-- Wireshark Filters -->
+					<div class="detail-section">
+						<h4 class="section-title">Wireshark Filters</h4>
+						<div class="filter-row">
+							<code class="filter-code">ip.addr == {$selectedAsset.ip_address}</code>
+							<button class="copy-btn" onclick={() => copyWiresharkFilter(`ip.addr == ${$selectedAsset!.ip_address}`)}>
+								Copy
+							</button>
+						</div>
+						{#if getOtPort($selectedAsset.protocols) !== null}
+							{@const port = getOtPort($selectedAsset.protocols)}
+							<div class="filter-row">
+								<code class="filter-code">ip.addr == {$selectedAsset.ip_address} && tcp.port == {port}</code>
+								<button class="copy-btn" onclick={() => copyWiresharkFilter(`ip.addr == ${$selectedAsset!.ip_address} && tcp.port == ${port}`)}>
+									Copy
+								</button>
+							</div>
+						{/if}
+					</div>
+
+					<!-- Default Credential Warnings -->
+					{#if credWarnings.length > 0}
+						<div class="detail-section cred-warning-section">
+							<h4 class="section-title warning-title">⚠ Default Credentials Detected</h4>
+							{#each credWarnings as cw}
+								<div class="cred-warning-card">
+									<div class="cred-row"><span class="cred-label">Protocol:</span> <span>{cw.protocol.toUpperCase()}</span></div>
+									{#if cw.username}<div class="cred-row"><span class="cred-label">Username:</span> <code>{cw.username}</code></div>{/if}
+									{#if cw.password}<div class="cred-row"><span class="cred-label">Password:</span> <code>{cw.password}</code></div>{/if}
+									<div class="cred-row cred-source"><span class="cred-label">Source:</span> <span>{cw.source}</span></div>
+									<button class="copy-btn cred-copy" onclick={() => navigator.clipboard.writeText(`${cw.username}:${cw.password}`)}>
+										Copy Credentials
+									</button>
+								</div>
+							{/each}
 						</div>
 					{/if}
 
@@ -835,6 +947,10 @@
 			</div>
 		{/if}
 	</div>
+
+	{#if toastMessage}
+		<div class="copy-toast">{toastMessage}</div>
+	{/if}
 </div>
 
 <style>
@@ -1504,5 +1620,114 @@
 		color: var(--gm-text-muted);
 		font-weight: 400;
 		font-size: 9px;
+	}
+
+	/* ── Wireshark Filters & Credentials ───────────────── */
+
+	.filter-row {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		margin-bottom: 6px;
+		flex-wrap: wrap;
+	}
+
+	.filter-code {
+		font-size: 0.75rem;
+		background: var(--gm-bg-tertiary, #0f172a);
+		padding: 3px 8px;
+		border-radius: 4px;
+		flex: 1;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		color: var(--gm-accent, #38bdf8);
+	}
+
+	.copy-btn {
+		padding: 3px 10px;
+		font-size: 0.7rem;
+		background: var(--gm-bg-secondary, #1e293b);
+		border: 1px solid var(--gm-border, #334155);
+		border-radius: 4px;
+		cursor: pointer;
+		color: var(--gm-text-muted, #94a3b8);
+		white-space: nowrap;
+		flex-shrink: 0;
+	}
+
+	.copy-btn:hover {
+		background: var(--gm-border, #334155);
+		color: var(--gm-text-primary, #f1f5f9);
+	}
+
+	.copy-toast {
+		position: fixed;
+		bottom: 24px;
+		right: 24px;
+		background: var(--gm-accent, #38bdf8);
+		color: #0f172a;
+		padding: 8px 16px;
+		border-radius: 6px;
+		font-size: 0.85rem;
+		font-weight: 600;
+		z-index: 9999;
+		pointer-events: none;
+		animation: toast-in 0.15s ease;
+	}
+
+	@keyframes toast-in {
+		from { opacity: 0; transform: translateY(8px); }
+		to { opacity: 1; transform: translateY(0); }
+	}
+
+	.cred-warning-section {
+		border: 1px solid rgba(245, 158, 11, 0.25);
+		background: rgba(245, 158, 11, 0.04);
+		border-radius: 6px;
+		padding: 10px;
+	}
+
+	.warning-title { color: #f59e0b; }
+
+	.cred-warning-card {
+		background: var(--gm-bg-tertiary, #0f172a);
+		border-radius: 6px;
+		padding: 10px;
+		margin-top: 8px;
+	}
+
+	.cred-row {
+		display: flex;
+		gap: 8px;
+		font-size: 0.8rem;
+		margin-bottom: 4px;
+		align-items: baseline;
+	}
+
+	.cred-label {
+		color: var(--gm-text-muted, #94a3b8);
+		min-width: 70px;
+		flex-shrink: 0;
+	}
+
+	.cred-source {
+		color: var(--gm-text-muted, #94a3b8);
+		font-size: 0.72rem;
+	}
+
+	.cred-copy { margin-top: 8px; }
+
+	/* ── Bulk Input Fields ──────────────────────────────── */
+
+	.bulk-input {
+		padding: 4px 8px;
+		font-size: 0.8rem;
+		background: var(--gm-bg-tertiary, #0f172a);
+		border: 1px solid var(--gm-border, #334155);
+		border-radius: 4px;
+		color: var(--gm-text-primary, #f1f5f9);
+		width: 120px;
 	}
 </style>

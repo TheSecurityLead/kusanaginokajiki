@@ -29,6 +29,7 @@ pub mod bacnet;
 pub mod vendor_tables;
 pub mod iec104;
 pub mod profinet_dcp;
+pub mod snmp;
 
 pub use protocol::{IcsProtocol, identify_protocol, identify_by_port};
 pub use modbus::{

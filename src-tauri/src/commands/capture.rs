@@ -1,10 +1,11 @@
+use std::sync::atomic::Ordering;
 use std::sync::mpsc;
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 use serde::Serialize;
 use tauri::{State, Emitter, Manager};
 
-use gm_capture::{PcapReader, LiveCaptureHandle, LiveCaptureConfig, ParsedPacket};
+use gm_capture::{PcapReader, LiveCaptureHandle, LiveCaptureConfig, ParsedPacket, CaptureError};
 
 use super::AppState;
 use super::processor::PacketProcessor;
@@ -29,64 +30,119 @@ pub struct FileImportResult {
     pub status: String,
 }
 
+/// Progress payload emitted as the `import_progress` event during PCAP import.
+#[derive(Serialize, Clone)]
+pub struct ImportProgressPayload {
+    pub current_file: String,
+    pub file_index: usize,
+    pub file_count: usize,
+    pub packets_processed: u64,
+    pub bytes_processed: u64,
+    pub file_size: u64,
+    pub progress_percent: f64,
+    pub elapsed_secs: f64,
+}
+
 /// Import one or more PCAP files and process them through the full pipeline.
+///
+/// Processing runs on a blocking thread so the Tauri async executor stays
+/// responsive. Progress is emitted as `import_progress` events roughly every
+/// 500ms. The import can be cancelled via the `cancel_import` command.
 #[tauri::command]
 pub async fn import_pcap(
     paths: Vec<String>,
     state: State<'_, AppState>,
+    app_handle: tauri::AppHandle,
 ) -> Result<ImportResult, String> {
     let start = Instant::now();
-    let reader = PcapReader::new();
 
-    // Read packets from all files
-    let mut all_packets = Vec::new();
-    let mut per_file_results = Vec::new();
+    // Reset and clone the cancellation flag for the blocking thread
+    state.import_cancelled.store(false, Ordering::SeqCst);
+    let cancelled = state.import_cancelled.clone();
+    let app_clone = app_handle.clone();
+    let paths_clone = paths.clone();
+    let file_count = paths.len();
 
-    for path in &paths {
-        match reader.read_file(path) {
-            Ok(packets) => {
-                let count = packets.len();
-                let filename = std::path::Path::new(path)
-                    .file_name()
-                    .map(|f| f.to_string_lossy().into_owned())
-                    .unwrap_or_else(|| path.clone());
-                per_file_results.push(FileImportResult {
-                    filename,
-                    packet_count: count,
-                    status: "ok".to_string(),
-                });
-                all_packets.extend(packets);
+    // Run packet streaming on a blocking thread — reading from a PCAP file is
+    // synchronous I/O and must not block the Tauri async executor.
+    let blocking_result = tauri::async_runtime::spawn_blocking(move || {
+        let reader = PcapReader::new();
+        let mut processor = PacketProcessor::new();
+        let mut per_file_results: Vec<FileImportResult> = Vec::new();
+
+        for (file_idx, path) in paths_clone.iter().enumerate() {
+            if cancelled.load(Ordering::Relaxed) {
+                return Err("Import cancelled by user".to_string());
             }
-            Err(e) => {
-                let filename = std::path::Path::new(path)
-                    .file_name()
-                    .map(|f| f.to_string_lossy().into_owned())
-                    .unwrap_or_else(|| path.clone());
-                log::warn!("Failed to read {}: {}", path, e);
-                per_file_results.push(FileImportResult {
-                    filename,
-                    packet_count: 0,
-                    status: format!("error: {}", e),
-                });
+
+            let filename = std::path::Path::new(path)
+                .file_name()
+                .map(|f| f.to_string_lossy().into_owned())
+                .unwrap_or_else(|| path.clone());
+
+            let stream_result = reader.stream_file(
+                path,
+                // on_packet: process each packet immediately, no buffering
+                |packet| {
+                    processor.process_packet(packet);
+                },
+                // on_progress: emit Tauri event to frontend (throttled to ~2/sec)
+                |progress| {
+                    let _ = app_clone.emit(
+                        "import_progress",
+                        ImportProgressPayload {
+                            current_file: progress.current_file,
+                            file_index: file_idx,
+                            file_count,
+                            packets_processed: progress.packets_processed,
+                            bytes_processed: progress.bytes_processed,
+                            file_size: progress.file_size,
+                            progress_percent: progress.progress_percent,
+                            elapsed_secs: progress.elapsed_secs,
+                        },
+                    );
+                },
+                cancelled.as_ref(),
+            );
+
+            match stream_result {
+                Ok(stats) => {
+                    per_file_results.push(FileImportResult {
+                        filename,
+                        packet_count: stats.packet_count as usize,
+                        status: "ok".to_string(),
+                    });
+                }
+                Err(CaptureError::Cancelled) => {
+                    return Err("Import cancelled by user".to_string());
+                }
+                Err(e) => {
+                    log::warn!("Failed to read {}: {}", path, e);
+                    per_file_results.push(FileImportResult {
+                        filename,
+                        packet_count: 0,
+                        status: format!("error: {}", e),
+                    });
+                }
             }
         }
-    }
 
-    let total_packet_count = all_packets.len();
-    if total_packet_count == 0 {
+        Ok((processor, per_file_results))
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let (mut processor, per_file_results) = blocking_result?;
+
+    let total_packet_count: usize = per_file_results.iter().map(|r| r.packet_count).sum();
+    if total_packet_count == 0 && !per_file_results.iter().any(|r| r.status == "ok") {
         return Err("No packets could be parsed from the provided files".to_string());
     }
 
-    // Process all packets through the shared pipeline
-    let mut processor = PacketProcessor::new();
-    for packet in &all_packets {
-        processor.process_packet(packet);
-    }
-
-    // Build results from accumulated state
+    // Build results (bounded by unique IPs, not packet count)
     let deep_parse_info = processor.build_deep_parse_info();
 
-    // Lock state briefly to run signature matching (needs SignatureEngine + OUI + GeoIP)
+    // Lock state to run signature matching (needs SignatureEngine + OUI + GeoIP)
     let (assets, sig_results) = {
         let state_inner = state.inner.lock().map_err(|e| e.to_string())?;
         processor.build_assets(
@@ -97,7 +153,7 @@ pub async fn import_pcap(
         )
     };
 
-    // Build topology, enriched with signature data
+    // Build topology enriched with signature data
     let mut topology = processor.topo_builder.snapshot();
     for node in &mut topology.nodes {
         if let Some(sig_matches) = sig_results.get(&node.ip_address) {
@@ -116,6 +172,7 @@ pub async fn import_pcap(
 
     let connection_list = processor.get_connections();
     let packet_summaries = processor.get_packet_summaries();
+    let (connection_stats, pattern_anomalies) = processor.build_pattern_results();
     let asset_count = assets.len();
     let connection_count = connection_list.len();
     let protocols_detected = processor.get_protocols_detected();
@@ -126,13 +183,14 @@ pub async fn import_pcap(
         .map(|f| f.filename.clone())
         .collect();
 
-    // Store results in app state
     let mut state_inner = state.inner.lock().map_err(|e| e.to_string())?;
     state_inner.topology = topology;
     state_inner.assets = assets;
     state_inner.connections = connection_list;
     state_inner.packet_summaries = packet_summaries;
     state_inner.deep_parse_info = deep_parse_info;
+    state_inner.connection_stats = connection_stats;
+    state_inner.pattern_anomalies = pattern_anomalies;
     state_inner.imported_files.extend(imported_files);
     state_inner.imported_files.sort();
     state_inner.imported_files.dedup();
@@ -141,7 +199,11 @@ pub async fn import_pcap(
 
     log::info!(
         "Imported {} files, {} packets → {} assets, {} connections in {}ms",
-        paths.len(), total_packet_count, asset_count, connection_count, duration_ms
+        paths.len(),
+        total_packet_count,
+        asset_count,
+        connection_count,
+        duration_ms
     );
 
     Ok(ImportResult {
@@ -153,6 +215,14 @@ pub async fn import_pcap(
         duration_ms,
         per_file: per_file_results,
     })
+}
+
+/// Cancel an in-progress PCAP import. Safe to call even when no import is running.
+#[tauri::command]
+pub async fn cancel_import(state: State<'_, AppState>) -> Result<(), String> {
+    state.import_cancelled.store(true, Ordering::SeqCst);
+    log::info!("PCAP import cancellation requested");
+    Ok(())
 }
 
 // ─── Live Capture ────────────────────────────────────────────
@@ -463,6 +533,7 @@ fn flush_batch(
 
         let connections = processor.get_connections();
         let packet_summaries = processor.get_packet_summaries();
+        let (connection_stats, pattern_anomalies) = processor.build_pattern_results();
         let asset_count = assets.len();
         let connection_count = connections.len();
         let total_packets = processor.total_packets;
@@ -476,6 +547,8 @@ fn flush_batch(
         inner.connections = connections;
         inner.packet_summaries = packet_summaries;
         inner.deep_parse_info = deep_parse_info;
+        inner.connection_stats = connection_stats;
+        inner.pattern_anomalies = pattern_anomalies;
 
         // Compute PPS
         let elapsed = prev_stat_time.elapsed().as_secs_f64();

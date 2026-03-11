@@ -8,18 +8,28 @@
 		activeTab,
 		assets
 	} from '$lib/stores';
-	import type { PhysicalTopology, PhysicalSwitch, PhysicalPort } from '$lib/types';
+	import type { PhysicalTopology, PhysicalSwitch, PhysicalPort, InferredTopology } from '$lib/types';
 	import {
 		importCiscoConfig,
 		importMacTable,
 		importCdpNeighbors,
 		importArpTable,
 		getPhysicalTopology,
-		clearPhysicalTopology
+		clearPhysicalTopology,
+		importNetworkConfig,
+		importMacTableAuto,
+		importNeighborTable,
+		runTopologyInference,
+		getInferredTopology
 	} from '$lib/utils/tauri';
 
 	let graphContainer: HTMLDivElement;
 	let cy: any = null;
+
+	// ── Tab State ───────────────────────────────────────
+	let activePhysicalTab = $state<'imported' | 'inferred'>('imported');
+	let inferredTopology = $state<InferredTopology | null>(null);
+	let inferring = $state(false);
 
 	// ── Import State ───────────────────────────────────
 	let importType = $state<'config' | 'mac' | 'cdp' | 'arp'>('config');
@@ -401,8 +411,9 @@
 
 			switch (importType) {
 				case 'config':
-					topo = await importCiscoConfig(filePath);
-					importSuccess = `Imported Cisco config from ${filePath.split(/[/\\]/).pop()}`;
+					// Auto-detect vendor (Cisco/JunOS/HP-Aruba)
+					topo = await importNetworkConfig(filePath);
+					importSuccess = `Imported config from ${filePath.split(/[/\\]/).pop()}`;
 					break;
 				case 'mac':
 					if (!switchHostname.trim()) {
@@ -410,17 +421,19 @@
 						importing = false;
 						return;
 					}
-					topo = await importMacTable(filePath, switchHostname.trim());
+					// Auto-detect vendor MAC table format
+					topo = await importMacTableAuto(filePath, switchHostname.trim());
 					importSuccess = `Imported MAC table for ${switchHostname}`;
 					break;
 				case 'cdp':
 					if (!switchHostname.trim()) {
-						importError = 'Select a switch hostname for CDP import';
+						importError = 'Select a switch hostname for CDP/LLDP import';
 						importing = false;
 						return;
 					}
-					topo = await importCdpNeighbors(filePath, switchHostname.trim());
-					importSuccess = `Imported CDP neighbors for ${switchHostname}`;
+					// Auto-detect CDP/LLDP format
+					topo = await importNeighborTable(filePath, switchHostname.trim());
+					importSuccess = `Imported neighbors for ${switchHostname}`;
 					break;
 				case 'arp':
 					topo = await importArpTable(filePath);
@@ -445,6 +458,17 @@
 			importSuccess = 'Physical topology cleared';
 		} catch (err) {
 			importError = `Clear failed: ${err}`;
+		}
+	}
+
+	async function handleRunInference() {
+		inferring = true;
+		try {
+			inferredTopology = await runTopologyInference();
+		} catch (err) {
+			importError = `Inference failed: ${err}`;
+		} finally {
+			inferring = false;
 		}
 	}
 
@@ -476,6 +500,15 @@
 		} catch {
 			// Expected in browser dev mode
 		}
+		// Load previously computed inferred topology if available
+		try {
+			const inferred = await getInferredTopology();
+			if (inferred) {
+				inferredTopology = inferred;
+			}
+		} catch {
+			// Expected in browser dev mode
+		}
 	});
 
 	onDestroy(() => {
@@ -494,29 +527,55 @@
 		<div class="toolbar-section">
 			<h2 class="view-title">Physical View</h2>
 			<span class="toolbar-sep"></span>
-			<span class="switch-count">{currentTopo.switches.length} switches</span>
-			<span class="link-count">{currentTopo.links.length} links</span>
-			<span class="device-count">{Object.keys(currentTopo.device_locations).length} mapped devices</span>
+			<div class="tab-switcher">
+				<button
+					class="tab-btn"
+					class:active={activePhysicalTab === 'imported'}
+					onclick={() => (activePhysicalTab = 'imported')}
+				>Imported</button>
+				<button
+					class="tab-btn"
+					class:active={activePhysicalTab === 'inferred'}
+					onclick={() => (activePhysicalTab = 'inferred')}
+				>Inferred</button>
+			</div>
+			<span class="toolbar-sep"></span>
+			{#if activePhysicalTab === 'imported'}
+				<span class="switch-count">{currentTopo.switches.length} switches</span>
+				<span class="link-count">{currentTopo.links.length} links</span>
+				<span class="device-count">{Object.keys(currentTopo.device_locations).length} mapped devices</span>
+			{:else}
+				<span class="switch-count">{inferredTopology?.subnets.length ?? 0} subnets</span>
+				<span class="link-count">{inferredTopology?.gateways.length ?? 0} gateways</span>
+				<span class="device-count">{inferredTopology?.switch_candidates.length ?? 0} switch candidates</span>
+			{/if}
 		</div>
 		<div class="toolbar-section">
-			<button class="tool-btn" onclick={() => cy?.fit(undefined, 40)}>Fit</button>
-			<button class="tool-btn" onclick={runLayout}>Relayout</button>
-			<button class="tool-btn danger" onclick={handleClear}>Clear</button>
+			{#if activePhysicalTab === 'imported'}
+				<button class="tool-btn" onclick={() => cy?.fit(undefined, 40)}>Fit</button>
+				<button class="tool-btn" onclick={runLayout}>Relayout</button>
+				<button class="tool-btn danger" onclick={handleClear}>Clear</button>
+			{:else}
+				<button class="tool-btn" onclick={handleRunInference} disabled={inferring}>
+					{inferring ? 'Running...' : 'Run Inference'}
+				</button>
+			{/if}
 		</div>
 	</div>
 
+	{#if activePhysicalTab === 'imported'}
 	<div class="physical-body">
 		<!-- Import Panel (left side) -->
 		<div class="import-panel">
-			<h3 class="panel-title">Import Cisco Data</h3>
+			<h3 class="panel-title">Import Network Data</h3>
 
 			<div class="import-form">
 				<label class="import-label">
 					Import Type:
 					<select class="import-select" bind:value={importType}>
-						<option value="config">Running Config</option>
+						<option value="config">Running Config (auto-detect vendor)</option>
 						<option value="mac">MAC Address Table</option>
-						<option value="cdp">CDP Neighbors</option>
+						<option value="cdp">CDP / LLDP Neighbors</option>
 						<option value="arp">ARP Table</option>
 					</select>
 				</label>
@@ -778,6 +837,119 @@
 			<span class="legend-dot" style="background: #ef4444"></span> Highlighted
 		</span>
 	</div>
+	{:else}
+	<!-- ── Inferred Tab ───────────────────────────────── -->
+	<div class="inferred-container">
+		{#if !inferredTopology}
+			<div class="inferred-empty">
+				<div class="empty-icon">&#x1F4E1;</div>
+				<h3>No Inferred Topology</h3>
+				<p>Click <strong>Run Inference</strong> to analyze the current dataset and infer network structure from traffic patterns.</p>
+				<button class="import-btn" onclick={handleRunInference} disabled={inferring}>
+					{inferring ? 'Running...' : 'Run Inference'}
+				</button>
+			</div>
+		{:else}
+			<div class="inferred-content">
+				<!-- Subnets -->
+				<div class="inferred-section">
+					<h3 class="inferred-section-title">Subnets ({inferredTopology.subnets.length})</h3>
+					{#each inferredTopology.subnets as subnet}
+						<div class="inferred-card">
+							<div class="card-header">
+								<span class="card-network">{subnet.network}</span>
+								<span class="card-badge">{subnet.member_ips.length} hosts</span>
+							</div>
+							{#if subnet.gateway_ip}
+								<div class="card-detail">
+									<span class="card-label">Gateway</span>
+									<span class="card-value gw-ip">{subnet.gateway_ip}</span>
+								</div>
+							{/if}
+							<div class="card-ips">
+								{#each subnet.member_ips.slice(0, 6) as ip}
+									<span class="ip-chip">{ip}</span>
+								{/each}
+								{#if subnet.member_ips.length > 6}
+									<span class="ip-chip muted">+{subnet.member_ips.length - 6} more</span>
+								{/if}
+							</div>
+						</div>
+					{/each}
+				</div>
+
+				<!-- Gateways -->
+				{#if inferredTopology.gateways.length > 0}
+					<div class="inferred-section">
+						<h3 class="inferred-section-title">Gateways ({inferredTopology.gateways.length})</h3>
+						{#each inferredTopology.gateways as gw}
+							<div class="inferred-card">
+								<div class="card-header">
+									<span class="card-network">{gw.ip_address}</span>
+									<span class="card-badge confidence-{gw.confidence}">Conf {gw.confidence}</span>
+								</div>
+								{#if gw.mac_address}
+									<div class="card-detail">
+										<span class="card-label">MAC</span>
+										<span class="card-value">{gw.mac_address}</span>
+									</div>
+								{/if}
+								<div class="card-detail">
+									<span class="card-label">Connects</span>
+									<span class="card-value">{gw.connected_subnets.join(', ')}</span>
+								</div>
+							</div>
+						{/each}
+					</div>
+				{/if}
+
+				<!-- Switch Candidates -->
+				{#if inferredTopology.switch_candidates.length > 0}
+					<div class="inferred-section">
+						<h3 class="inferred-section-title">Switch Candidates ({inferredTopology.switch_candidates.length})</h3>
+						{#each inferredTopology.switch_candidates as sw}
+							<div class="inferred-card">
+								<div class="card-header">
+									<span class="card-network">{sw.ip_address ?? 'unknown'}</span>
+									<span class="card-badge confidence-{sw.confidence}">Conf {sw.confidence}</span>
+								</div>
+								<div class="card-detail">
+									<span class="card-label">Fan-out</span>
+									<span class="card-value">{sw.connected_ips.length} hosts</span>
+								</div>
+							</div>
+						{/each}
+					</div>
+				{/if}
+
+				<!-- Broadcast Domains -->
+				{#if inferredTopology.broadcast_domains.length > 0}
+					<div class="inferred-section">
+						<h3 class="inferred-section-title">Broadcast Domains ({inferredTopology.broadcast_domains.length})</h3>
+						{#each inferredTopology.broadcast_domains as bd}
+							<div class="inferred-card">
+								<div class="card-header">
+									<span class="card-network">{bd.network}</span>
+									<span class="card-badge">{bd.inferred_from}</span>
+								</div>
+								<div class="card-detail">
+									<span class="card-label">Members</span>
+									<span class="card-value">{bd.member_ips.length} hosts</span>
+								</div>
+								{#if bd.gateway_ip}
+									<div class="card-detail">
+										<span class="card-label">Gateway</span>
+										<span class="card-value gw-ip">{bd.gateway_ip}</span>
+									</div>
+								{/if}
+							</div>
+						{/each}
+					</div>
+				{/if}
+			</div>
+		{/if}
+	</div>
+	{/if}
 </div>
 
 <style>
@@ -1247,5 +1419,184 @@
 		width: 8px;
 		height: 8px;
 		border-radius: 50%;
+	}
+
+	/* ── Tab Switcher ─────────────────────────────────── */
+
+	.tab-switcher {
+		display: flex;
+		gap: 2px;
+		background: var(--gm-bg-panel);
+		border: 1px solid var(--gm-border);
+		border-radius: 5px;
+		padding: 2px;
+	}
+
+	.tab-btn {
+		padding: 3px 12px;
+		background: transparent;
+		border: none;
+		border-radius: 3px;
+		color: var(--gm-text-secondary);
+		font-family: inherit;
+		font-size: 11px;
+		cursor: pointer;
+		transition: all 0.15s;
+	}
+
+	.tab-btn:hover {
+		color: var(--gm-text-primary);
+	}
+
+	.tab-btn.active {
+		background: var(--gm-bg-hover);
+		color: var(--gm-text-primary);
+	}
+
+	/* ── Inferred Tab ─────────────────────────────────── */
+
+	.inferred-container {
+		flex: 1;
+		overflow-y: auto;
+		padding: 16px;
+		background: var(--gm-bg-primary);
+	}
+
+	.inferred-empty {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		height: 60%;
+		text-align: center;
+		color: var(--gm-text-muted);
+		gap: 12px;
+	}
+
+	.inferred-empty h3 {
+		font-size: 14px;
+		font-weight: 600;
+		color: var(--gm-text-secondary);
+		margin: 0;
+	}
+
+	.inferred-empty p {
+		font-size: 12px;
+		margin: 0;
+		max-width: 360px;
+	}
+
+	.inferred-content {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+		gap: 16px;
+		align-content: start;
+	}
+
+	.inferred-section {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+
+	.inferred-section-title {
+		font-size: 10px;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 1px;
+		color: var(--gm-text-secondary);
+		margin: 0;
+	}
+
+	.inferred-card {
+		background: var(--gm-bg-secondary);
+		border: 1px solid var(--gm-border);
+		border-radius: 6px;
+		padding: 10px 12px;
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+	}
+
+	.card-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+	}
+
+	.card-network {
+		font-size: 12px;
+		font-weight: 600;
+		color: var(--gm-text-primary);
+		font-family: 'JetBrains Mono', monospace;
+	}
+
+	.card-badge {
+		font-size: 9px;
+		padding: 1px 6px;
+		border-radius: 3px;
+		background: rgba(16, 185, 129, 0.15);
+		color: #10b981;
+	}
+
+	.card-badge.confidence-1 {
+		background: rgba(234, 179, 8, 0.15);
+		color: #eab308;
+	}
+
+	.card-badge.confidence-2 {
+		background: rgba(249, 115, 22, 0.15);
+		color: #f97316;
+	}
+
+	.card-badge.confidence-3 {
+		background: rgba(16, 185, 129, 0.15);
+		color: #10b981;
+	}
+
+	.card-detail {
+		display: flex;
+		gap: 8px;
+		align-items: baseline;
+	}
+
+	.card-label {
+		font-size: 9px;
+		color: var(--gm-text-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.5px;
+		min-width: 52px;
+		flex-shrink: 0;
+	}
+
+	.card-value {
+		font-size: 10px;
+		color: var(--gm-text-secondary);
+		font-family: 'JetBrains Mono', monospace;
+	}
+
+	.gw-ip {
+		color: #10b981;
+	}
+
+	.card-ips {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 3px;
+		margin-top: 2px;
+	}
+
+	.ip-chip {
+		font-size: 9px;
+		padding: 1px 5px;
+		background: var(--gm-bg-panel);
+		border: 1px solid var(--gm-border);
+		border-radius: 3px;
+		color: var(--gm-text-muted);
+		font-family: 'JetBrains Mono', monospace;
+	}
+
+	.ip-chip.muted {
+		opacity: 0.6;
 	}
 </style>

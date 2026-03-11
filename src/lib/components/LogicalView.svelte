@@ -16,8 +16,11 @@
 	} from '$lib/utils/graph';
 	import { openWiresharkForNode, detectWireshark } from '$lib/utils/tauri';
 	import TimelineScrubber from './TimelineScrubber.svelte';
+	import PurdueOverlay from './PurdueOverlay.svelte';
+	import { PurdueLayout } from '$lib/layouts/purdueLayout';
 
 	let wiresharkAvailable = $state(false);
+	let layout = $state<'fcose' | 'purdue'>('fcose');
 
 	// Check if Wireshark is installed on mount
 	async function checkWireshark() {
@@ -32,6 +35,7 @@
 	let graphContainer: HTMLDivElement;
 	let cy: any = null;
 	let fcoseRegistered = false;
+	let purdueRegistered = false;
 
 	// ── Context Menu State ──────────────────────────────────
 	let ctxMenu = $state<{ x: number; y: number; nodeId: string | null; show: boolean }>({
@@ -55,6 +59,12 @@
 			const fcose = (await import('cytoscape-fcose')).default;
 			cytoscape.use(fcose);
 			fcoseRegistered = true;
+		}
+
+		// Register purdue layout once
+		if (!purdueRegistered) {
+			cytoscape('layout', 'purdue', PurdueLayout);
+			purdueRegistered = true;
 		}
 
 		cy = cytoscape({
@@ -155,6 +165,18 @@
 						'target-arrow-shape': 'triangle'
 					}
 				},
+				// ── Cross-zone edges (Purdue level diff >= 2) ──
+				{
+					selector: 'edge.cross-zone',
+					style: {
+						'line-color': '#ef4444',
+						'target-arrow-color': '#ef4444',
+						'source-arrow-color': '#ef4444',
+						'line-style': 'dashed' as any,
+						width: 2,
+						opacity: 0.85
+					}
+				},
 				// ── Selected edge ──
 				{
 					selector: 'edge:selected',
@@ -233,6 +255,13 @@
 		assets.subscribe((a) => (currentAssets = a))();
 		const assetMap = new Map(currentAssets.map((a) => [a.ip_address, a]));
 
+		// Build purdue level map (node id → level) for cross-zone edge detection
+		const purdueMap = new Map<string, number | null>();
+		for (const node of graph.nodes) {
+			const asset = assetMap.get(node.ip_address);
+			purdueMap.set(node.id, asset?.purdue_level ?? null);
+		}
+
 		// Get current drift sets for highlighting
 		let newIps = new Set<string>();
 		let changedIps = new Set<string>();
@@ -283,6 +312,7 @@
 					protocols: node.protocols.join(', '),
 					packetCount: node.packet_count,
 					color,
+					purdueLevel: asset?.purdue_level ?? null,
 					...(parentId ? { parent: parentId } : {})
 				},
 				classes: (hasOt ? 'device ot' : 'device') + driftClass
@@ -293,6 +323,23 @@
 		for (const edge of graph.edges) {
 			const color = PROTOCOL_COLORS[edge.protocol as string] ?? PROTOCOL_COLORS.unknown;
 			const weight = edgeWidth(edge.packet_count);
+
+			// Detect cross-zone edges (Purdue level difference >= 2)
+			const srcLevel = purdueMap.get(edge.source);
+			const dstLevel = purdueMap.get(edge.target);
+			const isCrossZone =
+				srcLevel !== null &&
+				srcLevel !== undefined &&
+				dstLevel !== null &&
+				dstLevel !== undefined &&
+				Math.abs(srcLevel - dstLevel) >= 2;
+
+			const edgeClasses = [
+				edge.bidirectional ? 'bidirectional' : '',
+				isCrossZone ? 'cross-zone' : ''
+			]
+				.filter(Boolean)
+				.join(' ');
 
 			elements.push({
 				group: 'edges',
@@ -306,7 +353,7 @@
 					color,
 					weight
 				},
-				classes: edge.bidirectional ? 'bidirectional' : ''
+				classes: edgeClasses
 			});
 		}
 
@@ -316,30 +363,44 @@
 	function runLayout() {
 		if (!cy || cy.nodes('.device').length === 0) return;
 
-		cy.layout({
-			name: 'fcose',
-			animate: true,
-			animationDuration: 600,
-			quality: 'default',
-			// Node repulsion — higher = more spread out
-			nodeRepulsion: () => 8000,
-			// Ideal edge length
-			idealEdgeLength: () => 140,
-			// Edge elasticity
-			edgeElasticity: () => 0.45,
-			// Alignment and nesting for compound nodes
-			nestingFactor: 0.1,
-			gravity: 0.25,
-			gravityRange: 3.8,
-			// Packing
-			tile: true,
-			tilingPaddingVertical: 20,
-			tilingPaddingHorizontal: 20,
-			padding: 40,
-			// Compound node handling
-			fit: true,
-			randomize: false
-		}).run();
+		if (layout === 'purdue') {
+			cy.layout({ name: 'purdue' }).run();
+		} else {
+			cy.layout({
+				name: 'fcose',
+				animate: true,
+				animationDuration: 600,
+				quality: 'default',
+				// Node repulsion — higher = more spread out
+				nodeRepulsion: () => 8000,
+				// Ideal edge length
+				idealEdgeLength: () => 140,
+				// Edge elasticity
+				edgeElasticity: () => 0.45,
+				// Alignment and nesting for compound nodes
+				nestingFactor: 0.1,
+				gravity: 0.25,
+				gravityRange: 3.8,
+				// Packing
+				tile: true,
+				tilingPaddingVertical: 20,
+				tilingPaddingHorizontal: 20,
+				padding: 40,
+				// Compound node handling
+				fit: true,
+				randomize: false
+			}).run();
+		}
+	}
+
+	/** Export the current graph view as a PNG download */
+	function exportPng() {
+		if (!cy) return;
+		const png = cy.png({ scale: 2, full: true, bg: '#0f172a' });
+		const a = document.createElement('a');
+		a.href = png;
+		a.download = 'topology.png';
+		a.click();
 	}
 
 	/** Full graph rebuild when topology or grouping changes */
@@ -456,27 +517,50 @@
 			<h2 class="view-title">Logical View</h2>
 			<span class="toolbar-sep"></span>
 			<label class="group-label">
-				Group:
+				Layout:
 				<select
 					class="group-select"
-					value={$groupingMode}
-					onchange={(e) => groupingMode.set((e.target as HTMLSelectElement).value as GroupingMode)}
+					value={layout}
+					onchange={(e) => {
+						layout = (e.target as HTMLSelectElement).value as 'fcose' | 'purdue';
+						runLayout();
+					}}
 				>
-					{#each groupingOptions as opt}
-						<option value={opt.mode}>{opt.label}</option>
-					{/each}
+					<option value="fcose">Force-Directed</option>
+					<option value="purdue">Purdue Layers</option>
 				</select>
 			</label>
+			{#if layout === 'fcose'}
+				<span class="toolbar-sep"></span>
+				<label class="group-label">
+					Group:
+					<select
+						class="group-select"
+						value={$groupingMode}
+						onchange={(e) =>
+							groupingMode.set((e.target as HTMLSelectElement).value as GroupingMode)}
+					>
+						{#each groupingOptions as opt}
+							<option value={opt.mode}>{opt.label}</option>
+						{/each}
+					</select>
+				</label>
+			{/if}
 		</div>
 		<div class="toolbar-section">
 			<button class="tool-btn" onclick={() => cy?.fit(undefined, 40)}>Fit</button>
 			<button class="tool-btn" onclick={() => cy?.center()}>Center</button>
 			<button class="tool-btn" onclick={runLayout}>Relayout</button>
+			<button class="tool-btn" onclick={exportPng}>Export PNG</button>
 		</div>
 	</div>
 
 	<!-- Graph Canvas -->
-	<div class="graph-area" bind:this={graphContainer}>
+	<div class="graph-area">
+		{#if layout === 'purdue' && $topology.nodes.length > 0}
+			<PurdueOverlay />
+		{/if}
+		<div class="cy-canvas" bind:this={graphContainer}></div>
 		{#if $topology.nodes.length === 0}
 			<div class="empty-state">
 				<div class="empty-icon">&#x2B21;</div>
@@ -631,6 +715,12 @@
 		background: var(--gm-bg-primary);
 		background-image: radial-gradient(circle, #1e293b 1px, transparent 1px);
 		background-size: 24px 24px;
+		overflow: hidden;
+	}
+
+	.cy-canvas {
+		position: absolute;
+		inset: 0;
 	}
 
 	/* ── Empty State ─────────────────────────────────── */

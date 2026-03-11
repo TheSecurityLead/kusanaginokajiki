@@ -17,4 +17,4 @@ pub use error::CaptureError;
 pub use interface::{list_interfaces, NetworkInterface, InterfaceAddress, InterfaceFlags};
 pub use live::{LiveCaptureHandle, LiveCaptureConfig, CaptureStats};
 pub use packet::{ParsedPacket, TransportProtocol};
-pub use pcap_reader::PcapReader;
+pub use pcap_reader::{PcapReader, ProgressUpdate, FileProcessStats};

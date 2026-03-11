@@ -91,6 +91,7 @@ fn main() {
             commands::system::list_plugins,
             // Capture / Import
             commands::capture::import_pcap,
+            commands::capture::cancel_import,
             // Live Capture
             commands::capture::start_capture,
             commands::capture::stop_capture,
@@ -121,13 +122,18 @@ fn main() {
             commands::session::import_session_archive,
             // Baseline Drift (Phase 11)
             commands::baseline::compare_sessions,
-            // Physical Topology (Phase 7)
+            // Physical Topology (Phase 7 + vendor-neutral expansion)
             commands::physical::import_cisco_config,
             commands::physical::import_mac_table,
             commands::physical::import_cdp_neighbors,
             commands::physical::import_arp_table,
             commands::physical::get_physical_topology,
             commands::physical::clear_physical_topology,
+            commands::physical::import_network_config,
+            commands::physical::import_mac_table_auto,
+            commands::physical::import_neighbor_table,
+            commands::physical::run_topology_inference,
+            commands::physical::get_inferred_topology,
             // External Tool Import (Phase 8)
             commands::ingest::import_zeek_logs,
             commands::ingest::import_suricata_eve,
@@ -154,6 +160,12 @@ fn main() {
             commands::analysis::get_findings,
             commands::analysis::get_purdue_assignments,
             commands::analysis::get_anomalies,
+            commands::analysis::get_credential_warnings,
+            commands::analysis::get_criticality,
+            commands::analysis::get_naming_suggestions,
+            // Communication Pattern Analysis
+            commands::patterns::get_connection_stats,
+            commands::patterns::get_pattern_anomalies,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

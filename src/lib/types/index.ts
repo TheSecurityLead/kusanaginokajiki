@@ -534,6 +534,48 @@ export interface PhysicalTopology {
 	device_locations: Record<string, DeviceLocation>;
 }
 
+// ─── Traffic-Inferred Topology ────────────────────────────
+
+/** An IPv4 /24 subnet inferred from observed traffic */
+export interface InferredSubnet {
+	network: string;
+	member_ips: string[];
+	gateway_ip: string | null;
+}
+
+/** A device inferred to be a gateway/router */
+export interface InferredGateway {
+	ip_address: string;
+	mac_address: string | null;
+	connected_subnets: string[];
+	confidence: number;
+}
+
+/** A device that may be a switch/hub based on high fan-out */
+export interface SwitchCandidate {
+	ip_address: string | null;
+	mac_address: string | null;
+	connected_ips: string[];
+	confidence: number;
+}
+
+/** A broadcast domain inferred from subnet structure */
+export interface BroadcastDomain {
+	id: string;
+	network: string;
+	member_ips: string[];
+	gateway_ip: string | null;
+	inferred_from: string;
+}
+
+/** Full traffic-inferred topology */
+export interface InferredTopology {
+	subnets: InferredSubnet[];
+	gateways: InferredGateway[];
+	switch_candidates: SwitchCandidate[];
+	broadcast_domains: BroadcastDomain[];
+}
+
 // ─── External Tool Ingest (Phase 8) ─────────────────────
 
 /** Data source for ingested results */
@@ -677,6 +719,36 @@ export interface AnalysisSummary {
 	unencrypted_ot_percent: number;
 }
 
+// ─── Phase 13A Quick-Win Features ───────────────────────
+
+/** A known default credential entry for an ICS/SCADA product */
+export interface DefaultCredential {
+	vendor: string;
+	product_pattern: string;
+	protocol: string;
+	username: string;
+	password: string;
+	source: string;
+	severity: string;
+}
+
+/** Criticality level for an asset */
+export type CriticalityLevel = 'critical' | 'high' | 'medium' | 'low' | 'unknown';
+
+/** Criticality assessment for a single device */
+export interface CriticalityAssessment {
+	ip_address: string;
+	level: CriticalityLevel;
+	reason: string;
+}
+
+/** A naming suggestion for a discovered device */
+export interface NamingSuggestion {
+	ip_address: string;
+	suggested_name: string;
+	reason: string;
+}
+
 // ─── Baseline Drift (Phase 11) ───────────────────────────
 
 /** Full diff result between current state and a baseline session */
@@ -762,4 +834,36 @@ export interface PluginManifest {
 	plugin_type: string;
 	description: string;
 	author: string | null;
+}
+
+// ─── Communication Patterns ──────────────────────────────
+
+/** Per-connection timing and traffic statistics */
+export interface ConnectionStats {
+	src_ip: string;
+	dst_ip: string;
+	protocol: string;
+	port: number;
+	packet_count: number;
+	byte_count: number;
+	first_seen: number;
+	last_seen: number;
+	duration_secs: number;
+	avg_interval_ms: number;
+	std_interval_ms: number;
+	min_interval_ms: number;
+	max_interval_ms: number;
+	is_periodic: boolean;
+	packets_per_sec: number;
+}
+
+/** A detected communication pattern anomaly */
+export interface PatternAnomaly {
+	anomaly_type: string;
+	src_ip: string;
+	dst_ip: string;
+	port: number;
+	protocol: string;
+	description: string;
+	severity: string;
 }

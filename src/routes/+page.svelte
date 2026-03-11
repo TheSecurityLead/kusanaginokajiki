@@ -17,6 +17,7 @@
 	import PhysicalView from '$lib/components/PhysicalView.svelte';
 	import ExportView from '$lib/components/ExportView.svelte';
 	import AnalysisView from '$lib/components/AnalysisView.svelte';
+	import CommunicationPatterns from '$lib/components/CommunicationPatterns.svelte';
 
 	let showTree = $state(true);
 
@@ -144,6 +145,8 @@
 	<ProtocolStats />
 {:else if $activeTab === 'capture'}
 	<CaptureView />
+{:else if $activeTab === 'comm_patterns'}
+	<CommunicationPatterns />
 {:else if $activeTab === 'analysis'}
 	<AnalysisView />
 {:else if $activeTab === 'export'}

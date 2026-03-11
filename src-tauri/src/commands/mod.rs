@@ -10,17 +10,19 @@ pub mod wireshark;
 pub mod export;
 pub mod analysis;
 pub mod baseline;
+pub mod patterns;
 
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
+use std::sync::atomic::AtomicBool;
 use std::thread::JoinHandle;
 use gm_capture::LiveCaptureHandle;
 use gm_topology::TopologyGraph;
 use gm_parsers::IcsProtocol;
 use gm_signatures::SignatureEngine;
 use gm_db::{Database, OuiLookup, GeoIpLookup};
-use gm_physical::PhysicalTopology;
-use gm_analysis::{Finding, PurdueAssignment, AnomalyScore};
+use gm_physical::{PhysicalTopology, InferredTopology};
+use gm_analysis::{Finding, PurdueAssignment, AnomalyScore, ConnectionStats, PatternAnomaly};
 use serde::{Serialize, Deserialize};
 
 /// Shared application state, managed by Tauri.
@@ -30,6 +32,10 @@ use serde::{Serialize, Deserialize};
 /// via the `State<'_, AppState>` parameter.
 pub struct AppState {
     pub inner: Mutex<AppStateInner>,
+    /// Set to true to cancel an in-progress PCAP import. Lives outside the
+    /// Mutex so it can be read/written by the import thread and the cancel
+    /// command without acquiring the heavy state lock.
+    pub import_cancelled: Arc<AtomicBool>,
 }
 
 pub struct AppStateInner {
@@ -61,14 +67,20 @@ pub struct AppStateInner {
     pub current_session_id: Option<String>,
     /// Currently loaded session name
     pub current_session_name: Option<String>,
-    /// Physical topology from Cisco config/CAM/CDP/ARP imports
+    /// Physical topology from Cisco/JunOS/Aruba config/CAM/CDP/ARP imports
     pub physical_topology: PhysicalTopology,
+    /// Traffic-inferred topology from packet analysis
+    pub inferred_topology: Option<InferredTopology>,
     /// Security findings from the last analysis run
     pub findings: Vec<Finding>,
     /// Purdue level assignments from the last analysis run
     pub purdue_assignments: Vec<PurdueAssignment>,
     /// Anomaly scores from the last analysis run
     pub anomalies: Vec<AnomalyScore>,
+    /// Per-connection timing statistics (computed after import / capture)
+    pub connection_stats: Vec<ConnectionStats>,
+    /// Communication pattern anomalies (computed alongside connection_stats)
+    pub pattern_anomalies: Vec<PatternAnomaly>,
 }
 
 /// Asset information stored in application state.
@@ -429,6 +441,7 @@ impl AppState {
         };
 
         AppState {
+            import_cancelled: Arc::new(AtomicBool::new(false)),
             inner: Mutex::new(AppStateInner {
                 topology: TopologyGraph::default(),
                 assets: Vec::new(),
@@ -445,9 +458,12 @@ impl AppState {
                 current_session_id: None,
                 current_session_name: None,
                 physical_topology: PhysicalTopology::default(),
+                inferred_topology: None,
                 findings: Vec::new(),
                 purdue_assignments: Vec::new(),
                 anomalies: Vec::new(),
+                connection_stats: Vec::new(),
+                pattern_anomalies: Vec::new(),
             }),
         }
     }

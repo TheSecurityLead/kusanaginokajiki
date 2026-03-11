@@ -12,6 +12,8 @@ use gm_analysis::{
     EnipSnapshot, S7Snapshot, BacnetSnapshot, Iec104Snapshot, ProfinetDcpSnapshot,
     FcSnapshot, RelationshipSnapshot, PollingSnapshot,
     Finding, PurdueAssignment, AnomalyScore,
+    CredentialChecker, CriticalityAssessment, NamingSuggestion,
+    DefaultCredential,
 };
 
 use super::AppState;
@@ -185,4 +187,49 @@ pub fn get_purdue_assignments(state: State<'_, AppState>) -> Result<Vec<PurdueAs
 pub fn get_anomalies(state: State<'_, AppState>) -> Result<Vec<AnomalyScore>, String> {
     let state_inner = state.inner.lock().map_err(|e| e.to_string())?;
     Ok(state_inner.anomalies.clone())
+}
+
+/// Get credential warnings for all discovered devices.
+///
+/// Checks vendor+product strings against the default credential database.
+#[tauri::command]
+pub fn get_credential_warnings(
+    state: State<'_, AppState>,
+) -> Result<Vec<DefaultCredential>, String> {
+    let state_inner = state.inner.lock().map_err(|e| e.to_string())?;
+
+    let checker = CredentialChecker::new()?;
+    let mut results = Vec::new();
+
+    for asset in &state_inner.assets {
+        let vendor = asset.vendor.as_deref().unwrap_or("");
+        let product = asset.product_family.as_deref().unwrap_or("");
+        let matches = checker.check_device(vendor, product);
+        results.extend(matches);
+    }
+
+    // Deduplicate by vendor+product_pattern
+    results.dedup_by(|a, b| a.vendor == b.vendor && a.product_pattern == b.product_pattern);
+
+    Ok(results)
+}
+
+/// Assess criticality for all discovered assets.
+#[tauri::command]
+pub fn get_criticality(
+    state: State<'_, AppState>,
+) -> Result<Vec<CriticalityAssessment>, String> {
+    let state_inner = state.inner.lock().map_err(|e| e.to_string())?;
+    let input = build_analysis_input(&state_inner);
+    Ok(gm_analysis::assess_criticality_all(&input.assets))
+}
+
+/// Get naming suggestions for all discovered assets.
+#[tauri::command]
+pub fn get_naming_suggestions(
+    state: State<'_, AppState>,
+) -> Result<Vec<NamingSuggestion>, String> {
+    let state_inner = state.inner.lock().map_err(|e| e.to_string())?;
+    let input = build_analysis_input(&state_inner);
+    Ok(gm_analysis::suggest_names_all(&input.assets))
 }

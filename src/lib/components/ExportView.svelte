@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { assetCount, connectionCount } from '$lib/stores';
-	import type { ReportConfig } from '$lib/types';
+	import type { ReportConfig, Finding } from '$lib/types';
 	import {
 		exportAssetsCsv,
 		exportConnectionsCsv,
@@ -9,7 +9,8 @@
 		generatePdfReport,
 		exportSbom,
 		exportStixBundle,
-		saveTopologyImage
+		saveTopologyImage,
+		getFindings
 	} from '$lib/utils/tauri';
 
 	// ─── PDF Report Config ───────────────────────────────
@@ -211,6 +212,69 @@
 	}
 
 	let hasData = $derived($assetCount > 0 || $connectionCount > 0);
+
+	// ─── Remediation Priority ────────────────────────────
+	let remediationItems = $state<Array<{rank: number; severity: string; title: string; description: string; assets: string[]; remediation: string; technique: string | null}>>([]);
+	let showRemediationTable = $state(false);
+	let loadingRemediation = $state(false);
+
+	function remediationFor(finding: Finding): string {
+		const t = finding.technique_id ?? '';
+		const title = finding.title.toLowerCase();
+		if (t === 'T0855') return 'Restrict write access, implement application whitelisting per IEC 62443-3-3 SR 3.3';
+		if (t === 'T0886') return 'Implement network segmentation between Purdue levels using firewalls/DMZ';
+		if (t === 'T0843') return 'Enable program download protection, require authentication for S7 program transfers';
+		if (t === 'T0816') return 'Restrict PLC stop commands to authorized engineering workstations only';
+		if (t === 'T0836') return 'Enable firmware verification, implement change management for firmware updates';
+		if (t === 'T0846') return 'Investigate and block unauthorized device from accessing OT network';
+		if (t === 'T0814') return 'Restrict diagnostic commands (FC8) to authorized engineering workstations';
+		if (t === 'T0856') return 'Configure authorized master list; block unsolicited DNP3 from unknown sources';
+		if (t === 'T0811') return 'Block DeviceCommunicationControl from unauthorized hosts';
+		if (title.includes('flat network')) return 'Implement network segmentation per IEC 62443-2-1 and NIST SP 800-82';
+		if (title.includes('cleartext') || title.includes('unencrypted')) return 'Evaluate encrypted protocol alternatives: OPC UA with TLS, DNP3-SA, or TLS-wrapped tunnels';
+		if (title.includes('internet') || title.includes('public ip')) return 'Remove public IP or place device behind NAT/DMZ; verify firewall rules immediately';
+		return 'Review finding and apply vendor-recommended hardening guidelines';
+	}
+
+	async function loadRemediationList() {
+		loadingRemediation = true;
+		try {
+			const findings = await getFindings();
+			const sorted = [...findings].sort((a, b) => {
+				const order: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
+				return (order[a.severity] ?? 5) - (order[b.severity] ?? 5);
+			});
+			remediationItems = sorted.map((f, i) => ({
+				rank: i + 1,
+				severity: f.severity,
+				title: f.title,
+				description: f.description,
+				assets: f.affected_assets,
+				remediation: remediationFor(f),
+				technique: f.technique_id ?? null,
+			}));
+			showRemediationTable = true;
+		} catch (err) {
+			showStatus(`Failed to load findings: ${err}`, 'error');
+		}
+		loadingRemediation = false;
+	}
+
+	async function exportRemediationCsv() {
+		const header = 'Rank,Severity,Title,Affected Assets,Remediation,ATT&CK Technique';
+		const rows = remediationItems.map(r =>
+			`${r.rank},"${r.severity}","${r.title.replace(/"/g, '""')}","${r.assets.join('; ')}","${r.remediation.replace(/"/g, '""')}","${r.technique ?? ''}"`
+		);
+		const csv = [header, ...rows].join('\n');
+		try {
+			busyAction = 'remediation_csv';
+			await navigator.clipboard.writeText(csv);
+			showStatus('Remediation CSV copied to clipboard (paste into a .csv file)', 'info');
+		} catch (err) {
+			showStatus(`Export failed: ${err}`, 'error');
+		}
+		busyAction = null;
+	}
 </script>
 
 <div class="export-container">
@@ -440,6 +504,70 @@
 			>
 				{busyAction === 'stix' ? 'Exporting...' : 'Export STIX 2.1 Bundle'}
 			</button>
+		</section>
+
+		<!-- ── Remediation Priority List ─────────────────── -->
+		<section class="export-section">
+			<h3 class="section-title">Remediation Priority List</h3>
+			<p class="section-desc">
+				Ranked list of security findings with remediation guidance, sorted by severity.
+			</p>
+			<div class="btn-row">
+				<button class="action-btn primary" onclick={loadRemediationList} disabled={loadingRemediation || busyAction !== null}>
+					{loadingRemediation ? 'Loading...' : 'Generate List'}
+				</button>
+				{#if remediationItems.length > 0}
+					<button class="action-btn primary" onclick={exportRemediationCsv} disabled={busyAction === 'remediation_csv'}>
+						{busyAction === 'remediation_csv' ? 'Copying...' : 'Copy CSV'}
+					</button>
+				{/if}
+			</div>
+
+			{#if showRemediationTable && remediationItems.length > 0}
+				<div class="remediation-table-wrap">
+					<table class="remediation-table">
+						<thead>
+							<tr>
+								<th class="col-rank">#</th>
+								<th class="col-sev">Severity</th>
+								<th class="col-title">Finding</th>
+								<th class="col-assets">Assets</th>
+								<th class="col-remedy">Remediation</th>
+								<th class="col-tech">ATT&amp;CK</th>
+							</tr>
+						</thead>
+						<tbody>
+							{#each remediationItems as item}
+								<tr class="remediation-row">
+									<td class="col-rank">{item.rank}</td>
+									<td>
+										<span class="sev-badge sev-{item.severity}">{item.severity}</span>
+									</td>
+									<td class="col-title">
+										<div class="finding-title">{item.title}</div>
+									</td>
+									<td class="col-assets">
+										{#each item.assets.slice(0, 3) as ip}
+											<div class="asset-ip">{ip}</div>
+										{/each}
+										{#if item.assets.length > 3}
+											<div class="asset-more">+{item.assets.length - 3} more</div>
+										{/if}
+									</td>
+									<td class="col-remedy">{item.remediation}</td>
+									<td class="col-tech">
+										{#if item.technique}
+											<code class="technique-id">{item.technique}</code>
+										{/if}
+									</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</div>
+			{:else if showRemediationTable}
+				<p class="no-findings">No findings available. Run analysis first.</p>
+			{/if}
 		</section>
 	</div>
 </div>
@@ -734,5 +862,100 @@
 
 	.radio-row input[type="radio"] {
 		accent-color: #10b981;
+	}
+
+	/* ── Remediation Priority Table ─────────────────────── */
+
+	.remediation-table-wrap {
+		overflow-x: auto;
+		margin-top: 16px;
+	}
+
+	.remediation-table {
+		width: 100%;
+		border-collapse: collapse;
+		font-size: 11px;
+	}
+
+	.remediation-table th {
+		text-align: left;
+		padding: 8px 10px;
+		background: var(--gm-bg-secondary);
+		border-bottom: 2px solid var(--gm-border);
+		color: var(--gm-text-muted);
+		font-weight: 600;
+		text-transform: uppercase;
+		font-size: 10px;
+		letter-spacing: 0.05em;
+	}
+
+	.remediation-table td {
+		padding: 8px 10px;
+		border-bottom: 1px solid var(--gm-border);
+		vertical-align: top;
+	}
+
+	.remediation-row:hover td { background: var(--gm-bg-tertiary); }
+
+	.col-rank {
+		width: 40px;
+		text-align: center;
+		font-weight: 700;
+		color: var(--gm-text-muted);
+	}
+
+	.col-sev { width: 90px; }
+	.col-assets { width: 130px; }
+	.col-tech { width: 100px; }
+
+	.sev-badge {
+		display: inline-block;
+		padding: 2px 8px;
+		border-radius: 4px;
+		font-size: 10px;
+		font-weight: 700;
+		text-transform: uppercase;
+	}
+
+	.sev-badge.sev-critical { background: rgba(239, 68, 68, 0.13); color: #ef4444; }
+	.sev-badge.sev-high { background: rgba(249, 115, 22, 0.13); color: #f97316; }
+	.sev-badge.sev-medium { background: rgba(245, 158, 11, 0.13); color: #f59e0b; }
+	.sev-badge.sev-low { background: rgba(16, 185, 129, 0.13); color: #10b981; }
+	.sev-badge.sev-info { background: rgba(59, 130, 246, 0.13); color: #3b82f6; }
+
+	.finding-title {
+		font-weight: 500;
+		color: var(--gm-text-primary);
+	}
+
+	.asset-ip {
+		font-family: monospace;
+		color: var(--gm-accent, #38bdf8);
+		font-size: 10px;
+	}
+
+	.asset-more {
+		color: var(--gm-text-muted);
+		font-size: 10px;
+	}
+
+	.col-remedy {
+		font-size: 11px;
+		color: var(--gm-text-secondary);
+	}
+
+	.technique-id {
+		font-family: monospace;
+		font-size: 11px;
+		background: var(--gm-bg-secondary);
+		padding: 2px 6px;
+		border-radius: 4px;
+		color: var(--gm-accent, #38bdf8);
+	}
+
+	.no-findings {
+		color: var(--gm-text-muted);
+		font-size: 11px;
+		margin-top: 12px;
 	}
 </style>

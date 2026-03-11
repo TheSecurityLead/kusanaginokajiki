@@ -1,22 +1,28 @@
 <script lang="ts">
 	import { interfaces, captureStatus, captureStats, assets, connections, topology, sessions, currentSession } from '$lib/stores';
 	import {
-		importPcap, getAssets, getConnections, getTopology, getProtocolStats,
+		importPcap, cancelImport, onImportProgress,
+		getAssets, getConnections, getTopology, getProtocolStats,
 		startCapture, stopCapture, pauseCapture, resumeCapture,
 		onCaptureStats, onCaptureError,
 		saveSession, loadSession, listSessions, deleteSession,
 		exportSessionArchive, importSessionArchive,
-		importZeekLogs, importSuricataEve, importNmapXml, importMasscanJson
+		importZeekLogs, importSuricataEve, importNmapXml, importMasscanJson,
+		getFindings
 	} from '$lib/utils/tauri';
+	import type { ImportProgressEvent } from '$lib/utils/tauri';
 	import { protocolStats } from '$lib/stores';
 	import type { FileImportResult, CaptureStatsEvent, SessionInfo, IngestImportResult } from '$lib/types';
 	import { onMount, onDestroy } from 'svelte';
+	import { get } from 'svelte/store';
 
 	// ── PCAP Import State ─────────────────────────────────
 	let importStatus = $state<'idle' | 'importing' | 'done' | 'error'>('idle');
 	let importMessage = $state('');
 	let fileResults = $state<FileImportResult[]>([]);
 	let totalStats = $state({ packets: 0, assets: 0, connections: 0, ms: 0, files: 0 });
+	let importProgress = $state<ImportProgressEvent | null>(null);
+	let unlistenProgress: (() => void) | null = null;
 
 	// ── Live Capture State ────────────────────────────────
 	let selectedInterface = $state('');
@@ -32,6 +38,61 @@
 	let showSaveForm = $state(false);
 	let confirmDeleteId = $state<string | null>(null);
 
+	// ── Capture Summary State ─────────────────────────────
+	let captureSummary = $state<{
+		subnets: number;
+		otCount: number;
+		itCount: number;
+		topProtocols: { name: string; pct: number }[];
+		criticalFindings: number;
+		highFindings: number;
+	} | null>(null);
+
+	async function buildCaptureSummary() {
+		try {
+			const currentAssets = get(assets);
+			const findings = await getFindings();
+
+			const OT_TYPES = new Set(['plc', 'rtu', 'hmi', 'historian', 'engineering_workstation', 'scada_server']);
+			let otCount = 0;
+			let itCount = 0;
+			const subnetSet = new Set<string>();
+			const protoCounts: Record<string, number> = {};
+
+			for (const a of currentAssets) {
+				if (OT_TYPES.has(a.device_type)) otCount++;
+				else itCount++;
+
+				const parts = a.ip_address.split('.');
+				if (parts.length === 4) subnetSet.add(`${parts[0]}.${parts[1]}.${parts[2]}.0/24`);
+
+				for (const p of a.protocols) {
+					protoCounts[p] = (protoCounts[p] ?? 0) + 1;
+				}
+			}
+
+			const totalAssets = currentAssets.length;
+			const topProtocols = Object.entries(protoCounts)
+				.sort((a, b) => b[1] - a[1])
+				.slice(0, 4)
+				.map(([name, count]) => ({
+					name,
+					pct: totalAssets > 0 ? Math.round(count / totalAssets * 100) : 0
+				}));
+
+			captureSummary = {
+				subnets: subnetSet.size,
+				otCount,
+				itCount,
+				topProtocols,
+				criticalFindings: findings.filter(f => f.severity === 'critical').length,
+				highFindings: findings.filter(f => f.severity === 'high').length,
+			};
+		} catch {
+			captureSummary = null;
+		}
+	}
+
 	// ── External Tool Import State ────────────────────────
 	let ingestStatus = $state<'idle' | 'importing' | 'done' | 'error'>('idle');
 	let ingestMessage = $state('');
@@ -43,7 +104,7 @@
 	let refreshInterval: ReturnType<typeof setInterval> | null = null;
 
 	onMount(() => {
-		// Set up event listeners for live capture
+		// Set up event listeners for live capture and import progress
 		setupEventListeners();
 		// Load session list
 		refreshSessions();
@@ -63,12 +124,25 @@
 			captureStatus.set('error');
 			cleanupRefreshInterval();
 		});
+
+		unlistenProgress = await onImportProgress((progress: ImportProgressEvent) => {
+			importProgress = progress;
+		});
 	}
 
 	function cleanupListeners() {
 		unlistenStats?.();
 		unlistenError?.();
+		unlistenProgress?.();
 		cleanupRefreshInterval();
+	}
+
+	async function handleCancelImport() {
+		try {
+			await cancelImport();
+		} catch (err) {
+			console.error('Cancel import error:', err);
+		}
 	}
 
 	function cleanupRefreshInterval() {
@@ -117,12 +191,15 @@
 			if (paths.length === 0) return;
 
 			importStatus = 'importing';
+			captureSummary = null;
+			importProgress = null;
 			const fileCount = paths.length;
 			importMessage = `Importing ${fileCount} file${fileCount > 1 ? 's' : ''}...`;
 			fileResults = [];
 
 			const result = await importPcap(paths);
 
+			importProgress = null;
 			importStatus = 'done';
 			fileResults = result.per_file;
 			totalStats = {
@@ -145,7 +222,9 @@
 			connections.set(newConnections);
 			topology.set(newTopology);
 			protocolStats.set(newStats);
+			await buildCaptureSummary();
 		} catch (err) {
+			importProgress = null;
 			importStatus = 'error';
 			importMessage = `Import failed: ${err}`;
 			console.error('PCAP import error:', err);
@@ -522,12 +601,44 @@
 				{importStatus === 'importing' ? 'Importing...' : 'Import PCAP Files'}
 			</button>
 
-			{#if importMessage}
+			{#if importStatus === 'importing'}
+				<div class="import-progress-card">
+					<div class="import-progress-header">
+						<span class="import-progress-title">Processing PCAP</span>
+						<button class="cancel-import-btn" onclick={handleCancelImport}>Cancel</button>
+					</div>
+					{#if importProgress}
+						<div class="import-progress-file">
+							File {importProgress.file_index + 1} of {importProgress.file_count}:
+							<strong>{importProgress.current_file.split(/[\\/]/).pop()}</strong>
+						</div>
+						<div class="import-progress-bar-track">
+							<div
+								class="import-progress-bar-fill"
+								style="width: {importProgress.progress_percent}%"
+							></div>
+						</div>
+						<div class="import-progress-stats">
+							<span>{importProgress.packets_processed.toLocaleString()} pkts</span>
+							<span>{formatBytes(importProgress.bytes_processed)} / {formatBytes(importProgress.file_size)}</span>
+							<span>{importProgress.progress_percent.toFixed(1)}%</span>
+							<span>{formatDuration(importProgress.elapsed_secs)}</span>
+						</div>
+						{#if importProgress.progress_percent > 5}
+							{@const eta = (importProgress.elapsed_secs / importProgress.progress_percent) * (100 - importProgress.progress_percent)}
+							<div class="import-progress-eta">~{formatDuration(eta)} remaining</div>
+						{/if}
+					{:else}
+						<div class="import-progress-waiting">Starting...</div>
+					{/if}
+				</div>
+			{/if}
+
+			{#if importMessage && importStatus !== 'importing'}
 				<div
 					class="import-result"
 					class:success={importStatus === 'done'}
 					class:error={importStatus === 'error'}
-					class:loading={importStatus === 'importing'}
 				>
 					{importMessage}
 				</div>
@@ -569,6 +680,51 @@
 						<span class="import-stat-value">{totalStats.connections}</span>
 						<span class="import-stat-label">Connections</span>
 					</div>
+				</div>
+			{/if}
+
+			{#if importStatus === 'done' && captureSummary}
+				<div class="capture-summary-card">
+					<h4 class="summary-card-title">Capture Summary</h4>
+					<div class="summary-grid">
+						<div class="summary-item">
+							<span class="summary-val">{totalStats.packets.toLocaleString()}</span>
+							<span class="summary-key">Packets</span>
+						</div>
+						<div class="summary-item">
+							<span class="summary-val">{captureSummary.subnets}</span>
+							<span class="summary-key">Subnets</span>
+						</div>
+						<div class="summary-item">
+							<span class="summary-val">{captureSummary.otCount}</span>
+							<span class="summary-key">OT Devices</span>
+						</div>
+						<div class="summary-item">
+							<span class="summary-val">{captureSummary.itCount}</span>
+							<span class="summary-key">IT Devices</span>
+						</div>
+					</div>
+					{#if captureSummary.topProtocols.length > 0}
+						<div class="summary-protocols">
+							<span class="summary-proto-label">Protocols: </span>
+							{#each captureSummary.topProtocols as p, i}
+								<span class="summary-proto">{p.name} ({p.pct}%)</span>
+								{#if i < captureSummary.topProtocols.length - 1}<span class="proto-sep">, </span>{/if}
+							{/each}
+						</div>
+					{/if}
+					{#if captureSummary.criticalFindings > 0 || captureSummary.highFindings > 0}
+						<div class="summary-findings">
+							{#if captureSummary.criticalFindings > 0}
+								<span class="finding-badge critical">{captureSummary.criticalFindings} Critical</span>
+							{/if}
+							{#if captureSummary.highFindings > 0}
+								<span class="finding-badge high">{captureSummary.highFindings} High</span>
+							{/if}
+						</div>
+					{:else}
+						<div class="summary-findings"><span class="finding-badge ok">No critical findings</span></div>
+					{/if}
 				</div>
 			{/if}
 		</section>
@@ -1060,6 +1216,84 @@
 		background: rgba(59, 130, 246, 0.1);
 		border: 1px solid rgba(59, 130, 246, 0.2);
 		color: #3b82f6;
+	}
+
+	/* ── Import progress card ──────────────────────── */
+
+	.import-progress-card {
+		margin-top: 12px;
+		padding: 12px 14px;
+		border-radius: 6px;
+		background: rgba(59, 130, 246, 0.08);
+		border: 1px solid rgba(59, 130, 246, 0.25);
+		font-size: 11px;
+	}
+
+	.import-progress-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		margin-bottom: 8px;
+	}
+
+	.import-progress-title {
+		font-weight: 600;
+		color: #3b82f6;
+		font-size: 12px;
+	}
+
+	.cancel-import-btn {
+		padding: 2px 10px;
+		border-radius: 4px;
+		border: 1px solid rgba(239, 68, 68, 0.4);
+		background: rgba(239, 68, 68, 0.1);
+		color: #ef4444;
+		font-size: 11px;
+		cursor: pointer;
+	}
+
+	.cancel-import-btn:hover {
+		background: rgba(239, 68, 68, 0.2);
+	}
+
+	.import-progress-file {
+		margin-bottom: 6px;
+		color: var(--gm-text-secondary, #94a3b8);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.import-progress-bar-track {
+		height: 6px;
+		border-radius: 3px;
+		background: rgba(255, 255, 255, 0.08);
+		margin-bottom: 6px;
+		overflow: hidden;
+	}
+
+	.import-progress-bar-fill {
+		height: 100%;
+		border-radius: 3px;
+		background: #3b82f6;
+		transition: width 0.4s ease;
+	}
+
+	.import-progress-stats {
+		display: flex;
+		gap: 12px;
+		color: var(--gm-text-secondary, #94a3b8);
+		flex-wrap: wrap;
+	}
+
+	.import-progress-eta {
+		margin-top: 4px;
+		color: var(--gm-text-secondary, #94a3b8);
+	}
+
+	.import-progress-waiting {
+		color: var(--gm-text-secondary, #94a3b8);
+		font-style: italic;
 	}
 
 	/* ── Per-file results ──────────────────────────── */
@@ -1688,4 +1922,73 @@
 		border-radius: 4px;
 		margin-bottom: 3px;
 	}
+
+	/* ── Capture Summary Card ───────────────────────────── */
+
+	.capture-summary-card {
+		background: var(--gm-bg-secondary);
+		border: 1px solid var(--gm-border);
+		border-radius: 8px;
+		padding: 16px;
+		margin-top: 16px;
+	}
+
+	.summary-card-title {
+		font-size: 11px;
+		font-weight: 600;
+		color: var(--gm-text-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		margin: 0 0 12px;
+	}
+
+	.summary-grid {
+		display: grid;
+		grid-template-columns: repeat(4, 1fr);
+		gap: 12px;
+		margin-bottom: 12px;
+	}
+
+	.summary-item {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+	}
+
+	.summary-val {
+		font-size: 1.4rem;
+		font-weight: 700;
+		color: var(--gm-text-primary);
+	}
+
+	.summary-key {
+		font-size: 0.7rem;
+		color: var(--gm-text-muted);
+		text-transform: uppercase;
+	}
+
+	.summary-protocols {
+		font-size: 11px;
+		color: var(--gm-text-muted);
+		margin-bottom: 10px;
+	}
+
+	.summary-proto { color: var(--gm-accent, #38bdf8); }
+
+	.summary-findings {
+		display: flex;
+		gap: 8px;
+		flex-wrap: wrap;
+	}
+
+	.finding-badge {
+		padding: 3px 10px;
+		border-radius: 4px;
+		font-size: 11px;
+		font-weight: 600;
+	}
+
+	.finding-badge.critical { background: rgba(239, 68, 68, 0.13); color: #ef4444; }
+	.finding-badge.high { background: rgba(249, 115, 22, 0.13); color: #f97316; }
+	.finding-badge.ok { background: rgba(16, 185, 129, 0.13); color: #10b981; }
 </style>

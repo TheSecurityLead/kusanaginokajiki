@@ -1,18 +1,23 @@
 //! Physical topology parsing for Kusanagi Kajiki.
 //!
-//! Parses Cisco IOS config files, MAC address tables, CDP neighbor
-//! output, and ARP tables to build a physical switch-port topology.
-//! Stubs provided for Juniper and HP/Aruba (not yet implemented).
+//! Parses network device configs and MAC/ARP tables to build a physical
+//! switch-port topology. Supports Cisco IOS, Juniper JunOS, HP/Aruba
+//! ProCurve, and generic CSV/JSON import. Includes traffic-inference
+//! to derive topology structure from observed packet flows.
 
 pub mod error;
 pub mod cisco;
 pub mod juniper;
 pub mod aruba;
+pub mod generic;
+pub mod inference;
 
 use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 
 pub use error::PhysicalError;
+pub use generic::GenericDevice;
+pub use inference::{InferenceInput, AssetSnapshot as InferenceAssetSnapshot, ConnSnapshot, infer_topology};
 
 /// A physical network switch with its ports and metadata.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -132,6 +137,60 @@ pub struct DeviceLocation {
     pub switch_hostname: String,
     pub port_name: String,
     pub vlan: Option<u16>,
+}
+
+/// Traffic-inferred network topology derived from observed packet flows.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct InferredTopology {
+    pub subnets: Vec<InferredSubnet>,
+    pub gateways: Vec<InferredGateway>,
+    pub switch_candidates: Vec<SwitchCandidate>,
+    pub broadcast_domains: Vec<BroadcastDomain>,
+}
+
+/// An IPv4 /24 subnet inferred from observed traffic.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InferredSubnet {
+    /// Network address in CIDR notation, e.g. "192.168.1.0/24"
+    pub network: String,
+    /// All IPs observed in this subnet
+    pub member_ips: Vec<String>,
+    /// Likely gateway IP (.1 or .254 with cross-subnet traffic)
+    pub gateway_ip: Option<String>,
+}
+
+/// A device inferred to be a gateway/router based on cross-subnet traffic.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InferredGateway {
+    pub ip_address: String,
+    pub mac_address: Option<String>,
+    /// /24 subnets this device communicates across
+    pub connected_subnets: Vec<String>,
+    /// Confidence: 1=heuristic only, 2=cross-subnet traffic, 3=both
+    pub confidence: u8,
+}
+
+/// A device that may be a switch/hub based on high intra-subnet fan-out.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SwitchCandidate {
+    pub ip_address: Option<String>,
+    pub mac_address: Option<String>,
+    /// IPs this device communicated with in the same /24
+    pub connected_ips: Vec<String>,
+    /// Confidence: 1=fan-out>5, 2=fan-out>10
+    pub confidence: u8,
+}
+
+/// A broadcast domain inferred from subnet structure.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BroadcastDomain {
+    pub id: String,
+    /// Network address (usually same as subnet network)
+    pub network: String,
+    pub member_ips: Vec<String>,
+    pub gateway_ip: Option<String>,
+    /// How this domain was inferred: "subnet" or "gateway"
+    pub inferred_from: String,
 }
 
 impl PhysicalTopology {
