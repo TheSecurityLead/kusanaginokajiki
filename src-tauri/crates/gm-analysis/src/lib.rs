@@ -25,6 +25,9 @@ pub mod naming;
 pub mod comm_patterns;
 pub mod infrastructure;
 pub mod switch_security;
+pub mod context_attacks;
+
+pub use context_attacks::CaptureContext;
 
 pub use infrastructure::{InfrastructureRole, classify_infrastructure};
 pub use switch_security::{
@@ -347,9 +350,13 @@ pub struct AnalysisSummary {
 ///
 /// This is the main entry point — it calls all three analysis modules
 /// and combines their results.
-pub fn run_full_analysis(input: &AnalysisInput) -> AnalysisResult {
+///
+/// `ctx` carries per-capture context (MAC/IP mappings, first/last-seen
+/// timestamps, write-rate counters) built from `AppStateInner`. Pass
+/// `&CaptureContext::default()` when context is not yet available.
+pub fn run_full_analysis(input: &AnalysisInput, ctx: &CaptureContext) -> AnalysisResult {
     // Run ATT&CK detection
-    let attack_findings = attack::detect_attack_techniques(input);
+    let attack_findings = attack::detect_attack_techniques(input, ctx);
 
     // Run Purdue auto-assignment
     let purdue_assignments = purdue::auto_assign_purdue_levels(input);
@@ -449,7 +456,7 @@ mod tests {
     #[test]
     fn test_empty_analysis() {
         let input = AnalysisInput::default();
-        let result = run_full_analysis(&input);
+        let result = run_full_analysis(&input, &CaptureContext::default());
         assert_eq!(result.findings.len(), 0);
         assert_eq!(result.purdue_assignments.len(), 0);
         assert_eq!(result.anomalies.len(), 0);

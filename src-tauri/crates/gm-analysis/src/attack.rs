@@ -16,7 +16,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-    AnalysisInput, Finding, FindingType, Severity,
+    AnalysisInput, CaptureContext, Finding, FindingType, Severity,
 };
 
 /// Well-known OT server ports used to identify PLCs/RTUs.
@@ -29,7 +29,10 @@ const OT_SERVER_PORTS: &[u16] = &[
 const MODBUS_WRITE_FCS: &[u8] = &[5, 6, 15, 16];
 
 /// Run all ATT&CK technique detections on the input data.
-pub fn detect_attack_techniques(input: &AnalysisInput) -> Vec<Finding> {
+///
+/// Includes the 18 Phase 14C detections from [`crate::context_attacks`] that
+/// require the richer [`CaptureContext`] snapshot.
+pub fn detect_attack_techniques(input: &AnalysisInput, ctx: &CaptureContext) -> Vec<Finding> {
     let mut findings = Vec::new();
 
     findings.extend(detect_t0855_unauthorized_writes(input));
@@ -43,6 +46,7 @@ pub fn detect_attack_techniques(input: &AnalysisInput) -> Vec<Finding> {
     findings.extend(detect_flat_network(input));
     findings.extend(detect_cleartext_ot(input));
     findings.extend(detect_internet_exposed_ot(input));
+    findings.extend(crate::context_attacks::detect_context_attacks(input, ctx));
 
     findings
 }
