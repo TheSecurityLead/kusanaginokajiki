@@ -1,0 +1,12 @@
+name: "iec104_startdt_act"
+description: "IEC 60870-5-104 STARTDT-ACT (Start Data Transfer Activate) U-frame detected on TCP port 2404. This 6-byte unnumbered frame (68 04 07 00 00 00) is sent by the controlling station to initiate data transfer at session startup and is unique to IEC 104, providing high-confidence identification of power grid SCADA telecontrol communication."
+protocol: iec104
+filters:
+  - field: tcp.dst_port
+    value: 2404
+  - field: payload
+    pattern: "\\x68\\x04\\x07\\x00\\x00\\x00"
+    offset: 0
+confidence: 4
+device_type: rtu
+payloads: []

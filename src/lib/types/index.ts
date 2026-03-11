@@ -317,6 +317,65 @@ export interface SignatureTestMatch {
 export interface DeepParseInfo {
 	modbus: ModbusDetail | null;
 	dnp3: Dnp3Detail | null;
+	enip: EnipDetail | null;
+	s7: S7Detail | null;
+	bacnet: BacnetDetail | null;
+	iec104: Iec104Detail | null;
+	profinet_dcp: ProfinetDcpDetail | null;
+}
+
+/** EtherNet/IP aggregated details for a device */
+export interface EnipDetail {
+	/** "scanner" (client) or "adapter" (server) */
+	role: string;
+	/** IP sent CIP Write or ReadModifyWrite to an Assembly object (T0855) */
+	cip_writes_to_assembly: boolean;
+	/** IP accessed CIP File class — firmware/program operations (T0836) */
+	cip_file_access: boolean;
+	/** IP sent ListIdentity requests — network discovery */
+	list_identity_requests: boolean;
+}
+
+/** S7comm aggregated details for a device */
+export interface S7Detail {
+	/** "client" or "server" */
+	role: string;
+	/** S7 PDU functions observed from this device (snake_case names) */
+	functions_seen: string[];
+}
+
+/** BACnet aggregated details for a device */
+export interface BacnetDetail {
+	/** "client" or "server" */
+	role: string;
+	/** WriteProperty to AnalogOutput or BinaryOutput was seen (T0855) */
+	write_to_output: boolean;
+	/** WriteProperty to NotificationClass was seen — alarm suppression (T0856) */
+	write_to_notification_class: boolean;
+	/** ReinitializeDevice service was seen (T0816) */
+	reinitialize_device: boolean;
+	/** DeviceCommunicationControl service was seen (T0811) */
+	device_communication_control: boolean;
+}
+
+/** IEC 60870-5-104 aggregated details for a device */
+export interface Iec104Detail {
+	/** "master" or "outstation" */
+	role: string;
+	/** Device sent control command ASDUs (type IDs 45–69) (T0855) */
+	has_control_commands: boolean;
+	/** Device sent Reset Process command (type ID 105) (T0816) */
+	has_reset_process: boolean;
+	/** Device sent General Interrogation (type ID 100) */
+	has_interrogation: boolean;
+}
+
+/** PROFINET DCP aggregated details for a device */
+export interface ProfinetDcpDetail {
+	/** "io_device", "io_controller", "io_supervisor", or "unknown" */
+	role: string;
+	/** Station name from DCP Name-of-Station block */
+	device_name: string | null;
 }
 
 /** Modbus protocol details for a device */

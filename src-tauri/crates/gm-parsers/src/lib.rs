@@ -23,6 +23,12 @@
 mod protocol;
 pub mod modbus;
 pub mod dnp3;
+pub mod enip;
+pub mod s7comm;
+pub mod bacnet;
+pub mod vendor_tables;
+pub mod iec104;
+pub mod profinet_dcp;
 
 pub use protocol::{IcsProtocol, identify_protocol, identify_by_port};
 pub use modbus::{
@@ -34,6 +40,11 @@ pub use dnp3::{
     parse_dnp3, Dnp3Info, Dnp3Role,
     function_code_name as dnp3_function_code_name,
 };
+pub use enip::{parse as parse_enip, EnipInfo, EnipCommand, EnipIdentity, CipService, CipClass, EnipRole};
+pub use s7comm::{parse as parse_s7, S7Info, CotpPduType, CotpParams, S7PduType, S7Function, S7Role, function_code_name as s7_function_code_name};
+pub use bacnet::{parse as parse_bacnet, BacnetInfo, BvlcFunction, BacnetPduType, BacnetService, BacnetObjectType, BacnetIAm, BacnetRole};
+pub use iec104::{parse as parse_iec104, Iec104Info, Iec104FrameType, Iec104Role, UFrameFunction, AsduTypeId, CauseOfTransmission};
+pub use profinet_dcp::{parse as parse_profinet_dcp, ProfinetDcpInfo, DcpServiceId, DcpServiceType, DcpDeviceInfo, ProfinetRole};
 
 use gm_capture::ParsedPacket;
 use serde::Serialize;
@@ -41,8 +52,8 @@ use serde::Serialize;
 /// Unified result from deep protocol parsing.
 ///
 /// After port-based protocol identification, packets identified as
-/// Modbus or DNP3 are run through the deep parser to extract
-/// application-layer details.
+/// Modbus, DNP3, EtherNet/IP, S7comm, or BACnet are run through the deep
+/// parser to extract application-layer details.
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "protocol_type")]
 pub enum DeepParseResult {
@@ -50,12 +61,22 @@ pub enum DeepParseResult {
     Modbus(ModbusInfo),
     /// DNP3 deep parse result
     Dnp3(Dnp3Info),
+    /// EtherNet/IP + CIP deep parse result
+    Enip(EnipInfo),
+    /// S7comm (TPKT/COTP/S7) deep parse result
+    S7(S7Info),
+    /// BACnet/IP (BVLCI/NPDU/APDU) deep parse result
+    Bacnet(BacnetInfo),
+    /// IEC 60870-5-104 deep parse result
+    Iec104(Iec104Info),
+    /// PROFINET DCP deep parse result
+    ProfinetDcp(ProfinetDcpInfo),
 }
 
 /// Attempt to deep-parse a packet based on its identified protocol.
 ///
 /// Returns None if:
-/// - The protocol doesn't have a deep parser (only Modbus and DNP3 for now)
+/// - The protocol doesn't have a deep parser yet
 /// - The payload is invalid or too short for the protocol
 ///
 /// # Arguments
@@ -70,6 +91,21 @@ pub fn deep_parse(packet: &ParsedPacket, protocol: IcsProtocol) -> Option<DeepPa
         IcsProtocol::Dnp3 => {
             parse_dnp3(&packet.payload, packet.src_port, packet.dst_port)
                 .map(DeepParseResult::Dnp3)
+        }
+        IcsProtocol::EthernetIp => {
+            enip::parse(&packet.payload).map(DeepParseResult::Enip)
+        }
+        IcsProtocol::S7comm => {
+            s7comm::parse(&packet.payload).map(DeepParseResult::S7)
+        }
+        IcsProtocol::Bacnet => {
+            bacnet::parse(&packet.payload).map(DeepParseResult::Bacnet)
+        }
+        IcsProtocol::Iec104 => {
+            iec104::parse(&packet.payload).map(DeepParseResult::Iec104)
+        }
+        IcsProtocol::Profinet => {
+            profinet_dcp::parse(&packet.payload).map(DeepParseResult::ProfinetDcp)
         }
         _ => None,
     }

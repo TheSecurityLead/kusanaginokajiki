@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { filteredAssets, assetFilter, selectedAssetId, selectedAsset, protocolFilter, assets } from '$lib/stores';
 	import { getDeepParseInfo, getAssets, updateAsset, bulkUpdateAssets } from '$lib/utils/tauri';
-	import type { DeviceType, IcsProtocol, DeepParseInfo, AssetUpdate, Asset } from '$lib/types';
+	import type { DeviceType, IcsProtocol, DeepParseInfo, AssetUpdate, Asset, EnipDetail, S7Detail, BacnetDetail, Iec104Detail, ProfinetDcpDetail } from '$lib/types';
 
 	const deviceTypeLabels: Record<DeviceType, string> = {
 		plc: 'PLC',
@@ -687,6 +687,145 @@
 												<span class="rel-pkts">{rel.packet_count} pkts</span>
 											</div>
 										{/each}
+									</div>
+								{/if}
+							</div>
+						{/if}
+
+						<!-- EtherNet/IP Detail -->
+						{#if deepParseInfo.enip}
+							{@const enip = deepParseInfo.enip as EnipDetail}
+							<div class="detail-section">
+								<h4 class="section-title" style="color: var(--gm-ethernet-ip, #8b5cf6)">EtherNet/IP + CIP</h4>
+								<div class="detail-row">
+									<span class="detail-label">Role</span>
+									<span class="detail-value role-badge">{enip.role}</span>
+								</div>
+								{#if enip.list_identity_requests}
+									<div class="detail-row">
+										<span class="detail-label">Discovery</span>
+										<span class="detail-value" style="color: #f59e0b">ListIdentity requests observed</span>
+									</div>
+								{/if}
+								{#if enip.cip_writes_to_assembly}
+									<div class="detail-row">
+										<span class="detail-label">CIP Writes</span>
+										<span class="detail-value finding">Assembly object writes (T0855)</span>
+									</div>
+								{/if}
+								{#if enip.cip_file_access}
+									<div class="detail-row">
+										<span class="detail-label">File Access</span>
+										<span class="detail-value finding">CIP File class access (T0836)</span>
+									</div>
+								{/if}
+							</div>
+						{/if}
+
+						<!-- S7comm Detail -->
+						{#if deepParseInfo.s7}
+							{@const s7 = deepParseInfo.s7 as S7Detail}
+							<div class="detail-section">
+								<h4 class="section-title" style="color: var(--gm-s7comm, #ef4444)">S7comm (Siemens)</h4>
+								<div class="detail-row">
+									<span class="detail-label">Role</span>
+									<span class="detail-value role-badge">{s7.role}</span>
+								</div>
+								{#if s7.functions_seen.length > 0}
+									<div class="detail-subsection">
+										<h5 class="subsection-title">Functions Observed</h5>
+										<div class="fc-list">
+											{#each s7.functions_seen as fn}
+												{@const isWrite = fn === 'WriteVar' || fn === 'PlcStop' || fn === 'Download' || fn === 'DownloadStart' || fn === 'DownloadEnd'}
+												<div class="fc-item" class:write={isWrite}>
+													<span class="fc-name">{fn.replace(/([A-Z])/g, ' $1').trim()}</span>
+												</div>
+											{/each}
+										</div>
+									</div>
+								{/if}
+							</div>
+						{/if}
+
+						<!-- BACnet Detail -->
+						{#if deepParseInfo.bacnet}
+							{@const bacnet = deepParseInfo.bacnet as BacnetDetail}
+							<div class="detail-section">
+								<h4 class="section-title" style="color: var(--gm-bacnet, #06b6d4)">BACnet/IP</h4>
+								<div class="detail-row">
+									<span class="detail-label">Role</span>
+									<span class="detail-value role-badge">{bacnet.role}</span>
+								</div>
+								{#if bacnet.write_to_output}
+									<div class="detail-row">
+										<span class="detail-label">Output Writes</span>
+										<span class="detail-value finding">WriteProperty to Output (T0855)</span>
+									</div>
+								{/if}
+								{#if bacnet.write_to_notification_class}
+									<div class="detail-row">
+										<span class="detail-label">Alarm Suppress</span>
+										<span class="detail-value finding">WriteProperty NotificationClass (T0856)</span>
+									</div>
+								{/if}
+								{#if bacnet.reinitialize_device}
+									<div class="detail-row">
+										<span class="detail-label">Device Reset</span>
+										<span class="detail-value finding">ReinitializeDevice (T0816)</span>
+									</div>
+								{/if}
+								{#if bacnet.device_communication_control}
+									<div class="detail-row">
+										<span class="detail-label">Comm Control</span>
+										<span class="detail-value finding">DeviceCommunicationControl (T0811)</span>
+									</div>
+								{/if}
+							</div>
+						{/if}
+
+						<!-- IEC 104 Detail -->
+						{#if deepParseInfo.iec104}
+							{@const iec104 = deepParseInfo.iec104 as Iec104Detail}
+							<div class="detail-section">
+								<h4 class="section-title" style="color: #14b8a6">IEC 60870-5-104</h4>
+								<div class="detail-row">
+									<span class="detail-label">Role</span>
+									<span class="detail-value role-badge">{iec104.role}</span>
+								</div>
+								{#if iec104.has_control_commands}
+									<div class="detail-row">
+										<span class="detail-label">Control Commands</span>
+										<span class="detail-value finding">Command ASDUs detected (T0855)</span>
+									</div>
+								{/if}
+								{#if iec104.has_reset_process}
+									<div class="detail-row">
+										<span class="detail-label">Reset Process</span>
+										<span class="detail-value finding">Reset Process command (T0816)</span>
+									</div>
+								{/if}
+								{#if iec104.has_interrogation}
+									<div class="detail-row">
+										<span class="detail-label">Interrogation</span>
+										<span class="detail-value" style="color: #f59e0b">General Interrogation observed</span>
+									</div>
+								{/if}
+							</div>
+						{/if}
+
+						<!-- PROFINET DCP Detail -->
+						{#if deepParseInfo.profinet_dcp}
+							{@const pndcp = deepParseInfo.profinet_dcp as ProfinetDcpDetail}
+							<div class="detail-section">
+								<h4 class="section-title" style="color: #6366f1">PROFINET DCP</h4>
+								<div class="detail-row">
+									<span class="detail-label">Role</span>
+									<span class="detail-value role-badge">{pndcp.role.replace(/_/g, ' ')}</span>
+								</div>
+								{#if pndcp.device_name}
+									<div class="detail-row">
+										<span class="detail-label">Station Name</span>
+										<span class="detail-value highlight">{pndcp.device_name}</span>
 									</div>
 								{/if}
 							</div>

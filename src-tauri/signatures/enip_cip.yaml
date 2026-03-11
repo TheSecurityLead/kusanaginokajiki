@@ -1,0 +1,12 @@
+name: "enip_list_identity"
+description: "EtherNet/IP ListIdentity command (0x0063) detected at the start of the encapsulation header on TCP port 44818. ListIdentity is used by scanners and engineering workstations to enumerate CIP devices on the network, and its presence confirms active EtherNet/IP discovery or session establishment rather than background port traffic."
+protocol: ethernet_ip
+filters:
+  - field: tcp.dst_port
+    value: 44818
+  - field: payload
+    pattern: "\\x63\\x00"
+    offset: 0
+confidence: 2
+device_type: plc
+payloads: []

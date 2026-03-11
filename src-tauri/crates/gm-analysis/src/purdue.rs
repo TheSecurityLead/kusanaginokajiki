@@ -148,6 +148,43 @@ fn assign_level(
         if dp.modbus.is_some() || dp.dnp3.is_some() {
             return (2, "Deep parse data shows OT protocol activity".to_string());
         }
+        // EtherNet/IP Adapter (I/O device/drive) → L1; Scanner (PLC/HMI controller) → L2
+        if let Some(ref enip) = dp.enip {
+            if enip.role == "adapter" {
+                return (1, "EtherNet/IP Adapter role (field device/remote I/O)".to_string());
+            }
+            return (2, "EtherNet/IP Scanner role (PLC/HMI controller)".to_string());
+        }
+        // S7comm Server (Siemens PLC) → L1; Client (engineering station/HMI) → L2
+        if let Some(ref s7) = dp.s7 {
+            if s7.role == "server" {
+                return (1, "S7comm Server role (Siemens PLC)".to_string());
+            }
+            return (2, "S7comm Client role (engineering workstation/HMI)".to_string());
+        }
+        // BACnet Server (field controller) → L1; Client (BAS workstation) → L2
+        if let Some(ref bacnet) = dp.bacnet {
+            if bacnet.role == "server" {
+                return (1, "BACnet Server role (building automation controller)".to_string());
+            }
+            return (2, "BACnet Client role (BAS workstation/supervisor)".to_string());
+        }
+        // IEC 104 Outstation (RTU/field device) → L1; Master (control centre) → L2
+        if let Some(ref iec104) = dp.iec104 {
+            if iec104.role == "outstation" {
+                return (1, "IEC 104 Outstation role (RTU/field device)".to_string());
+            }
+            return (2, "IEC 104 Master role (control centre/SCADA)".to_string());
+        }
+        // PROFINET IO-Device (field device) → L1; Controller/Supervisor → L2
+        if let Some(ref profinet) = dp.profinet_dcp {
+            if profinet.role == "io_device" {
+                return (1, "PROFINET IO-Device role (field device/remote I/O)".to_string());
+            }
+            if profinet.role == "io_controller" || profinet.role == "io_supervisor" {
+                return (2, format!("PROFINET {} role", profinet.role));
+            }
+        }
     }
 
     // IT-only devices → L4

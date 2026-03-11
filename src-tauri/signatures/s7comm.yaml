@@ -1,0 +1,13 @@
+name: "s7comm_protocol_id"
+description: "Siemens S7comm protocol confirmed by the S7 protocol identifier byte 0x32 at offset 7 of the TCP payload (after the 4-byte TPKT header and 3-byte COTP DT Data header). This byte is the fixed magic value in every S7 PDU and provides stronger identification than the TPKT header alone, which can appear in other ISO Transport protocols."
+protocol: s7comm
+vendor: "Siemens"
+filters:
+  - field: tcp.dst_port
+    value: 102
+  - field: payload
+    pattern: "\\x32"
+    offset: 7
+confidence: 3
+device_type: plc
+payloads: []

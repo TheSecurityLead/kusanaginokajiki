@@ -145,9 +145,11 @@
 					<h3 class="panel-title">Function Code Distribution</h3>
 					<div class="fc-grid">
 						{#each Object.entries(functionCodeStats) as [protocol, fcs]}
+							{@const protoLabel = protocol === 'modbus' ? 'Modbus TCP' : protocol === 'dnp3' ? 'DNP3' : protocol.toUpperCase()}
+							{@const protoKey = protocol === 'modbus' ? 'Modbus' : protocol === 'dnp3' ? 'Dnp3' : protocol === 'ethernet_ip' ? 'EthernetIp' : protocol === 's7comm' ? 'S7comm' : protocol === 'bacnet' ? 'Bacnet' : protocol === 'iec104' ? 'Iec104' : protocol === 'profinet' ? 'Profinet' : 'Unknown'}
 							<div class="fc-section">
-								<h4 class="fc-protocol-title" style="color: {getColor(protocol === 'modbus' ? 'Modbus' : 'Dnp3')}">
-									{protocol === 'modbus' ? 'Modbus TCP' : 'DNP3'}
+								<h4 class="fc-protocol-title" style="color: {getColor(protoKey)}">
+									{protoLabel}
 								</h4>
 								<table class="fc-table">
 									<thead>

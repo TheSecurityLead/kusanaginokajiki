@@ -1,0 +1,13 @@
+name: "profinet_dcp_identify"
+description: "PROFINET DCP (Discovery and Configuration Protocol) Identify Request detected on UDP port 34964. The two-byte sequence 0x05 0x00 (service_id=Identify, service_type=Request) at the start of the payload uniquely identifies DCP discovery traffic used by PROFINET IO controllers and engineering tools to enumerate IO devices on the network."
+protocol: profinet
+vendor: "Siemens"
+filters:
+  - field: udp.dst_port
+    value: 34964
+  - field: payload
+    pattern: "\\x05\\x00"
+    offset: 0
+confidence: 2
+device_type: plc
+payloads: []

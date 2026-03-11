@@ -190,6 +190,11 @@ pub struct ConnectionSnapshot {
 pub struct DeepParseSnapshot {
     pub modbus: Option<ModbusSnapshot>,
     pub dnp3: Option<Dnp3Snapshot>,
+    pub enip: Option<EnipSnapshot>,
+    pub s7: Option<S7Snapshot>,
+    pub bacnet: Option<BacnetSnapshot>,
+    pub iec104: Option<Iec104Snapshot>,
+    pub profinet_dcp: Option<ProfinetDcpSnapshot>,
 }
 
 /// Modbus data needed for ATT&CK detection.
@@ -209,6 +214,63 @@ pub struct Dnp3Snapshot {
     pub has_unsolicited: bool,
     pub function_codes: Vec<FcSnapshot>,
     pub relationships: Vec<RelationshipSnapshot>,
+}
+
+/// EtherNet/IP data needed for ATT&CK detection.
+#[derive(Debug, Clone)]
+pub struct EnipSnapshot {
+    /// "scanner" (client) or "adapter" (server)
+    pub role: String,
+    /// IP sent CIP Write or ReadModifyWrite to an Assembly object
+    pub cip_writes_to_assembly: bool,
+    /// IP accessed CIP File class (firmware/program operations)
+    pub cip_file_access: bool,
+    /// IP sent ListIdentity requests (network discovery)
+    pub list_identity_requests: bool,
+}
+
+/// S7comm data needed for ATT&CK detection.
+#[derive(Debug, Clone)]
+pub struct S7Snapshot {
+    /// "client" or "server"
+    pub role: String,
+    /// S7 functions observed from this device (snake_case names)
+    pub functions_seen: Vec<String>,
+}
+
+/// PROFINET DCP data needed for Purdue assignment.
+#[derive(Debug, Clone)]
+pub struct ProfinetDcpSnapshot {
+    /// "io_device", "io_controller", "io_supervisor", or "unknown"
+    pub role: String,
+}
+
+/// IEC 60870-5-104 data needed for ATT&CK detection.
+#[derive(Debug, Clone)]
+pub struct Iec104Snapshot {
+    /// "master" or "outstation"
+    pub role: String,
+    /// Device sent control command ASDUs (type IDs 45–69) — T0855
+    pub has_control_commands: bool,
+    /// Device sent Reset Process command (type ID 105) — T0816
+    pub has_reset_process: bool,
+    /// Device sent General Interrogation (type ID 100) — potential T0814
+    pub has_interrogation: bool,
+}
+
+/// BACnet data needed for ATT&CK detection.
+#[derive(Debug, Clone)]
+pub struct BacnetSnapshot {
+    /// "client" or "server"
+    pub role: String,
+    /// WriteProperty to AnalogOutput or BinaryOutput was seen
+    pub write_to_output: bool,
+    /// WriteProperty to NotificationClass was seen (alarm suppression)
+    pub write_to_notification_class: bool,
+    /// ReinitializeDevice service was seen
+    pub reinitialize_device: bool,
+    /// DeviceCommunicationControl service was seen
+    pub device_communication_control: bool,
 }
 
 /// Function code usage data.

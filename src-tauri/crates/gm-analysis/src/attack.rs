@@ -36,6 +36,10 @@ pub fn detect_attack_techniques(input: &AnalysisInput) -> Vec<Finding> {
     findings.extend(detect_t0814_diagnostic_dos(input));
     findings.extend(detect_t0856_dnp3_unsolicited(input));
     findings.extend(detect_t0846_remote_discovery(input));
+    findings.extend(detect_enip_attacks(input));
+    findings.extend(detect_s7_attacks(input));
+    findings.extend(detect_bacnet_attacks(input));
+    findings.extend(detect_iec104_attacks(input));
 
     findings
 }
@@ -326,6 +330,315 @@ fn detect_t0846_remote_discovery(input: &AnalysisInput) -> Vec<Finding> {
     findings
 }
 
+/// EtherNet/IP ATT&CK detections: T0855 (CIP write), T0836 (firmware), T0846 (discovery).
+fn detect_enip_attacks(input: &AnalysisInput) -> Vec<Finding> {
+    let mut findings = Vec::new();
+
+    for (ip, dp) in &input.deep_parse {
+        let enip = match &dp.enip {
+            Some(e) => e,
+            None => continue,
+        };
+
+        // T0855: CIP Write or ReadModifyWrite to Assembly object controls I/O data
+        if enip.cip_writes_to_assembly {
+            findings.push(Finding::new(
+                FindingType::AttackTechnique,
+                Severity::High,
+                format!("CIP write to Assembly object from {}", ip),
+                "CIP Write or ReadModifyWrite command targeting an Assembly object was \
+                 detected. Assembly objects control I/O data for connected devices and \
+                 writes may cause unexpected actuator behavior.".to_string(),
+                vec![ip.clone()],
+                format!("Source {} sent CIP Write/ReadModifyWrite to Assembly (class 0x04)", ip),
+                Some("T0855".to_string()),
+            ));
+        }
+
+        // T0836: CIP File class access — firmware upload/download or program file transfer
+        if enip.cip_file_access {
+            findings.push(Finding::new(
+                FindingType::AttackTechnique,
+                Severity::Critical,
+                format!("CIP File class access from {} (possible firmware operation)", ip),
+                "Access to the CIP File object class (0x37) was detected. File class objects \
+                 are used for firmware uploads and program file transfers. Unauthorized access \
+                 may indicate firmware modification or intellectual property theft.".to_string(),
+                vec![ip.clone()],
+                format!("Source {} accessed CIP File object class (0x37)", ip),
+                Some("T0836".to_string()),
+            ));
+        }
+
+        // T0846: ListIdentity from an IT/unknown device — OT network reconnaissance
+        if enip.list_identity_requests {
+            let src_type = input.assets.iter()
+                .find(|a| a.ip_address == *ip)
+                .map(|a| a.device_type.as_str())
+                .unwrap_or("unknown");
+            if src_type == "it_device" || src_type == "unknown" {
+                findings.push(Finding::new(
+                    FindingType::AttackTechnique,
+                    Severity::Medium,
+                    format!("EtherNet/IP ListIdentity from non-OT device {}", ip),
+                    "ListIdentity requests enumerate all EtherNet/IP devices on the network. \
+                     This request from an unclassified or IT device may indicate network \
+                     reconnaissance of the OT environment.".to_string(),
+                    vec![ip.clone()],
+                    format!(
+                        "Device {} (type: {}) sent EtherNet/IP ListIdentity requests",
+                        ip, src_type
+                    ),
+                    Some("T0846".to_string()),
+                ));
+            }
+        }
+    }
+
+    findings
+}
+
+/// S7comm ATT&CK detections: T0843, T0845, T0816, T0809, T0855.
+fn detect_s7_attacks(input: &AnalysisInput) -> Vec<Finding> {
+    let mut findings = Vec::new();
+
+    for (ip, dp) in &input.deep_parse {
+        let s7 = match &dp.s7 {
+            Some(s) => s,
+            None => continue,
+        };
+
+        // T0843: Program download — replaces PLC control logic
+        if s7.functions_seen.contains(&"download_start".to_string()) {
+            findings.push(Finding::new(
+                FindingType::AttackTechnique,
+                Severity::Critical,
+                format!("S7 program download from {}", ip),
+                "An S7 Download Start (function 0x1D) was detected. This initiates a \
+                 program download to the PLC, which can replace the control logic and \
+                 cause unexpected physical process behavior.".to_string(),
+                vec![ip.clone()],
+                format!("Source {} initiated S7comm Download Start (FC 0x1D)", ip),
+                Some("T0843".to_string()),
+            ));
+        }
+
+        // T0845: Program upload — reads PLC logic (reconnaissance / IP theft)
+        if s7.functions_seen.contains(&"upload_start".to_string()) {
+            findings.push(Finding::new(
+                FindingType::AttackTechnique,
+                Severity::High,
+                format!("S7 program upload from {}", ip),
+                "An S7 Upload Start (function 0x1A) was detected. This reads the PLC \
+                 program logic and may indicate intellectual property theft or \
+                 reconnaissance to understand process control before an attack.".to_string(),
+                vec![ip.clone()],
+                format!("Source {} initiated S7comm Upload Start (FC 0x1A)", ip),
+                Some("T0845".to_string()),
+            ));
+        }
+
+        // T0816: PLC Stop — halts PLC execution
+        if s7.functions_seen.contains(&"plc_stop".to_string()) {
+            findings.push(Finding::new(
+                FindingType::AttackTechnique,
+                Severity::Critical,
+                format!("S7 PLC Stop command from {}", ip),
+                "An S7 PLC Stop command (function 0x29) was detected. This halts PLC \
+                 execution, which will cause controlled processes to enter a safe state \
+                 or fail, potentially causing loss of control or production disruption.".to_string(),
+                vec![ip.clone()],
+                format!("Source {} sent S7comm PLC Stop (FC 0x29)", ip),
+                Some("T0816".to_string()),
+            ));
+        }
+
+        // T0809: PI Service — can delete program blocks
+        if s7.functions_seen.contains(&"pi_service".to_string()) {
+            findings.push(Finding::new(
+                FindingType::AttackTechnique,
+                Severity::Critical,
+                format!("S7 PI Service (possible block delete) from {}", ip),
+                "An S7 PI Service command (function 0x28) was detected. This function \
+                 can delete program blocks from the PLC, destroying control logic and \
+                 requiring full system restoration.".to_string(),
+                vec![ip.clone()],
+                format!("Source {} sent S7comm PI Service (FC 0x28)", ip),
+                Some("T0809".to_string()),
+            ));
+        }
+
+        // T0855: Write Var — writes directly to PLC memory
+        if s7.functions_seen.contains(&"write_var".to_string()) {
+            findings.push(Finding::new(
+                FindingType::AttackTechnique,
+                Severity::High,
+                format!("S7 Write Var command from {}", ip),
+                "An S7 Write Var command (function 0x05) was detected. This writes values \
+                 directly to PLC memory areas (inputs, outputs, merkers, data blocks), \
+                 which can cause unauthorized changes to process control variables.".to_string(),
+                vec![ip.clone()],
+                format!("Source {} sent S7comm Write Var (FC 0x05)", ip),
+                Some("T0855".to_string()),
+            ));
+        }
+    }
+
+    findings
+}
+
+/// IEC 60870-5-104 ATT&CK detections: T0855 (control commands), T0816 (reset process), T0814 (interrogation flood).
+fn detect_iec104_attacks(input: &AnalysisInput) -> Vec<Finding> {
+    let mut findings = Vec::new();
+
+    for (ip, dp) in &input.deep_parse {
+        let iec104 = match &dp.iec104 {
+            Some(i) => i,
+            None => continue,
+        };
+
+        // T0855: Control command ASDUs (type IDs 45–69) — unauthorized command message
+        if iec104.has_control_commands {
+            findings.push(Finding::new(
+                FindingType::AttackTechnique,
+                Severity::High,
+                format!("IEC 104 control commands from {}", ip),
+                "IEC 60870-5-104 control command ASDUs (type IDs 45–69) were detected. \
+                 These commands control physical process elements at the outstation \
+                 (e.g., circuit breakers, valves, set-points). Unauthorized command \
+                 injection can cause unexpected physical process changes.".to_string(),
+                vec![ip.clone()],
+                format!("Source {} sent IEC 104 control command ASDUs (type IDs 45–69)", ip),
+                Some("T0855".to_string()),
+            ));
+        }
+
+        // T0816: Reset Process command (type ID 105) — disrupts outstation process
+        if iec104.has_reset_process {
+            findings.push(Finding::new(
+                FindingType::AttackTechnique,
+                Severity::Critical,
+                format!("IEC 104 Reset Process command from {}", ip),
+                "An IEC 104 Reset Process command (C_RP_NA_1, type ID 105) was detected. \
+                 This command resets the outstation's process, potentially disrupting \
+                 power grid control or other critical infrastructure operations and \
+                 causing a loss of control or availability.".to_string(),
+                vec![ip.clone()],
+                format!("Source {} sent IEC 104 Reset Process (C_RP_NA_1, type ID 105)", ip),
+                Some("T0816".to_string()),
+            ));
+        }
+
+        // T0814: Interrogation from non-OT device — potential DoS / reconnaissance
+        if iec104.has_interrogation {
+            let src_type = input.assets.iter()
+                .find(|a| a.ip_address == *ip)
+                .map(|a| a.device_type.as_str())
+                .unwrap_or("unknown");
+            if src_type == "it_device" || src_type == "unknown" {
+                findings.push(Finding::new(
+                    FindingType::AttackTechnique,
+                    Severity::Medium,
+                    format!("IEC 104 interrogation from non-OT device {}", ip),
+                    "IEC 104 General Interrogation commands (C_IC_NA_1, type ID 100) were \
+                     detected from a device not classified as OT equipment. Interrogation \
+                     requests from unauthorized sources may indicate network reconnaissance \
+                     or an attempt to flood the outstation's response queue.".to_string(),
+                    vec![ip.clone()],
+                    format!(
+                        "Device {} (type: {}) sent IEC 104 General Interrogation (C_IC_NA_1)",
+                        ip, src_type
+                    ),
+                    Some("T0814".to_string()),
+                ));
+            }
+        }
+    }
+
+    findings
+}
+
+/// BACnet ATT&CK detections: T0855, T0856, T0816, T0811.
+fn detect_bacnet_attacks(input: &AnalysisInput) -> Vec<Finding> {
+    let mut findings = Vec::new();
+
+    for (ip, dp) in &input.deep_parse {
+        let bacnet = match &dp.bacnet {
+            Some(b) => b,
+            None => continue,
+        };
+
+        // T0855: WriteProperty to output object — directly controls physical actuators
+        if bacnet.write_to_output {
+            findings.push(Finding::new(
+                FindingType::AttackTechnique,
+                Severity::High,
+                format!("BACnet WriteProperty to output object from {}", ip),
+                "A BACnet WriteProperty to an AnalogOutput or BinaryOutput object was \
+                 detected. Writing to output objects directly controls physical actuators \
+                 such as valves, dampers, and relays in building automation systems.".to_string(),
+                vec![ip.clone()],
+                format!(
+                    "Source {} wrote to BACnet AnalogOutput or BinaryOutput object",
+                    ip
+                ),
+                Some("T0855".to_string()),
+            ));
+        }
+
+        // T0856: WriteProperty to NotificationClass — suppresses alarms
+        if bacnet.write_to_notification_class {
+            findings.push(Finding::new(
+                FindingType::AttackTechnique,
+                Severity::High,
+                format!("BACnet alarm suppression from {}", ip),
+                "A BACnet WriteProperty to a NotificationClass object was detected. \
+                 NotificationClass objects control alarm routing and notification. \
+                 Modifying these can suppress alarms, preventing operators from \
+                 detecting faults or process anomalies.".to_string(),
+                vec![ip.clone()],
+                format!(
+                    "Source {} modified BACnet NotificationClass object (alarm routing)",
+                    ip
+                ),
+                Some("T0856".to_string()),
+            ));
+        }
+
+        // T0816: ReinitializeDevice — restarts or restores device to defaults
+        if bacnet.reinitialize_device {
+            findings.push(Finding::new(
+                FindingType::AttackTechnique,
+                Severity::High,
+                format!("BACnet ReinitializeDevice from {}", ip),
+                "A BACnet ReinitializeDevice service was detected. This command can \
+                 restart or restore a BACnet device to defaults, causing loss of \
+                 control and potentially overwriting operational configuration.".to_string(),
+                vec![ip.clone()],
+                format!("Source {} sent BACnet ReinitializeDevice command", ip),
+                Some("T0816".to_string()),
+            ));
+        }
+
+        // T0811: DeviceCommunicationControl — disables device communication (loss of view)
+        if bacnet.device_communication_control {
+            findings.push(Finding::new(
+                FindingType::AttackTechnique,
+                Severity::High,
+                format!("BACnet DeviceCommunicationControl from {}", ip),
+                "A BACnet DeviceCommunicationControl service was detected. This command \
+                 can disable a device's ability to initiate communications, causing a \
+                 denial of view for operators monitoring the building automation system.".to_string(),
+                vec![ip.clone()],
+                format!("Source {} sent BACnet DeviceCommunicationControl command", ip),
+                Some("T0811".to_string()),
+            ));
+        }
+    }
+
+    findings
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -349,7 +662,7 @@ mod tests {
                 relationships: vec![],
                 polling_intervals: vec![],
             }),
-            dnp3: None,
+            ..Default::default()
         });
 
         let findings = detect_t0855_unauthorized_writes(&input);
@@ -377,7 +690,7 @@ mod tests {
                 relationships: targets,
                 polling_intervals: vec![],
             }),
-            dnp3: None,
+            ..Default::default()
         });
 
         let findings = detect_t0855_unauthorized_writes(&input);
@@ -407,7 +720,7 @@ mod tests {
                 relationships: vec![],
                 polling_intervals: vec![],
             }),
-            dnp3: None,
+            ..Default::default()
         });
 
         let findings = detect_t0814_diagnostic_dos(&input);
@@ -439,7 +752,7 @@ mod tests {
                 relationships: vec![],
                 polling_intervals: vec![],
             }),
-            dnp3: None,
+            ..Default::default()
         });
 
         let findings = detect_t0814_diagnostic_dos(&input);
@@ -452,7 +765,6 @@ mod tests {
 
         // Outstation sending unsolicited responses
         input.deep_parse.insert("10.0.0.10".to_string(), DeepParseSnapshot {
-            modbus: None,
             dnp3: Some(Dnp3Snapshot {
                 role: "outstation".to_string(),
                 has_unsolicited: true,
@@ -465,6 +777,7 @@ mod tests {
                     packet_count: 5,
                 }],
             }),
+            ..Default::default()
         });
 
         let findings = detect_t0856_dnp3_unsolicited(&input);
@@ -556,5 +869,155 @@ mod tests {
 
         let findings = detect_t0846_remote_discovery(&input);
         assert!(findings.is_empty(), "HMI polling PLCs should not trigger T0846");
+    }
+
+    #[test]
+    fn test_t0855_cip_write_assembly() {
+        let mut input = make_input();
+        input.deep_parse.insert("10.0.0.50".to_string(), DeepParseSnapshot {
+            enip: Some(EnipSnapshot {
+                role: "scanner".to_string(),
+                cip_writes_to_assembly: true,
+                cip_file_access: false,
+                list_identity_requests: false,
+            }),
+            ..Default::default()
+        });
+
+        let findings = detect_enip_attacks(&input);
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].severity, Severity::High);
+        assert_eq!(findings[0].technique_id, Some("T0855".to_string()));
+    }
+
+    #[test]
+    fn test_t0836_cip_file_access() {
+        let mut input = make_input();
+        input.deep_parse.insert("10.0.0.51".to_string(), DeepParseSnapshot {
+            enip: Some(EnipSnapshot {
+                role: "scanner".to_string(),
+                cip_writes_to_assembly: false,
+                cip_file_access: true,
+                list_identity_requests: false,
+            }),
+            ..Default::default()
+        });
+
+        let findings = detect_enip_attacks(&input);
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].severity, Severity::Critical);
+        assert_eq!(findings[0].technique_id, Some("T0836".to_string()));
+    }
+
+    #[test]
+    fn test_t0843_s7_download_start() {
+        let mut input = make_input();
+        input.deep_parse.insert("10.0.0.20".to_string(), DeepParseSnapshot {
+            s7: Some(S7Snapshot {
+                role: "client".to_string(),
+                functions_seen: vec!["download_start".to_string()],
+            }),
+            ..Default::default()
+        });
+
+        let findings = detect_s7_attacks(&input);
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].severity, Severity::Critical);
+        assert_eq!(findings[0].technique_id, Some("T0843".to_string()));
+    }
+
+    #[test]
+    fn test_t0816_s7_plc_stop() {
+        let mut input = make_input();
+        input.deep_parse.insert("10.0.0.21".to_string(), DeepParseSnapshot {
+            s7: Some(S7Snapshot {
+                role: "client".to_string(),
+                functions_seen: vec!["plc_stop".to_string()],
+            }),
+            ..Default::default()
+        });
+
+        let findings = detect_s7_attacks(&input);
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].severity, Severity::Critical);
+        assert_eq!(findings[0].technique_id, Some("T0816".to_string()));
+    }
+
+    #[test]
+    fn test_t0855_bacnet_write_output() {
+        let mut input = make_input();
+        input.deep_parse.insert("10.0.0.30".to_string(), DeepParseSnapshot {
+            bacnet: Some(BacnetSnapshot {
+                role: "client".to_string(),
+                write_to_output: true,
+                write_to_notification_class: false,
+                reinitialize_device: false,
+                device_communication_control: false,
+            }),
+            ..Default::default()
+        });
+
+        let findings = detect_bacnet_attacks(&input);
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].severity, Severity::High);
+        assert_eq!(findings[0].technique_id, Some("T0855".to_string()));
+    }
+
+    #[test]
+    fn test_t0811_bacnet_comm_ctrl() {
+        let mut input = make_input();
+        input.deep_parse.insert("10.0.0.31".to_string(), DeepParseSnapshot {
+            bacnet: Some(BacnetSnapshot {
+                role: "client".to_string(),
+                write_to_output: false,
+                write_to_notification_class: false,
+                reinitialize_device: false,
+                device_communication_control: true,
+            }),
+            ..Default::default()
+        });
+
+        let findings = detect_bacnet_attacks(&input);
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].severity, Severity::High);
+        assert_eq!(findings[0].technique_id, Some("T0811".to_string()));
+    }
+
+    #[test]
+    fn test_t0855_iec104_control_commands() {
+        let mut input = make_input();
+        input.deep_parse.insert("10.0.0.40".to_string(), DeepParseSnapshot {
+            iec104: Some(Iec104Snapshot {
+                role: "master".to_string(),
+                has_control_commands: true,
+                has_reset_process: false,
+                has_interrogation: false,
+            }),
+            ..Default::default()
+        });
+
+        let findings = detect_iec104_attacks(&input);
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].severity, Severity::High);
+        assert_eq!(findings[0].technique_id, Some("T0855".to_string()));
+    }
+
+    #[test]
+    fn test_t0816_iec104_reset_process() {
+        let mut input = make_input();
+        input.deep_parse.insert("10.0.0.41".to_string(), DeepParseSnapshot {
+            iec104: Some(Iec104Snapshot {
+                role: "master".to_string(),
+                has_control_commands: false,
+                has_reset_process: true,
+                has_interrogation: false,
+            }),
+            ..Default::default()
+        });
+
+        let findings = detect_iec104_attacks(&input);
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].severity, Severity::Critical);
+        assert_eq!(findings[0].technique_id, Some("T0816".to_string()));
     }
 }

@@ -270,7 +270,7 @@ mod tests {
                     sample_count: 50,
                 }],
             }),
-            dnp3: None,
+            ..Default::default()
         });
 
         let (anomalies, findings) = detect_polling_deviations(&input);
@@ -297,7 +297,7 @@ mod tests {
                     sample_count: 50,
                 }],
             }),
-            dnp3: None,
+            ..Default::default()
         });
 
         let (anomalies, _) = detect_polling_deviations(&input);
@@ -318,7 +318,7 @@ mod tests {
                 relationships: vec![],
                 polling_intervals: vec![],
             }),
-            dnp3: None,
+            ..Default::default()
         });
 
         let (anomalies, findings) = detect_role_reversals(&input);

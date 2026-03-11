@@ -9,6 +9,7 @@ use tauri::State;
 use gm_analysis::{
     AnalysisInput, AnalysisResult, AssetSnapshot, ConnectionSnapshot,
     DeepParseSnapshot, ModbusSnapshot, Dnp3Snapshot,
+    EnipSnapshot, S7Snapshot, BacnetSnapshot, Iec104Snapshot, ProfinetDcpSnapshot,
     FcSnapshot, RelationshipSnapshot, PollingSnapshot,
     Finding, PurdueAssignment, AnomalyScore,
 };
@@ -94,7 +95,38 @@ fn build_analysis_input(state: &super::AppStateInner) -> AnalysisInput {
             }
         });
 
-        deep_parse.insert(ip.clone(), DeepParseSnapshot { modbus, dnp3 });
+        let enip = dp.enip.as_ref().map(|e| EnipSnapshot {
+            role: e.role.clone(),
+            cip_writes_to_assembly: e.cip_writes_to_assembly,
+            cip_file_access: e.cip_file_access,
+            list_identity_requests: e.list_identity_requests,
+        });
+
+        let s7 = dp.s7.as_ref().map(|s| S7Snapshot {
+            role: s.role.clone(),
+            functions_seen: s.functions_seen.clone(),
+        });
+
+        let bacnet = dp.bacnet.as_ref().map(|b| BacnetSnapshot {
+            role: b.role.clone(),
+            write_to_output: b.write_to_output,
+            write_to_notification_class: b.write_to_notification_class,
+            reinitialize_device: b.reinitialize_device,
+            device_communication_control: b.device_communication_control,
+        });
+
+        let iec104 = dp.iec104.as_ref().map(|i| Iec104Snapshot {
+            role: i.role.clone(),
+            has_control_commands: i.has_control_commands,
+            has_reset_process: i.has_reset_process,
+            has_interrogation: i.has_interrogation,
+        });
+
+        let profinet_dcp = dp.profinet_dcp.as_ref().map(|p| ProfinetDcpSnapshot {
+            role: p.role.clone(),
+        });
+
+        deep_parse.insert(ip.clone(), DeepParseSnapshot { modbus, dnp3, enip, s7, bacnet, iec104, profinet_dcp });
     }
 
     AnalysisInput {

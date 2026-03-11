@@ -161,15 +161,84 @@ pub struct ProtocolStatInfo {
 
 /// Aggregated deep parse information for a single device (IP address).
 ///
-/// Collects all Modbus/DNP3 details observed across every packet
-/// for a given IP, including function codes, unit IDs, register ranges,
-/// role (master/slave), and polling intervals.
+/// Collects all Modbus/DNP3/EtherNet-IP/S7comm/BACnet details observed across
+/// every packet for a given IP, including function codes, roles, and
+/// security-relevant flags for ATT&CK detection.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct DeepParseInfo {
     /// Modbus-specific details (present if device speaks Modbus)
     pub modbus: Option<ModbusDetail>,
     /// DNP3-specific details (present if device speaks DNP3)
     pub dnp3: Option<Dnp3Detail>,
+    /// EtherNet/IP details (present if device speaks EtherNet/IP)
+    pub enip: Option<EnipDetail>,
+    /// S7comm details (present if device speaks S7comm)
+    pub s7: Option<S7Detail>,
+    /// BACnet details (present if device speaks BACnet)
+    pub bacnet: Option<BacnetDetail>,
+    /// IEC 60870-5-104 details (present if device speaks IEC 104)
+    pub iec104: Option<Iec104Detail>,
+    /// PROFINET DCP details (present if device speaks PROFINET DCP)
+    pub profinet_dcp: Option<ProfinetDcpDetail>,
+}
+
+/// EtherNet/IP aggregated details for a device.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EnipDetail {
+    /// Detected role: "scanner" (client) or "adapter" (server)
+    pub role: String,
+    /// IP sent CIP Write or ReadModifyWrite to an Assembly object
+    pub cip_writes_to_assembly: bool,
+    /// IP accessed CIP File class (firmware/program operations)
+    pub cip_file_access: bool,
+    /// IP sent ListIdentity requests (network discovery)
+    pub list_identity_requests: bool,
+}
+
+/// S7comm aggregated details for a device.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct S7Detail {
+    /// Detected role: "client" or "server"
+    pub role: String,
+    /// S7 functions observed from this device (snake_case names, sorted)
+    pub functions_seen: Vec<String>,
+}
+
+/// BACnet aggregated details for a device.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BacnetDetail {
+    /// Detected role: "client" or "server"
+    pub role: String,
+    /// WriteProperty to AnalogOutput or BinaryOutput was seen
+    pub write_to_output: bool,
+    /// WriteProperty to NotificationClass was seen (alarm suppression)
+    pub write_to_notification_class: bool,
+    /// ReinitializeDevice service was seen
+    pub reinitialize_device: bool,
+    /// DeviceCommunicationControl service was seen
+    pub device_communication_control: bool,
+}
+
+/// PROFINET DCP aggregated details for a device.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProfinetDcpDetail {
+    /// Detected role: "io_device", "io_controller", "io_supervisor", or "unknown"
+    pub role: String,
+    /// Station name from DCP Name-of-Station block
+    pub device_name: Option<String>,
+}
+
+/// IEC 60870-5-104 aggregated details for a device.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Iec104Detail {
+    /// Detected role: "master" or "outstation"
+    pub role: String,
+    /// Device sent control command ASDUs (type IDs 45–69)
+    pub has_control_commands: bool,
+    /// Device sent Reset Process command (type ID 105)
+    pub has_reset_process: bool,
+    /// Device sent General Interrogation (type ID 100)
+    pub has_interrogation: bool,
 }
 
 /// Aggregated Modbus details for a device.

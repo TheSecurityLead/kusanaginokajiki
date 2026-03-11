@@ -12,6 +12,11 @@ use gm_parsers::{
     identify_protocol, deep_parse, IcsProtocol, DeepParseResult,
     ModbusRole, ModbusDeviceId, Dnp3Role,
     modbus_function_code_name, dnp3_function_code_name,
+    EnipRole, EnipCommand, CipService, CipClass,
+    S7Role, S7Function,
+    BacnetRole, BacnetService, BacnetObjectType,
+    Iec104Role, AsduTypeId,
+    ProfinetRole,
 };
 use gm_signatures::{PacketData, SignatureEngine};
 use gm_topology::TopologyBuilder;
@@ -21,6 +26,7 @@ use super::{
     AssetInfo, AssetSignatureMatch, ConnectionInfo, PacketSummary, infer_device_type,
     DeepParseInfo, ModbusDetail, Dnp3Detail, FunctionCodeStat, RegisterRangeInfo,
     ModbusDeviceIdInfo, ModbusRelationship, Dnp3Relationship, PollingInterval,
+    EnipDetail, S7Detail, BacnetDetail, Iec104Detail, ProfinetDcpDetail,
 };
 
 /// Well-known OT/ICS service ports — if a device listens on one of these,
@@ -68,6 +74,33 @@ pub struct PacketProcessor {
     dnp3_unsolicited: HashMap<String, bool>,
     dnp3_relationships: HashMap<String, HashMap<String, (String, u64)>>,
 
+    // EtherNet/IP accumulators
+    enip_roles: HashMap<String, String>,
+    enip_cip_writes_to_assembly: HashSet<String>,
+    enip_cip_file_access: HashSet<String>,
+    enip_list_identity: HashSet<String>,
+
+    // S7comm accumulators
+    s7_roles: HashMap<String, String>,
+    s7_functions_seen: HashMap<String, HashSet<String>>,
+
+    // BACnet accumulators
+    bacnet_roles: HashMap<String, String>,
+    bacnet_write_to_output: HashSet<String>,
+    bacnet_write_to_notification_class: HashSet<String>,
+    bacnet_reinitialize: HashSet<String>,
+    bacnet_device_comm_ctrl: HashSet<String>,
+
+    // IEC 60870-5-104 accumulators
+    iec104_roles: HashMap<String, String>,
+    iec104_control_commands: HashSet<String>,
+    iec104_reset_process: HashSet<String>,
+    iec104_interrogation: HashSet<String>,
+
+    // PROFINET DCP accumulators
+    profinet_roles: HashMap<String, String>,
+    profinet_device_names: HashMap<String, String>,
+
     // Signature matching data — accumulated per-IP
     ip_packets: HashMap<String, Vec<PacketData>>,
 
@@ -100,6 +133,23 @@ impl PacketProcessor {
             dnp3_roles: HashMap::new(),
             dnp3_unsolicited: HashMap::new(),
             dnp3_relationships: HashMap::new(),
+            enip_roles: HashMap::new(),
+            enip_cip_writes_to_assembly: HashSet::new(),
+            enip_cip_file_access: HashSet::new(),
+            enip_list_identity: HashSet::new(),
+            s7_roles: HashMap::new(),
+            s7_functions_seen: HashMap::new(),
+            bacnet_roles: HashMap::new(),
+            bacnet_write_to_output: HashSet::new(),
+            bacnet_write_to_notification_class: HashSet::new(),
+            bacnet_reinitialize: HashSet::new(),
+            bacnet_device_comm_ctrl: HashSet::new(),
+            iec104_roles: HashMap::new(),
+            iec104_control_commands: HashSet::new(),
+            iec104_reset_process: HashSet::new(),
+            iec104_interrogation: HashSet::new(),
+            profinet_roles: HashMap::new(),
+            profinet_device_names: HashMap::new(),
             ip_packets: HashMap::new(),
             total_packets: 0,
         }
@@ -215,6 +265,21 @@ impl PacketProcessor {
                 }
                 DeepParseResult::Dnp3(ref info) => {
                     self.process_dnp3(packet, info);
+                }
+                DeepParseResult::Enip(ref info) => {
+                    self.process_enip(packet, info);
+                }
+                DeepParseResult::S7(ref info) => {
+                    self.process_s7(packet, info);
+                }
+                DeepParseResult::Bacnet(ref info) => {
+                    self.process_bacnet(packet, info);
+                }
+                DeepParseResult::Iec104(ref info) => {
+                    self.process_iec104(packet, info);
+                }
+                DeepParseResult::ProfinetDcp(ref info) => {
+                    self.process_profinet_dcp(packet, info);
                 }
             }
         }
@@ -371,6 +436,155 @@ impl PacketProcessor {
             .entry(packet.dst_ip.clone())
             .or_insert_with(|| (remote_role.to_string(), 0));
         rel.1 += 1;
+    }
+
+    /// Process EtherNet/IP deep parse result for a packet.
+    fn process_enip(&mut self, packet: &ParsedPacket, info: &gm_parsers::EnipInfo) {
+        let ip = &packet.src_ip;
+
+        let role_str = match info.role {
+            EnipRole::Scanner => "scanner",
+            EnipRole::Adapter => "adapter",
+            EnipRole::Unknown => "unknown",
+        };
+        self.enip_roles.insert(ip.clone(), role_str.to_string());
+
+        // ListIdentity request (not a response) — network discovery
+        if matches!(info.command, EnipCommand::ListIdentity) && !info.is_response {
+            self.enip_list_identity.insert(ip.clone());
+        }
+
+        // CIP Write or ReadModifyWrite to Assembly object — I/O control
+        let is_write = matches!(
+            info.cip_service,
+            Some(CipService::Write) | Some(CipService::ReadModifyWrite)
+        );
+        let is_assembly = matches!(info.cip_class, Some(CipClass::Assembly));
+        if is_write && is_assembly {
+            self.enip_cip_writes_to_assembly.insert(ip.clone());
+        }
+
+        // CIP File class access — firmware/program operations
+        if matches!(info.cip_class, Some(CipClass::File)) {
+            self.enip_cip_file_access.insert(ip.clone());
+        }
+    }
+
+    /// Process S7comm deep parse result for a packet.
+    fn process_s7(&mut self, packet: &ParsedPacket, info: &gm_parsers::S7Info) {
+        let ip = &packet.src_ip;
+
+        let role_str = match info.role {
+            S7Role::Client => "client",
+            S7Role::Server => "server",
+            S7Role::Unknown => "unknown",
+        };
+        self.s7_roles.insert(ip.clone(), role_str.to_string());
+
+        if let Some(ref function) = info.s7_function {
+            let fn_name = match function {
+                S7Function::SetupCommunication => "setup_communication",
+                S7Function::ReadVar => "read_var",
+                S7Function::WriteVar => "write_var",
+                S7Function::UploadStart => "upload_start",
+                S7Function::Upload => "upload",
+                S7Function::UploadEnd => "upload_end",
+                S7Function::DownloadStart => "download_start",
+                S7Function::Download => "download",
+                S7Function::DownloadEnd => "download_end",
+                S7Function::PlcStop => "plc_stop",
+                S7Function::PiService => "pi_service",
+                S7Function::Unknown(_) => "unknown",
+            };
+            self.s7_functions_seen
+                .entry(ip.clone())
+                .or_default()
+                .insert(fn_name.to_string());
+        }
+    }
+
+    /// Process BACnet deep parse result for a packet.
+    fn process_bacnet(&mut self, packet: &ParsedPacket, info: &gm_parsers::BacnetInfo) {
+        let ip = &packet.src_ip;
+
+        let role_str = match info.role {
+            BacnetRole::Client => "client",
+            BacnetRole::Server => "server",
+            BacnetRole::Unknown => "unknown",
+        };
+        self.bacnet_roles.insert(ip.clone(), role_str.to_string());
+
+        match info.service {
+            Some(BacnetService::WriteProperty) | Some(BacnetService::WritePropertyMultiple) => {
+                match info.object_type {
+                    Some(BacnetObjectType::AnalogOutput) | Some(BacnetObjectType::BinaryOutput) => {
+                        self.bacnet_write_to_output.insert(ip.clone());
+                    }
+                    Some(BacnetObjectType::NotificationClass) => {
+                        self.bacnet_write_to_notification_class.insert(ip.clone());
+                    }
+                    _ => {}
+                }
+            }
+            Some(BacnetService::ReinitializeDevice) => {
+                self.bacnet_reinitialize.insert(ip.clone());
+            }
+            Some(BacnetService::DeviceCommunicationControl) => {
+                self.bacnet_device_comm_ctrl.insert(ip.clone());
+            }
+            _ => {}
+        }
+    }
+
+    /// Process IEC 60870-5-104 deep parse result for a packet.
+    fn process_iec104(&mut self, packet: &ParsedPacket, info: &gm_parsers::Iec104Info) {
+        let ip = &packet.src_ip;
+
+        let role_str = match info.role {
+            Iec104Role::Master => "master",
+            Iec104Role::Outstation => "outstation",
+            Iec104Role::Unknown => "unknown",
+        };
+        self.iec104_roles.insert(ip.clone(), role_str.to_string());
+
+        if info.is_command {
+            self.iec104_control_commands.insert(ip.clone());
+        }
+        if matches!(info.type_id, Some(AsduTypeId::ResetProcess)) {
+            self.iec104_reset_process.insert(ip.clone());
+        }
+        if matches!(info.type_id, Some(AsduTypeId::Interrogation)) {
+            self.iec104_interrogation.insert(ip.clone());
+        }
+    }
+
+    /// Process PROFINET DCP deep parse result for a packet.
+    fn process_profinet_dcp(
+        &mut self,
+        packet: &ParsedPacket,
+        info: &gm_parsers::ProfinetDcpInfo,
+    ) {
+        let ip = &packet.src_ip;
+
+        let role_str = match info.role {
+            ProfinetRole::IoDevice => "io_device",
+            ProfinetRole::IoController => "io_controller",
+            ProfinetRole::IoSupervisor => "io_supervisor",
+            ProfinetRole::Unknown => "unknown",
+        };
+        // Only update if we have a meaningful role (responses carry the role block)
+        if role_str != "unknown" {
+            self.profinet_roles.insert(ip.clone(), role_str.to_string());
+        } else {
+            // Record the device even without a role so we know it speaks PROFINET
+            self.profinet_roles.entry(ip.clone()).or_insert_with(|| "unknown".to_string());
+        }
+
+        if let Some(ref name) = info.device_info.name_of_station {
+            if !name.is_empty() {
+                self.profinet_device_names.insert(ip.clone(), name.clone());
+            }
+        }
     }
 
     /// Build deep parse info from accumulated data.
@@ -576,6 +790,90 @@ impl PacketProcessor {
                 .entry(ip.clone())
                 .or_default()
                 .dnp3 = Some(dnp3_detail);
+        }
+
+        // Aggregate EtherNet/IP data
+        for ip in self.enip_roles.keys() {
+            let role = self.enip_roles.get(ip)
+                .cloned()
+                .unwrap_or_else(|| "unknown".to_string());
+            let enip_detail = EnipDetail {
+                role,
+                cip_writes_to_assembly: self.enip_cip_writes_to_assembly.contains(ip),
+                cip_file_access: self.enip_cip_file_access.contains(ip),
+                list_identity_requests: self.enip_list_identity.contains(ip),
+            };
+            deep_parse_info
+                .entry(ip.clone())
+                .or_default()
+                .enip = Some(enip_detail);
+        }
+
+        // Aggregate S7comm data
+        for ip in self.s7_roles.keys() {
+            let role = self.s7_roles.get(ip)
+                .cloned()
+                .unwrap_or_else(|| "unknown".to_string());
+            let mut functions_seen: Vec<String> = self.s7_functions_seen
+                .get(ip)
+                .map(|s| s.iter().cloned().collect())
+                .unwrap_or_default();
+            functions_seen.sort();
+            let s7_detail = S7Detail { role, functions_seen };
+            deep_parse_info
+                .entry(ip.clone())
+                .or_default()
+                .s7 = Some(s7_detail);
+        }
+
+        // Aggregate BACnet data
+        for ip in self.bacnet_roles.keys() {
+            let role = self.bacnet_roles.get(ip)
+                .cloned()
+                .unwrap_or_else(|| "unknown".to_string());
+            let bacnet_detail = BacnetDetail {
+                role,
+                write_to_output: self.bacnet_write_to_output.contains(ip),
+                write_to_notification_class: self.bacnet_write_to_notification_class.contains(ip),
+                reinitialize_device: self.bacnet_reinitialize.contains(ip),
+                device_communication_control: self.bacnet_device_comm_ctrl.contains(ip),
+            };
+            deep_parse_info
+                .entry(ip.clone())
+                .or_default()
+                .bacnet = Some(bacnet_detail);
+        }
+
+        // Aggregate PROFINET DCP data
+        for ip in self.profinet_roles.keys() {
+            let role = self.profinet_roles.get(ip)
+                .cloned()
+                .unwrap_or_else(|| "unknown".to_string());
+            let profinet_detail = ProfinetDcpDetail {
+                role,
+                device_name: self.profinet_device_names.get(ip).cloned(),
+            };
+            deep_parse_info
+                .entry(ip.clone())
+                .or_default()
+                .profinet_dcp = Some(profinet_detail);
+        }
+
+        // Aggregate IEC 104 data
+        for ip in self.iec104_roles.keys() {
+            let role = self.iec104_roles.get(ip)
+                .cloned()
+                .unwrap_or_else(|| "unknown".to_string());
+            let iec104_detail = Iec104Detail {
+                role,
+                has_control_commands: self.iec104_control_commands.contains(ip),
+                has_reset_process: self.iec104_reset_process.contains(ip),
+                has_interrogation: self.iec104_interrogation.contains(ip),
+            };
+            deep_parse_info
+                .entry(ip.clone())
+                .or_default()
+                .iec104 = Some(iec104_detail);
         }
 
         deep_parse_info
