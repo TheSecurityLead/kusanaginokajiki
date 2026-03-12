@@ -161,6 +161,10 @@ fn main() {
             commands::export::export_stix_bundle,
             commands::export::save_topology_image,
             commands::export::export_filtered_pcap,
+            // Communication Allowlist (Phase 14E)
+            commands::export::generate_communication_allowlist,
+            commands::export::export_allowlist_csv,
+            commands::export::export_firewall_rules,
             // Security Analysis (Phase 10)
             commands::analysis::run_analysis,
             commands::analysis::get_findings,
@@ -170,6 +174,9 @@ fn main() {
             commands::analysis::get_criticality,
             commands::analysis::get_naming_suggestions,
             commands::analysis::get_switch_security_findings,
+            // ICS Malware Signatures + Compliance (Phase 14E)
+            commands::analysis::get_malware_findings,
+            commands::analysis::get_compliance_report,
             // Communication Pattern Analysis
             commands::patterns::get_connection_stats,
             commands::patterns::get_pattern_anomalies,

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { assetCount, connectionCount } from '$lib/stores';
-	import type { ReportConfig, Finding } from '$lib/types';
+	import type { ReportConfig, Finding, AllowlistEntry } from '$lib/types';
 	import {
 		exportAssetsCsv,
 		exportConnectionsCsv,
@@ -10,7 +10,10 @@
 		exportSbom,
 		exportStixBundle,
 		saveTopologyImage,
-		getFindings
+		getFindings,
+		generateCommunicationAllowlist,
+		exportAllowlistCsv,
+		exportFirewallRules
 	} from '$lib/utils/tauri';
 
 	// ─── PDF Report Config ───────────────────────────────
@@ -274,6 +277,57 @@
 			showStatus(`Export failed: ${err}`, 'error');
 		}
 		busyAction = null;
+	}
+
+	// ─── Communication Allowlist ─────────────────────────
+	let allowlistEntries = $state<AllowlistEntry[]>([]);
+	let showAllowlist = $state(false);
+	let loadingAllowlist = $state(false);
+
+	async function loadAllowlist() {
+		loadingAllowlist = true;
+		try {
+			allowlistEntries = await generateCommunicationAllowlist();
+			showAllowlist = true;
+		} catch (err) {
+			showStatus(`Failed to generate allowlist: ${err}`, 'error');
+		}
+		loadingAllowlist = false;
+	}
+
+	async function handleExportAllowlistCsv() {
+		try {
+			busyAction = 'allowlist_csv';
+			const path = await saveDialog('Export Communication Allowlist', 'allowlist.csv', 'CSV Files', ['csv']);
+			if (!path) { busyAction = null; return; }
+			const result = await exportAllowlistCsv(path);
+			showStatus(`Allowlist exported: ${result}`, 'success');
+		} catch (err) {
+			showStatus(`Allowlist export failed: ${err}`, 'error');
+		} finally {
+			busyAction = null;
+		}
+	}
+
+	async function handleExportFirewallRules() {
+		try {
+			busyAction = 'fw_rules';
+			const path = await saveDialog('Export Firewall Rules', 'firewall_rules.txt', 'Text Files', ['txt']);
+			if (!path) { busyAction = null; return; }
+			const result = await exportFirewallRules(path);
+			showStatus(`Firewall rules exported: ${result}`, 'success');
+		} catch (err) {
+			showStatus(`Firewall rules export failed: ${err}`, 'error');
+		} finally {
+			busyAction = null;
+		}
+	}
+
+	function classificationClass(c: string): string {
+		if (c === 'operational') return 'cls-operational';
+		if (c === 'management') return 'cls-management';
+		if (c === 'monitoring') return 'cls-monitoring';
+		return 'cls-it';
 	}
 </script>
 
@@ -567,6 +621,73 @@
 				</div>
 			{:else if showRemediationTable}
 				<p class="no-findings">No findings available. Run analysis first.</p>
+			{/if}
+		</section>
+
+		<!-- ── Communication Allowlist ───────────────────── -->
+		<section class="export-section">
+			<h3 class="section-title">Communication Allowlist</h3>
+			<p class="section-desc">
+				Every observed legitimate flow with frequency, classification, and firewall-ready export.
+				Run analysis first for best classification results.
+			</p>
+
+			<div class="export-actions">
+				<button class="action-btn primary" onclick={loadAllowlist} disabled={loadingAllowlist || !hasData}>
+					{loadingAllowlist ? 'Generating...' : 'Generate Allowlist'}
+				</button>
+				{#if allowlistEntries.length > 0}
+					<button class="action-btn" onclick={handleExportAllowlistCsv} disabled={busyAction === 'allowlist_csv'}>
+						{busyAction === 'allowlist_csv' ? 'Exporting...' : 'Export CSV'}
+					</button>
+					<button class="action-btn" onclick={handleExportFirewallRules} disabled={busyAction === 'fw_rules'}>
+						{busyAction === 'fw_rules' ? 'Exporting...' : 'Export Firewall Rules'}
+					</button>
+				{/if}
+			</div>
+
+			{#if showAllowlist && allowlistEntries.length > 0}
+				<div class="allowlist-wrap">
+					<div class="allowlist-summary">
+						{allowlistEntries.length} flows ·
+						{allowlistEntries.filter(e => e.classification === 'operational').length} operational ·
+						{allowlistEntries.filter(e => e.classification === 'management').length} management ·
+						{allowlistEntries.filter(e => e.classification === 'monitoring').length} monitoring ·
+						{allowlistEntries.filter(e => e.classification === 'it').length} IT
+					</div>
+					<table class="allowlist-table">
+						<thead>
+							<tr>
+								<th>Source</th>
+								<th>Destination</th>
+								<th>Protocol</th>
+								<th>Port</th>
+								<th>Frequency</th>
+								<th>Class</th>
+								<th>Justification</th>
+							</tr>
+						</thead>
+						<tbody>
+							{#each allowlistEntries as entry}
+								<tr class="allowlist-row">
+									<td class="col-ip">{entry.src_ip}</td>
+									<td class="col-ip">{entry.dst_ip}</td>
+									<td class="col-proto">{entry.protocol}</td>
+									<td class="col-port">{entry.dst_port}</td>
+									<td class="col-freq">{entry.frequency}</td>
+									<td class="col-class">
+										<span class="cls-badge {classificationClass(entry.classification)}">
+											{entry.classification}
+										</span>
+									</td>
+									<td class="col-just">{entry.justification}</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</div>
+			{:else if showAllowlist}
+				<p class="no-findings">No connections to allowlist. Import a PCAP first.</p>
 			{/if}
 		</section>
 	</div>
@@ -958,4 +1079,66 @@
 		font-size: 11px;
 		margin-top: 12px;
 	}
+
+	/* ── Communication Allowlist ──────────────────────────── */
+	.allowlist-wrap {
+		overflow-x: auto;
+		margin-top: 12px;
+		border-radius: 6px;
+		border: 1px solid var(--gm-border);
+	}
+
+	.allowlist-summary {
+		padding: 6px 12px;
+		font-size: 11px;
+		color: var(--gm-text-muted);
+		background: var(--gm-bg-secondary);
+		border-bottom: 1px solid var(--gm-border);
+	}
+
+	.allowlist-table {
+		width: 100%;
+		border-collapse: collapse;
+		font-size: 11px;
+	}
+
+	.allowlist-table th {
+		padding: 6px 10px;
+		text-align: left;
+		font-weight: 600;
+		color: var(--gm-text-muted);
+		background: var(--gm-bg-secondary);
+		border-bottom: 1px solid var(--gm-border);
+		white-space: nowrap;
+	}
+
+	.allowlist-table td {
+		padding: 5px 10px;
+		border-bottom: 1px solid var(--gm-border-subtle, var(--gm-border));
+		vertical-align: middle;
+	}
+
+	.allowlist-row:hover td { background: var(--gm-bg-tertiary); }
+
+	.col-ip { font-family: monospace; font-size: 11px; white-space: nowrap; }
+	.col-proto { white-space: nowrap; font-weight: 600; }
+	.col-port { width: 55px; text-align: right; font-family: monospace; }
+	.col-freq { white-space: nowrap; color: var(--gm-text-secondary); }
+	.col-class { width: 110px; }
+	.col-just { color: var(--gm-text-secondary); font-size: 11px; }
+
+	.cls-badge {
+		display: inline-block;
+		padding: 1px 7px;
+		border-radius: 4px;
+		font-size: 10px;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+	}
+
+	.cls-operational { background: rgba(16,185,129,0.15); color: #10b981; }
+	.cls-management  { background: rgba(59,130,246,0.15); color: #3b82f6; }
+	.cls-monitoring  { background: rgba(245,158,11,0.15); color: #f59e0b; }
+	.cls-it          { background: rgba(100,116,139,0.15); color: #64748b; }
 </style>

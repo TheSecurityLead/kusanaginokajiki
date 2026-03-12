@@ -6,13 +6,14 @@
 	} from '$lib/stores';
 	import type { ViewTab } from '$lib/stores';
 	import type {
-		Finding, PurdueAssignment, AnomalyScore, AnalysisResult, FindingSeverity, SwitchSecurityFinding
+		Finding, PurdueAssignment, AnomalyScore, AnalysisResult, FindingSeverity, SwitchSecurityFinding,
+		MalwareFinding, ComplianceMapping, ComplianceStatus
 	} from '$lib/types';
-	import { runAnalysis, getFindings, getPurdueAssignments, getAnomalies, getAssets, getSwitchSecurityFindings, getCorrelatedAlerts, clearAlerts } from '$lib/utils/tauri';
+	import { runAnalysis, getFindings, getPurdueAssignments, getAnomalies, getAssets, getSwitchSecurityFindings, getCorrelatedAlerts, clearAlerts, getMalwareFindings, getComplianceReport } from '$lib/utils/tauri';
 	import type { CorrelatedAlert } from '$lib/types';
 	import BaselineDriftView from './BaselineDriftView.svelte';
 
-	let activeSection = $state<'findings' | 'purdue' | 'anomalies' | 'summary' | 'drift' | 'switch_security' | 'external_alerts'>('summary');
+	let activeSection = $state<'findings' | 'purdue' | 'anomalies' | 'summary' | 'drift' | 'switch_security' | 'external_alerts' | 'malware' | 'compliance'>('summary');
 	let switchFindings = $state<SwitchSecurityFinding[]>([]);
 	let loadingSwitchFindings = $state(false);
 	let correlatedAlerts = $state<CorrelatedAlert[]>([]);
@@ -59,6 +60,58 @@
 	let isRunning = $state(false);
 	let lastRunTime = $state<string | null>(null);
 	let error = $state<string | null>(null);
+
+	// ─── ICS Malware Signatures ──────────────────────────
+	let malwareFindings = $state<MalwareFinding[]>([]);
+	let loadingMalware = $state(false);
+
+	async function loadMalwareFindings() {
+		loadingMalware = true;
+		try {
+			malwareFindings = await getMalwareFindings();
+		} catch (e) {
+			error = `Malware detection failed: ${e}`;
+		} finally {
+			loadingMalware = false;
+		}
+	}
+
+	// ─── Compliance Framework Mapping ───────────────────
+	let complianceFramework = $state<'iec62443' | 'nist80082' | 'nerccip'>('iec62443');
+	let complianceMappings = $state<ComplianceMapping[]>([]);
+	let loadingCompliance = $state(false);
+
+	async function loadComplianceReport() {
+		loadingCompliance = true;
+		try {
+			complianceMappings = await getComplianceReport(complianceFramework);
+		} catch (e) {
+			error = `Compliance mapping failed: ${e}`;
+		} finally {
+			loadingCompliance = false;
+		}
+	}
+
+	function complianceStatusClass(status: ComplianceStatus): string {
+		if (status === 'gap') return 'status-gap';
+		if (status === 'partial') return 'status-partial';
+		if (status === 'met') return 'status-met';
+		return 'status-na';
+	}
+
+	function complianceStatusLabel(status: ComplianceStatus): string {
+		if (status === 'gap') return 'GAP';
+		if (status === 'partial') return 'PARTIAL';
+		if (status === 'met') return 'MET';
+		return 'N/A';
+	}
+
+	function malwareSeverityClass(s: string): string {
+		if (s === 'critical') return 'sev-critical';
+		if (s === 'high') return 'sev-high';
+		if (s === 'medium') return 'sev-medium';
+		return 'sev-low';
+	}
 
 	// Severity display helpers
 	const severityOrder: FindingSeverity[] = ['critical', 'high', 'medium', 'low', 'info'];
@@ -229,6 +282,17 @@
 				{#if correlatedAlerts.length > 0}
 					<span class="tab-badge">{correlatedAlerts.length}</span>
 				{/if}
+			</button>
+			<button class="section-tab" class:active={activeSection === 'malware'}
+				onclick={() => { activeSection = 'malware'; loadMalwareFindings(); }}>
+				Malware
+				{#if malwareFindings.length > 0}
+					<span class="tab-badge tab-badge-critical">{malwareFindings.length}</span>
+				{/if}
+			</button>
+			<button class="section-tab" class:active={activeSection === 'compliance'}
+				onclick={() => { activeSection = 'compliance'; loadComplianceReport(); }}>
+				Compliance
 			</button>
 		</div>
 
@@ -524,6 +588,88 @@
 										</span>
 									{/if}
 								</div>
+							</div>
+						{/each}
+					</div>
+				{/if}
+			{:else if activeSection === 'malware'}
+				<!-- ICS Malware Behavioral Signatures -->
+				<div class="ext-alerts-header">
+					<span class="ext-alerts-count">{malwareFindings.length} match{malwareFindings.length !== 1 ? 'es' : ''}</span>
+					<button class="run-btn" onclick={loadMalwareFindings} disabled={loadingMalware}>
+						{loadingMalware ? 'Scanning...' : 'Refresh'}
+					</button>
+				</div>
+				{#if loadingMalware}
+					<div class="empty-panel"><p>Running malware signature scan...</p></div>
+				{:else if malwareFindings.length === 0}
+					<div class="empty-panel">
+						<div class="empty-icon">&#x1F9EC;</div>
+						<p>No ICS malware behavioral patterns detected.</p>
+						<p class="empty-sub">Detects: FrostyGoop, PIPEDREAM/INCONTROLLER, Industroyer2</p>
+					</div>
+				{:else}
+					<div class="alert-list">
+						{#each malwareFindings as mf}
+							<div class="alert-row">
+								<div class="alert-row-header">
+									<span class="alert-sev sev-badge-{mf.severity}">{mf.severity.toUpperCase()}</span>
+									<span class="malware-name">{mf.malware_name}</span>
+									<span class="malware-confidence conf-{mf.confidence}">{mf.confidence} confidence</span>
+									<span class="alert-source source-badge">{mf.attack_techniques.join(', ')}</span>
+								</div>
+								<div class="malware-pattern">{mf.pattern_description}</div>
+								<div class="alert-flow">
+									<span class="flow-ip">{mf.source_ip}</span>
+									<span class="flow-arrow">→</span>
+									<span class="flow-ip">{mf.target_ips.slice(0, 3).join(', ')}{mf.target_ips.length > 3 ? ` +${mf.target_ips.length - 3} more` : ''}</span>
+								</div>
+								<div class="alert-cat">{mf.evidence}</div>
+							</div>
+						{/each}
+					</div>
+				{/if}
+
+			{:else if activeSection === 'compliance'}
+				<!-- Compliance Framework Mapping -->
+				<div class="compliance-header">
+					<span class="ext-alerts-count">Compliance Mapping</span>
+					<select class="framework-select" bind:value={complianceFramework}
+						onchange={loadComplianceReport}>
+						<option value="iec62443">IEC 62443</option>
+						<option value="nist80082">NIST 800-82 Rev 3</option>
+						<option value="nerccip">NERC CIP</option>
+					</select>
+					<button class="run-btn" onclick={loadComplianceReport} disabled={loadingCompliance}>
+						{loadingCompliance ? 'Loading...' : 'Refresh'}
+					</button>
+				</div>
+				{#if loadingCompliance}
+					<div class="empty-panel"><p>Generating compliance report...</p></div>
+				{:else if complianceMappings.length === 0}
+					<div class="empty-panel">
+						<div class="empty-icon">&#x1F4CB;</div>
+						<p>Select a framework above to generate a compliance mapping.</p>
+						<p class="empty-sub">Run analysis first for best results.</p>
+					</div>
+				{:else}
+					<div class="compliance-summary">
+						<span class="cs-gap">&#x274C; {complianceMappings.filter(m => m.status === 'gap').length} Gap</span>
+						<span class="cs-partial">&#x26A0; {complianceMappings.filter(m => m.status === 'partial').length} Partial</span>
+						<span class="cs-met">&#x2705; {complianceMappings.filter(m => m.status === 'met').length} Met</span>
+						<span class="cs-na">&#x2B1C; {complianceMappings.filter(m => m.status === 'not_assessed').length} N/A</span>
+					</div>
+					<div class="compliance-list">
+						{#each complianceMappings as mapping}
+							<div class="compliance-row cs-row-{mapping.status}">
+								<div class="compliance-req-header">
+									<span class="req-id">{mapping.requirement_id}</span>
+									<span class="req-name">{mapping.requirement_name}</span>
+									<span class="status-badge {complianceStatusClass(mapping.status)}">
+										{complianceStatusLabel(mapping.status)}
+									</span>
+								</div>
+								<div class="compliance-evidence">{mapping.evidence}</div>
 							</div>
 						{/each}
 					</div>
@@ -1264,5 +1410,142 @@
 	.alert-purdue {
 		color: var(--gm-purdue-l3);
 		font-weight: 600;
+	}
+
+	/* ── Malware Signatures ─────────────────────────── */
+
+	.malware-name {
+		font-weight: 700;
+		font-size: 12px;
+		color: var(--gm-text-primary);
+	}
+
+	.malware-pattern {
+		font-size: 11px;
+		color: var(--gm-text-secondary);
+		margin: 2px 0 4px 0;
+		font-style: italic;
+	}
+
+	.malware-confidence {
+		font-size: 10px;
+		padding: 1px 6px;
+		border-radius: 4px;
+		text-transform: uppercase;
+		font-weight: 600;
+	}
+
+	.conf-high    { background: rgba(239,68,68,0.15); color: #ef4444; }
+	.conf-medium  { background: rgba(245,158,11,0.15); color: #f59e0b; }
+	.conf-low     { background: rgba(100,116,139,0.15); color: #64748b; }
+
+	.tab-badge-critical {
+		background: var(--gm-severity-critical) !important;
+	}
+
+	.empty-sub {
+		font-size: 10px;
+		color: var(--gm-text-muted);
+		margin-top: 4px;
+	}
+
+	/* ── Compliance Framework Mapping ───────────────── */
+
+	.compliance-header {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 8px 0;
+		flex-wrap: wrap;
+	}
+
+	.framework-select {
+		background: var(--gm-bg-secondary);
+		border: 1px solid var(--gm-border);
+		color: var(--gm-text-primary);
+		border-radius: 4px;
+		padding: 4px 8px;
+		font-size: 12px;
+		cursor: pointer;
+	}
+
+	.compliance-summary {
+		display: flex;
+		gap: 16px;
+		padding: 8px 0;
+		font-size: 12px;
+		font-weight: 600;
+		flex-wrap: wrap;
+	}
+
+	.cs-gap     { color: #ef4444; }
+	.cs-partial { color: #f59e0b; }
+	.cs-met     { color: #10b981; }
+	.cs-na      { color: var(--gm-text-muted); }
+
+	.compliance-list {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		overflow-y: auto;
+		padding-bottom: 8px;
+	}
+
+	.compliance-row {
+		padding: 10px 12px;
+		border-radius: 6px;
+		border-left: 3px solid transparent;
+		background: var(--gm-bg-secondary);
+	}
+
+	.cs-row-gap         { border-left-color: #ef4444; }
+	.cs-row-partial     { border-left-color: #f59e0b; }
+	.cs-row-met         { border-left-color: #10b981; }
+	.cs-row-not_assessed { border-left-color: var(--gm-border); }
+
+	.compliance-req-header {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		margin-bottom: 4px;
+		flex-wrap: wrap;
+	}
+
+	.req-id {
+		font-family: monospace;
+		font-size: 11px;
+		background: var(--gm-bg-tertiary);
+		padding: 1px 6px;
+		border-radius: 4px;
+		white-space: nowrap;
+		color: var(--gm-text-muted);
+	}
+
+	.req-name {
+		font-weight: 600;
+		font-size: 12px;
+		flex: 1;
+	}
+
+	.status-badge {
+		display: inline-block;
+		padding: 1px 8px;
+		border-radius: 4px;
+		font-size: 10px;
+		font-weight: 700;
+		letter-spacing: 0.05em;
+		text-transform: uppercase;
+		white-space: nowrap;
+	}
+
+	.status-gap     { background: rgba(239,68,68,0.15); color: #ef4444; }
+	.status-partial { background: rgba(245,158,11,0.15); color: #f59e0b; }
+	.status-met     { background: rgba(16,185,129,0.15); color: #10b981; }
+	.status-na      { background: rgba(100,116,139,0.15); color: #64748b; }
+
+	.compliance-evidence {
+		font-size: 11px;
+		color: var(--gm-text-secondary);
+		line-height: 1.5;
 	}
 </style>

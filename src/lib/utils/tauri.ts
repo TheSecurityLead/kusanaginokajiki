@@ -51,7 +51,10 @@ import type {
 	SwitchSecurityFinding,
 	CorrelatedAlert,
 	LiveAttackAlert,
-	FilteredPcapResult
+	FilteredPcapResult,
+	MalwareFinding,
+	AllowlistEntry,
+	ComplianceMapping
 } from '$lib/types';
 
 // ─── System Commands ──────────────────────────────────────────
@@ -607,4 +610,31 @@ export async function onLiveAttackAlert(
 	return listen<LiveAttackAlert>('live_attack_alert', (event) => {
 		callback(event.payload);
 	});
+}
+
+// ─── Phase 14E: ICS Malware, Allowlist, Compliance ───────────
+
+/** Detect ICS malware behavioral patterns (FrostyGoop, PIPEDREAM, Industroyer2) */
+export async function getMalwareFindings(): Promise<MalwareFinding[]> {
+	return invoke<MalwareFinding[]>('get_malware_findings');
+}
+
+/** Generate communication allowlist from observed network traffic */
+export async function generateCommunicationAllowlist(): Promise<AllowlistEntry[]> {
+	return invoke<AllowlistEntry[]>('generate_communication_allowlist');
+}
+
+/** Export communication allowlist as CSV */
+export async function exportAllowlistCsv(outputPath: string): Promise<string> {
+	return invoke<string>('export_allowlist_csv', { outputPath });
+}
+
+/** Export firewall rule suggestions derived from observed traffic */
+export async function exportFirewallRules(outputPath: string): Promise<string> {
+	return invoke<string>('export_firewall_rules', { outputPath });
+}
+
+/** Get compliance mapping for a framework: 'iec62443' | 'nist80082' | 'nerccip' */
+export async function getComplianceReport(framework: string): Promise<ComplianceMapping[]> {
+	return invoke<ComplianceMapping[]>('get_compliance_report', { framework });
 }

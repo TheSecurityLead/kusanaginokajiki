@@ -1,7 +1,8 @@
-//! Export & reporting commands: CSV, JSON, PDF, SBOM, STIX.
+//! Export & reporting commands: CSV, JSON, PDF, SBOM, STIX, and allowlist.
 //!
 //! These commands serialize the current AppState data into various
-//! export formats using the gm-report crate.
+//! export formats using the gm-report crate, plus the allowlist generator
+//! from gm-analysis.
 
 use std::collections::{HashMap, HashSet};
 use serde::Deserialize;
@@ -10,6 +11,10 @@ use tauri::State;
 use gm_report::{
     ExportAsset, ExportConnection, ExportProtocolStat, ExportFinding,
     ReportConfig, ReportData,
+};
+use gm_analysis::{
+    AllowlistEntry, AssetSnapshot, ConnectionSnapshot,
+    generate_allowlist, allowlist_to_csv, format_firewall_rules,
 };
 
 use super::AppState;
@@ -337,6 +342,88 @@ pub async fn save_topology_image(
     }
 
     log::info!("Saved topology image to: {}", output_path);
+    Ok(output_path)
+}
+
+// ─── Communication Allowlist Commands ────────────────────────
+
+/// Build AssetSnapshot slices from AppStateInner for allowlist generation.
+fn state_assets_to_snapshots(state: &super::AppStateInner) -> Vec<AssetSnapshot> {
+    state.assets.iter().map(|a| AssetSnapshot {
+        ip_address: a.ip_address.clone(),
+        device_type: a.device_type.clone(),
+        protocols: a.protocols.clone(),
+        purdue_level: a.purdue_level,
+        is_public_ip: a.is_public_ip,
+        tags: a.tags.clone(),
+        vendor: a.vendor.clone(),
+    }).collect()
+}
+
+/// Build ConnectionSnapshot slices from AppStateInner for allowlist generation.
+fn state_connections_to_snapshots(state: &super::AppStateInner) -> Vec<ConnectionSnapshot> {
+    state.connections.iter().map(|c| ConnectionSnapshot {
+        src_ip: c.src_ip.clone(),
+        dst_ip: c.dst_ip.clone(),
+        src_port: c.src_port,
+        dst_port: c.dst_port,
+        protocol: c.protocol.clone(),
+        packet_count: c.packet_count,
+    }).collect()
+}
+
+/// Generate a communication allowlist from observed network traffic.
+///
+/// Returns one entry per unique observed flow, enriched with frequency,
+/// classification, and human-readable justification.
+#[tauri::command]
+pub async fn generate_communication_allowlist(
+    state: State<'_, AppState>,
+) -> Result<Vec<AllowlistEntry>, String> {
+    let inner = state.inner.lock().map_err(|e| e.to_string())?;
+    let assets = state_assets_to_snapshots(&inner);
+    let connections = state_connections_to_snapshots(&inner);
+    let comm_stats = inner.connection_stats.clone();
+    drop(inner);
+
+    Ok(generate_allowlist(&connections, &assets, &comm_stats))
+}
+
+/// Export the communication allowlist as a CSV file.
+#[tauri::command]
+pub async fn export_allowlist_csv(
+    output_path: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let inner = state.inner.lock().map_err(|e| e.to_string())?;
+    let assets = state_assets_to_snapshots(&inner);
+    let connections = state_connections_to_snapshots(&inner);
+    let comm_stats = inner.connection_stats.clone();
+    drop(inner);
+
+    let entries = generate_allowlist(&connections, &assets, &comm_stats);
+    let csv = allowlist_to_csv(&entries);
+    std::fs::write(&output_path, csv).map_err(|e| e.to_string())?;
+    log::info!("Exported communication allowlist ({} entries) to CSV: {}", entries.len(), output_path);
+    Ok(output_path)
+}
+
+/// Export firewall rule suggestions derived from the communication allowlist.
+#[tauri::command]
+pub async fn export_firewall_rules(
+    output_path: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let inner = state.inner.lock().map_err(|e| e.to_string())?;
+    let assets = state_assets_to_snapshots(&inner);
+    let connections = state_connections_to_snapshots(&inner);
+    let comm_stats = inner.connection_stats.clone();
+    drop(inner);
+
+    let entries = generate_allowlist(&connections, &assets, &comm_stats);
+    let rules = format_firewall_rules(&entries);
+    std::fs::write(&output_path, rules).map_err(|e| e.to_string())?;
+    log::info!("Exported firewall rule suggestions ({} rules) to: {}", entries.len(), output_path);
     Ok(output_path)
 }
 

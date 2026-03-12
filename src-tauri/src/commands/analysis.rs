@@ -17,6 +17,8 @@ use gm_analysis::{
     CredentialChecker, CriticalityAssessment, NamingSuggestion,
     DefaultCredential, CaptureContext,
     SwitchSecurityFinding, SwitchSecurityInput, assess_switch_security,
+    MalwareFinding, detect_malware_patterns,
+    ComplianceMapping, generate_compliance_report,
 };
 
 use super::AppState;
@@ -494,4 +496,82 @@ pub fn get_switch_security_findings(
     };
 
     Ok(assess_switch_security(&input))
+}
+
+/// Detect ICS malware behavioral patterns in the current capture.
+///
+/// Checks for FrostyGoop (Modbus write-only master), PIPEDREAM/INCONTROLLER
+/// (multi-protocol reconnaissance), and Industroyer2 (IEC 104 burst commands).
+#[tauri::command]
+pub fn get_malware_findings(state: State<'_, AppState>) -> Result<Vec<MalwareFinding>, String> {
+    let state_inner = state.inner.lock().map_err(|e| e.to_string())?;
+
+    let ctx = build_capture_context(&state_inner);
+    let connections = build_analysis_input(&state_inner).connections;
+
+    // Build deep parse snapshot map
+    let mut deep_parse = std::collections::HashMap::new();
+    for (ip, dp) in &state_inner.deep_parse_info {
+        let modbus = dp.modbus.as_ref().map(|m| gm_analysis::ModbusSnapshot {
+            role: m.role.clone(),
+            unit_ids: m.unit_ids.clone(),
+            function_codes: m.function_codes.iter().map(|fc| gm_analysis::FcSnapshot {
+                code: fc.code,
+                count: fc.count,
+                is_write: fc.is_write,
+            }).collect(),
+            relationships: m.relationships.iter().map(|r| gm_analysis::RelationshipSnapshot {
+                remote_ip: r.remote_ip.clone(),
+                remote_role: r.remote_role.clone(),
+                packet_count: r.packet_count,
+            }).collect(),
+            polling_intervals: m.polling_intervals.iter().map(|pi| gm_analysis::PollingSnapshot {
+                remote_ip: pi.remote_ip.clone(),
+                function_code: pi.function_code,
+                avg_interval_ms: pi.avg_interval_ms,
+                min_interval_ms: pi.min_interval_ms,
+                max_interval_ms: pi.max_interval_ms,
+                sample_count: pi.sample_count,
+            }).collect(),
+        });
+        let iec104 = dp.iec104.as_ref().map(|i| gm_analysis::Iec104Snapshot {
+            role: i.role.clone(),
+            has_control_commands: i.has_control_commands,
+            has_reset_process: i.has_reset_process,
+            has_interrogation: i.has_interrogation,
+        });
+        deep_parse.insert(ip.clone(), gm_analysis::DeepParseSnapshot {
+            modbus,
+            iec104,
+            ..Default::default()
+        });
+    }
+
+    Ok(detect_malware_patterns(&ctx, &connections, &deep_parse))
+}
+
+/// Generate a compliance report mapping findings to a specific framework.
+///
+/// `framework` must be one of: `"iec62443"`, `"nist80082"`, `"nerccip"`.
+#[tauri::command]
+pub fn get_compliance_report(
+    state: State<'_, AppState>,
+    framework: String,
+) -> Result<Vec<ComplianceMapping>, String> {
+    let state_inner = state.inner.lock().map_err(|e| e.to_string())?;
+
+    if !["iec62443", "nist80082", "nerccip"].contains(&framework.as_str()) {
+        return Err(format!(
+            "Unknown framework '{}'. Supported: iec62443, nist80082, nerccip",
+            framework
+        ));
+    }
+
+    let input = build_analysis_input(&state_inner);
+    Ok(generate_compliance_report(
+        &state_inner.findings,
+        &input.assets,
+        &input.connections,
+        &framework,
+    ))
 }

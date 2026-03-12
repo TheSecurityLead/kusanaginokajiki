@@ -1021,3 +1021,43 @@ export interface FilteredPcapResult {
 	packets_written: number;
 	source_files: number;
 }
+
+// ─── Phase 14E: ICS Malware, Allowlist, Compliance ───────────
+
+/** A detected ICS malware behavioral signature match. */
+export interface MalwareFinding {
+	malware_name: string;
+	confidence: string;
+	severity: string;
+	source_ip: string;
+	target_ips: string[];
+	evidence: string;
+	attack_techniques: string[];
+	pattern_description: string;
+}
+
+/** An entry in the communication allowlist. */
+export interface AllowlistEntry {
+	src_ip: string;
+	dst_ip: string;
+	protocol: string;
+	dst_port: number;
+	direction: string;
+	frequency: string;
+	avg_interval_ms: number | null;
+	classification: string;
+	justification: string;
+}
+
+/** Compliance status for a single framework requirement. */
+export type ComplianceStatus = 'gap' | 'partial' | 'met' | 'not_assessed';
+
+/** A compliance mapping for a single framework requirement. */
+export interface ComplianceMapping {
+	framework: string;
+	requirement_id: string;
+	requirement_name: string;
+	status: ComplianceStatus;
+	evidence: string;
+	description: string;
+}
