@@ -134,12 +134,15 @@ fn main() {
             commands::physical::import_neighbor_table,
             commands::physical::run_topology_inference,
             commands::physical::get_inferred_topology,
-            // External Tool Import (Phase 8)
+            // External Tool Import (Phase 8 + 14F)
             commands::ingest::import_zeek_logs,
             commands::ingest::import_suricata_eve,
             commands::ingest::import_nmap_xml,
             commands::ingest::import_masscan_json,
             commands::ingest::import_wazuh_alerts,
+            commands::ingest::import_sinema_csv,
+            commands::ingest::import_tia_xml,
+            commands::ingest::get_device_zeek_events,
             // Alert Correlation (Phase 14D)
             commands::correlation::get_correlated_alerts,
             commands::correlation::get_alerts_for_ip,
@@ -177,6 +180,8 @@ fn main() {
             // ICS Malware Signatures + Compliance (Phase 14E)
             commands::analysis::get_malware_findings,
             commands::analysis::get_compliance_report,
+            // OT CVE Matching (Phase 14F)
+            commands::analysis::get_cve_warnings,
             // Communication Pattern Analysis
             commands::patterns::get_connection_stats,
             commands::patterns::get_pattern_anomalies,

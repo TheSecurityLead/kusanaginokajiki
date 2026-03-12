@@ -54,7 +54,9 @@ import type {
 	FilteredPcapResult,
 	MalwareFinding,
 	AllowlistEntry,
-	ComplianceMapping
+	ComplianceMapping,
+	CveMatch,
+	DeviceZeekEvents
 } from '$lib/types';
 
 // ─── System Commands ──────────────────────────────────────────
@@ -637,4 +639,26 @@ export async function exportFirewallRules(outputPath: string): Promise<string> {
 /** Get compliance mapping for a framework: 'iec62443' | 'nist80082' | 'nerccip' */
 export async function getComplianceReport(framework: string): Promise<ComplianceMapping[]> {
 	return invoke<ComplianceMapping[]>('get_compliance_report', { framework });
+}
+
+// ─── Phase 14F: CVE Matching, SINEMA, Zeek Drill-Down ─────────
+
+/** Get CVE warnings for a specific device (uses LLDP/SNMP identity) */
+export async function getCveWarnings(ip: string): Promise<CveMatch[]> {
+	return invoke<CveMatch[]>('get_cve_warnings', { ip });
+}
+
+/** Import a SINEMA Server CSV device inventory export */
+export async function importSinemaCsv(path: string): Promise<import('$lib/types').IngestImportResult> {
+	return invoke('import_sinema_csv', { path });
+}
+
+/** Import a TIA Portal network configuration XML export */
+export async function importTiaXml(path: string): Promise<import('$lib/types').IngestImportResult> {
+	return invoke('import_tia_xml', { path });
+}
+
+/** Get Zeek event statistics for a specific device */
+export async function getDeviceZeekEvents(deviceIp: string): Promise<DeviceZeekEvents> {
+	return invoke<DeviceZeekEvents>('get_device_zeek_events', { deviceIp });
 }

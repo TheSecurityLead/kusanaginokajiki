@@ -15,6 +15,7 @@ pub mod suricata;
 pub mod nmap;
 pub mod masscan;
 pub mod wazuh;
+pub mod sinema;
 
 pub use error::IngestError;
 
@@ -38,6 +39,10 @@ pub enum IngestSource {
     Masscan,
     /// Wazuh HIDS/SIEM alert export
     Wazuh,
+    /// SINEMA Server CSV device inventory export — passive configuration data
+    Sinema,
+    /// TIA Portal network configuration XML export — passive configuration data
+    TiaPortal,
 }
 
 impl IngestSource {
@@ -54,6 +59,8 @@ impl IngestSource {
             IngestSource::Nmap => "Nmap",
             IngestSource::Masscan => "Masscan",
             IngestSource::Wazuh => "Wazuh",
+            IngestSource::Sinema => "SINEMA",
+            IngestSource::TiaPortal => "TIA Portal",
         }
     }
 }

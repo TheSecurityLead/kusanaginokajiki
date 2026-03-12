@@ -8,6 +8,7 @@
 		saveSession, loadSession, listSessions, deleteSession,
 		exportSessionArchive, importSessionArchive,
 		importZeekLogs, importSuricataEve, importNmapXml, importMasscanJson, importWazuhAlerts,
+		importSinemaCsv, importTiaXml,
 		getFindings
 	} from '$lib/utils/tauri';
 	import type { ImportProgressEvent } from '$lib/utils/tauri';
@@ -600,6 +601,66 @@
 		}
 	}
 
+	async function handleImportSinemaCsv() {
+		try {
+			const { open } = await import('@tauri-apps/plugin-dialog');
+			const selected = await open({
+				title: 'Import SINEMA Server CSV',
+				multiple: false,
+				filters: [
+					{ name: 'CSV Files', extensions: ['csv', 'txt'] },
+					{ name: 'All Files', extensions: ['*'] }
+				]
+			});
+			if (!selected) return;
+			const path = selected as string;
+
+			ingestStatus = 'importing';
+			ingestMessage = 'Importing SINEMA Server CSV...';
+			lastIngestResult = null;
+
+			const result = await importSinemaCsv(path);
+			lastIngestResult = result;
+			ingestStatus = 'done';
+			ingestMessage = `SINEMA: ${result.new_assets} new + ${result.updated_assets} updated assets (${result.duration_ms}ms)`;
+
+			await refreshStores();
+		} catch (err) {
+			ingestStatus = 'error';
+			ingestMessage = `SINEMA import failed: ${err}`;
+		}
+	}
+
+	async function handleImportTiaXml() {
+		try {
+			const { open } = await import('@tauri-apps/plugin-dialog');
+			const selected = await open({
+				title: 'Import TIA Portal XML',
+				multiple: false,
+				filters: [
+					{ name: 'XML Files', extensions: ['xml'] },
+					{ name: 'All Files', extensions: ['*'] }
+				]
+			});
+			if (!selected) return;
+			const path = selected as string;
+
+			ingestStatus = 'importing';
+			ingestMessage = 'Importing TIA Portal XML...';
+			lastIngestResult = null;
+
+			const result = await importTiaXml(path);
+			lastIngestResult = result;
+			ingestStatus = 'done';
+			ingestMessage = `TIA Portal: ${result.new_assets} new + ${result.updated_assets} updated assets (${result.duration_ms}ms)`;
+
+			await refreshStores();
+		} catch (err) {
+			ingestStatus = 'error';
+			ingestMessage = `TIA Portal import failed: ${err}`;
+		}
+	}
+
 	async function refreshStores() {
 		const [newAssets, newConnections, newTopology, newStats] = await Promise.all([
 			getAssets(), getConnections(), getTopology(), getProtocolStats()
@@ -988,6 +1049,28 @@
 					<p class="ingest-card-desc">Alert export (JSON/NDJSON) — correlated IDS/HIDS alerts with IP enrichment</p>
 					<button class="action-btn" onclick={handleImportWazuh} disabled={ingestStatus === 'importing' || isCapturing}>
 						Import Wazuh Alerts
+					</button>
+				</div>
+
+				<div class="ingest-card">
+					<div class="ingest-card-header">
+						<span class="ingest-card-title">SINEMA Server</span>
+						<span class="ingest-badge passive">CONFIG</span>
+					</div>
+					<p class="ingest-card-desc">CSV device inventory export — model, firmware, IP, location enrichment</p>
+					<button class="action-btn primary" onclick={handleImportSinemaCsv} disabled={ingestStatus === 'importing' || isCapturing}>
+						Import SINEMA CSV
+					</button>
+				</div>
+
+				<div class="ingest-card">
+					<div class="ingest-card-header">
+						<span class="ingest-card-title">TIA Portal</span>
+						<span class="ingest-badge passive">CONFIG</span>
+					</div>
+					<p class="ingest-card-desc">XML network configuration export — device names, IPs, hardware models</p>
+					<button class="action-btn primary" onclick={handleImportTiaXml} disabled={ingestStatus === 'importing' || isCapturing}>
+						Import TIA Portal XML
 					</button>
 				</div>
 			</div>

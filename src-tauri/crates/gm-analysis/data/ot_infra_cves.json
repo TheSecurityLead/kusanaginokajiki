@@ -1,0 +1,82 @@
+[
+  {
+    "cve_id": "CVE-2020-28400",
+    "cvss": 7.5,
+    "vendor": "Siemens",
+    "products": ["SCALANCE X", "SCALANCE XR", "SCALANCE XB", "SCALANCE XC", "SCALANCE XF", "SCALANCE XM", "SCALANCE XP", "S7-1200"],
+    "affected_versions": {"before": "varies by product"},
+    "description": "PROFINET DCP denial of service — unauthenticated remote crash via DCP flood",
+    "advisory": "ICSA-21-194-03",
+    "remediation": "Update to latest firmware. Block DCP (ethertype 0x8892) from untrusted networks."
+  },
+  {
+    "cve_id": "CVE-2023-44317",
+    "cvss": 7.2,
+    "vendor": "Siemens",
+    "products": ["SCALANCE X-200", "SCALANCE X-300"],
+    "affected_versions": {"before": "V5.5.2"},
+    "description": "Code injection via web management interface",
+    "advisory": "SSA-699386",
+    "remediation": "Update to V5.5.2 or later. Restrict web management access."
+  },
+  {
+    "cve_id": "CVE-2022-46142",
+    "cvss": 6.5,
+    "vendor": "Siemens",
+    "products": ["SCALANCE X-200", "SCALANCE X-300", "SCALANCE XM400", "SCALANCE XR500"],
+    "affected_versions": {"before": "varies"},
+    "description": "Stored credentials accessible via SNMP",
+    "advisory": "SSA-413565",
+    "remediation": "Update firmware. Disable SNMPv1/v2c. Use SNMPv3."
+  },
+  {
+    "cve_id": "CVE-2021-37185",
+    "cvss": 7.5,
+    "vendor": "Siemens",
+    "products": ["Ruggedcom ROS"],
+    "affected_versions": {"before": "V5.6.0"},
+    "description": "Authentication bypass in web interface",
+    "advisory": "SSA-150692",
+    "remediation": "Update to ROS V5.6.0 or later."
+  },
+  {
+    "cve_id": "CVE-2022-30767",
+    "cvss": 9.8,
+    "vendor": "Moxa",
+    "products": ["EDS-400A", "EDS-500A"],
+    "affected_versions": {"before": "V3.12"},
+    "description": "Hardcoded credentials allowing remote admin access",
+    "advisory": "Moxa Security Advisory MPSA-221201",
+    "remediation": "Update firmware immediately. Change all default passwords."
+  },
+  {
+    "cve_id": "CVE-2023-34260",
+    "cvss": 7.5,
+    "vendor": "Belden/Hirschmann",
+    "products": ["HiOS"],
+    "affected_versions": {"before": "V09.1.01"},
+    "description": "Denial of service via crafted LLDP frames",
+    "advisory": "BSECV-2023-17",
+    "remediation": "Update to HiOS V09.1.01 or later."
+  },
+  {
+    "cve_id": "CVE-2021-27384",
+    "cvss": 9.8,
+    "vendor": "Belden/Hirschmann",
+    "products": ["Classic Platform"],
+    "affected_versions": {"before": "varies"},
+    "description": "Remote code execution via management interface",
+    "advisory": "BSECV-2021-08",
+    "remediation": "Update to latest firmware. Restrict management access to trusted networks."
+  },
+  {
+    "cve_id": "CVE-2023-25072",
+    "cvss": 7.5,
+    "vendor": "Phoenix Contact",
+    "products": ["FL SWITCH", "FL MGUARD"],
+    "affected_versions": {"before": "V2.2"},
+    "description": "Improper input validation in web interface",
+    "advisory": "VDE-2023-009",
+    "remediation": "Update firmware. Restrict web management access."
+  }
+]

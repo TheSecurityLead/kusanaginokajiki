@@ -1049,6 +1049,44 @@ export interface AllowlistEntry {
 	justification: string;
 }
 
+// ─── Phase 14F: CVE Matching, SINEMA, Zeek Drill-Down ─────────
+
+/** A CVE match result for a discovered OT infrastructure device. */
+export interface CveMatch {
+	cve_id: string;
+	cvss: number;
+	description: string;
+	advisory: string;
+	remediation: string;
+	matched_product: string;
+	matched_firmware: string | null;
+	/** "high" = product + firmware known, "medium" = product match, "low" = vendor only */
+	confidence: string;
+	/** CRITICAL / HIGH / MEDIUM / LOW */
+	severity_label: string;
+}
+
+/** A single Zeek-observed event summarised for a device. */
+export interface ZeekEventSummary {
+	timestamp: string;
+	log_type: string;
+	peer_ip: string;
+	summary: string;
+}
+
+/** Per-device aggregate of Zeek-observed events. */
+export interface DeviceZeekEvents {
+	device_ip: string;
+	conn_log_entries: number;
+	modbus_events: number;
+	dnp3_events: number;
+	dns_queries: number;
+	http_requests: number;
+	unique_peers: number;
+	alert_count: number;
+	sample_events: ZeekEventSummary[];
+}
+
 /** Compliance status for a single framework requirement. */
 export type ComplianceStatus = 'gap' | 'partial' | 'met' | 'not_assessed';
 

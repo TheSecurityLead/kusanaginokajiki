@@ -29,6 +29,7 @@ pub mod context_attacks;
 pub mod malware_patterns;
 pub mod allowlist;
 pub mod compliance;
+pub mod cve_matcher;
 
 pub use context_attacks::CaptureContext;
 
@@ -39,6 +40,7 @@ pub use switch_security::{
 pub use malware_patterns::{MalwareFinding, MalwarePattern, detect_malware_patterns, load_malware_patterns};
 pub use allowlist::{AllowlistEntry, generate_allowlist, allowlist_to_csv, format_firewall_rules};
 pub use compliance::{ComplianceMapping, ComplianceStatus, generate_compliance_report, supported_frameworks};
+pub use cve_matcher::{CveMatch, CveMatcher};
 
 use serde::{Serialize, Deserialize};
 use uuid::Uuid;

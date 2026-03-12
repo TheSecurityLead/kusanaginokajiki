@@ -90,6 +90,8 @@ pub struct AppStateInner {
     pub redundancy_protocols: Vec<RedundancyInfo>,
     /// Alerts imported from external IDS/SIEM tools (Suricata, Wazuh)
     pub imported_alerts: Vec<StoredAlert>,
+    /// Per-device Zeek event summaries (rebuilt on each Zeek import)
+    pub zeek_device_events: HashMap<String, DeviceZeekEvents>,
 }
 
 /// An alert imported from an external IDS/SIEM and stored in AppState.
@@ -113,6 +115,39 @@ pub struct StoredAlert {
     pub severity: u8,
     /// Source tool name: "Suricata" or "Wazuh"
     pub source: String,
+}
+
+/// A single Zeek-observed event summarised for display.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ZeekEventSummary {
+    /// RFC 3339 timestamp (connection first_seen)
+    pub timestamp: String,
+    /// Zeek log type: "conn", "modbus", "dnp3", "s7comm", "dns", "http"
+    pub log_type: String,
+    /// The remote peer IP address
+    pub peer_ip: String,
+    /// One-line human-readable summary
+    pub summary: String,
+}
+
+/// Per-device aggregate of Zeek-observed events.
+///
+/// Built from connections that have "[Zeek]" in their origin_files.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct DeviceZeekEvents {
+    pub device_ip: String,
+    /// Total conn.log-type entries for this device
+    pub conn_log_entries: u32,
+    pub modbus_events: u32,
+    pub dnp3_events: u32,
+    pub dns_queries: u32,
+    pub http_requests: u32,
+    /// Unique peer IPs this device communicated with in Zeek data
+    pub unique_peers: u32,
+    /// Number of Suricata/Wazuh alerts correlated with this device
+    pub alert_count: u32,
+    /// Sample events (capped at 50)
+    pub sample_events: Vec<ZeekEventSummary>,
 }
 
 /// Asset information stored in application state.
@@ -547,6 +582,7 @@ impl AppState {
                 pattern_anomalies: Vec::new(),
                 redundancy_protocols: Vec::new(),
                 imported_alerts: Vec::new(),
+                zeek_device_events: HashMap::new(),
             }),
         }
     }

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { filteredAssets, assetFilter, selectedAssetId, selectedAsset, protocolFilter, assets } from '$lib/stores';
-	import { getDeepParseInfo, getAssets, updateAsset, bulkUpdateAssets, getCredentialWarnings, getAlertsForIp } from '$lib/utils/tauri';
-	import type { DeviceType, IcsProtocol, DeepParseInfo, AssetUpdate, Asset, EnipDetail, S7Detail, BacnetDetail, Iec104Detail, ProfinetDcpDetail, LldpDetail, DefaultCredential, CorrelatedAlert } from '$lib/types';
+	import { getDeepParseInfo, getAssets, updateAsset, bulkUpdateAssets, getCredentialWarnings, getAlertsForIp, getCveWarnings, getDeviceZeekEvents } from '$lib/utils/tauri';
+	import type { DeviceType, IcsProtocol, DeepParseInfo, AssetUpdate, Asset, EnipDetail, S7Detail, BacnetDetail, Iec104Detail, ProfinetDcpDetail, LldpDetail, DefaultCredential, CorrelatedAlert, CveMatch, DeviceZeekEvents } from '$lib/types';
 
 	const deviceTypeLabels: Record<DeviceType, string> = {
 		plc: 'PLC',
@@ -118,6 +118,15 @@
 	let credWarnings = $state<DefaultCredential[]>([]);
 	let loadingCreds = $state(false);
 
+	// CVE warnings for selected asset
+	let cveWarnings = $state<CveMatch[]>([]);
+	let loadingCves = $state(false);
+
+	// Zeek per-device events for selected asset
+	let zeekEvents = $state<DeviceZeekEvents | null>(null);
+	let loadingZeek = $state(false);
+	let zeekEventsExpanded = $state(false);
+
 	// IDS/SIEM alerts for selected asset
 	let assetAlerts = $state<CorrelatedAlert[]>([]);
 
@@ -125,9 +134,13 @@
 		const asset = $selectedAsset;
 		if (asset) {
 			loadCredWarnings();
+			loadCveWarnings(asset.ip_address);
+			loadZeekEvents(asset.ip_address);
 			loadAssetAlerts(asset.ip_address);
 		} else {
 			credWarnings = [];
+			cveWarnings = [];
+			zeekEvents = null;
 			assetAlerts = [];
 		}
 	});
@@ -164,6 +177,29 @@
 			credWarnings = [];
 		}
 		loadingCreds = false;
+	}
+
+	async function loadCveWarnings(ip: string) {
+		loadingCves = true;
+		try {
+			cveWarnings = await getCveWarnings(ip);
+		} catch {
+			cveWarnings = [];
+		}
+		loadingCves = false;
+	}
+
+	async function loadZeekEvents(ip: string) {
+		loadingZeek = true;
+		try {
+			const events = await getDeviceZeekEvents(ip);
+			const total = events.conn_log_entries + events.modbus_events + events.dnp3_events +
+				events.dns_queries + events.http_requests;
+			zeekEvents = total > 0 ? events : null;
+		} catch {
+			zeekEvents = null;
+		}
+		loadingZeek = false;
 	}
 
 	// Load deep parse info when selected asset changes
@@ -859,6 +895,74 @@
 									</button>
 								</div>
 							{/each}
+						</div>
+					{/if}
+
+					<!-- CVE Warnings -->
+					{#if cveWarnings.length > 0}
+						<div class="detail-section cve-warning-section">
+							<h4 class="section-title cve-title">&#128308; Known Vulnerabilities ({cveWarnings.length})</h4>
+							{#each cveWarnings as cve}
+								<div class="cve-card">
+									<div class="cve-header-row">
+										<span class="cve-id">{cve.cve_id}</span>
+										<span class="cve-cvss-badge sev-{cve.severity_label.toLowerCase()}">{cve.severity_label} {cve.cvss.toFixed(1)}</span>
+										<span class="cve-conf conf-{cve.confidence}">{cve.confidence}</span>
+									</div>
+									<div class="cve-desc">{cve.description}</div>
+									{#if cve.advisory}
+										<div class="cve-row"><span class="cve-label">Advisory:</span> <span>{cve.advisory}</span></div>
+									{/if}
+									<div class="cve-row cve-remediation"><span class="cve-label">Fix:</span> <span>{cve.remediation}</span></div>
+									<button class="copy-btn cve-copy" onclick={() => navigator.clipboard.writeText(cve.cve_id)}>
+										Copy CVE ID
+									</button>
+								</div>
+							{/each}
+						</div>
+					{/if}
+
+					<!-- Zeek Per-Device Events -->
+					{#if zeekEvents}
+						<div class="detail-section zeek-section">
+							<div class="zeek-header">
+								<h4 class="section-title zeek-title">&#128269; Zeek Events</h4>
+								<button class="zeek-expand-btn" onclick={() => { zeekEventsExpanded = !zeekEventsExpanded; }}>
+									{zeekEventsExpanded ? 'Hide' : 'Show'} samples
+								</button>
+							</div>
+							<div class="zeek-badges">
+								{#if zeekEvents.conn_log_entries > 0}
+									<span class="zeek-badge">conn: {zeekEvents.conn_log_entries}</span>
+								{/if}
+								{#if zeekEvents.modbus_events > 0}
+									<span class="zeek-badge zeek-ot">modbus: {zeekEvents.modbus_events}</span>
+								{/if}
+								{#if zeekEvents.dnp3_events > 0}
+									<span class="zeek-badge zeek-ot">dnp3: {zeekEvents.dnp3_events}</span>
+								{/if}
+								{#if zeekEvents.dns_queries > 0}
+									<span class="zeek-badge">dns: {zeekEvents.dns_queries}</span>
+								{/if}
+								{#if zeekEvents.http_requests > 0}
+									<span class="zeek-badge">http: {zeekEvents.http_requests}</span>
+								{/if}
+								<span class="zeek-badge zeek-peers">peers: {zeekEvents.unique_peers}</span>
+								{#if zeekEvents.alert_count > 0}
+									<span class="zeek-badge zeek-alert">alerts: {zeekEvents.alert_count}</span>
+								{/if}
+							</div>
+							{#if zeekEventsExpanded && zeekEvents.sample_events.length > 0}
+								<div class="zeek-events-list">
+									{#each zeekEvents.sample_events as ev}
+										<div class="zeek-event-row">
+											<span class="zeek-ev-time">{ev.timestamp.slice(0, 19).replace('T', ' ')}</span>
+											<span class="zeek-ev-type tag-{ev.log_type}">{ev.log_type}</span>
+											<span class="zeek-ev-summary">{ev.summary}</span>
+										</div>
+									{/each}
+								</div>
+							{/if}
 						</div>
 					{/if}
 
@@ -2160,6 +2264,183 @@
 	}
 
 	.cred-copy { margin-top: 8px; }
+
+	/* ── CVE Warnings ────────────────────────────────────── */
+
+	.cve-warning-section {
+		border: 1px solid rgba(239, 68, 68, 0.3);
+		background: rgba(239, 68, 68, 0.04);
+		border-radius: 6px;
+		padding: 10px;
+	}
+
+	.cve-title { color: #ef4444; }
+
+	.cve-card {
+		background: var(--gm-bg-tertiary, #0f172a);
+		border-radius: 6px;
+		padding: 10px;
+		margin-top: 8px;
+	}
+
+	.cve-header-row {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		margin-bottom: 6px;
+	}
+
+	.cve-id {
+		font-weight: 700;
+		font-size: 0.8rem;
+		color: var(--gm-text-primary);
+		font-family: 'JetBrains Mono', monospace;
+	}
+
+	.cve-cvss-badge {
+		font-size: 0.7rem;
+		font-weight: 700;
+		padding: 1px 6px;
+		border-radius: 4px;
+	}
+
+	.sev-critical { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+	.sev-high     { background: rgba(249, 115, 22, 0.2); color: #f97316; }
+	.sev-medium   { background: rgba(234, 179, 8, 0.2); color: #eab308; }
+	.sev-low      { background: rgba(34, 197, 94, 0.2); color: #22c55e; }
+
+	.cve-conf {
+		font-size: 0.65rem;
+		padding: 1px 5px;
+		border-radius: 3px;
+		margin-left: auto;
+	}
+
+	.conf-high   { background: rgba(99, 102, 241, 0.2); color: #818cf8; }
+	.conf-medium { background: rgba(148, 163, 184, 0.1); color: #94a3b8; }
+	.conf-low    { background: rgba(148, 163, 184, 0.08); color: #64748b; }
+
+	.cve-desc {
+		font-size: 0.78rem;
+		color: var(--gm-text-secondary);
+		margin-bottom: 4px;
+		line-height: 1.4;
+	}
+
+	.cve-row {
+		display: flex;
+		gap: 6px;
+		font-size: 0.75rem;
+		color: var(--gm-text-secondary);
+		align-items: baseline;
+		margin-top: 2px;
+	}
+
+	.cve-label {
+		color: var(--gm-text-muted);
+		min-width: 60px;
+		flex-shrink: 0;
+	}
+
+	.cve-remediation { font-style: italic; }
+
+	.cve-copy { margin-top: 8px; }
+
+	/* ── Zeek Events ─────────────────────────────────────── */
+
+	.zeek-section {
+		border: 1px solid rgba(56, 189, 248, 0.2);
+		background: rgba(56, 189, 248, 0.03);
+		border-radius: 6px;
+		padding: 10px;
+	}
+
+	.zeek-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		margin-bottom: 8px;
+	}
+
+	.zeek-title { color: #38bdf8; margin: 0; }
+
+	.zeek-expand-btn {
+		font-size: 0.7rem;
+		padding: 2px 8px;
+		background: rgba(56, 189, 248, 0.1);
+		border: 1px solid rgba(56, 189, 248, 0.2);
+		border-radius: 4px;
+		color: #38bdf8;
+		cursor: pointer;
+		font-family: inherit;
+	}
+
+	.zeek-badges {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px;
+		margin-bottom: 6px;
+	}
+
+	.zeek-badge {
+		font-size: 0.68rem;
+		padding: 2px 6px;
+		border-radius: 4px;
+		background: rgba(148, 163, 184, 0.1);
+		color: var(--gm-text-muted);
+		font-family: 'JetBrains Mono', monospace;
+	}
+
+	.zeek-ot    { background: rgba(249, 115, 22, 0.15); color: #fb923c; }
+	.zeek-peers { background: rgba(99, 102, 241, 0.15); color: #a5b4fc; }
+	.zeek-alert { background: rgba(239, 68, 68, 0.15); color: #fca5a5; }
+
+	.zeek-events-list {
+		margin-top: 8px;
+		display: flex;
+		flex-direction: column;
+		gap: 3px;
+		max-height: 200px;
+		overflow-y: auto;
+	}
+
+	.zeek-event-row {
+		display: flex;
+		gap: 6px;
+		align-items: baseline;
+		font-size: 0.7rem;
+		padding: 2px 0;
+		border-bottom: 1px solid rgba(45, 58, 79, 0.3);
+	}
+
+	.zeek-ev-time {
+		color: var(--gm-text-muted);
+		white-space: nowrap;
+		font-family: 'JetBrains Mono', monospace;
+		flex-shrink: 0;
+	}
+
+	.zeek-ev-type {
+		padding: 1px 5px;
+		border-radius: 3px;
+		font-weight: 600;
+		flex-shrink: 0;
+		background: rgba(148, 163, 184, 0.1);
+		color: var(--gm-text-muted);
+	}
+
+	.tag-modbus { background: rgba(249, 115, 22, 0.15); color: #fb923c; }
+	.tag-dnp3   { background: rgba(234, 179, 8, 0.15); color: #facc15; }
+	.tag-s7comm { background: rgba(99, 102, 241, 0.15); color: #a5b4fc; }
+	.tag-dns    { background: rgba(34, 197, 94, 0.12); color: #86efac; }
+	.tag-http   { background: rgba(56, 189, 248, 0.12); color: #7dd3fc; }
+
+	.zeek-ev-summary {
+		color: var(--gm-text-secondary);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
 
 	/* ── LLDP description block ─────────────────────────── */
 

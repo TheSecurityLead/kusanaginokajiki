@@ -19,6 +19,7 @@ use gm_analysis::{
     SwitchSecurityFinding, SwitchSecurityInput, assess_switch_security,
     MalwareFinding, detect_malware_patterns,
     ComplianceMapping, generate_compliance_report,
+    CveMatch, CveMatcher,
 };
 
 use super::AppState;
@@ -548,6 +549,49 @@ pub fn get_malware_findings(state: State<'_, AppState>) -> Result<Vec<MalwareFin
     }
 
     Ok(detect_malware_patterns(&ctx, &connections, &deep_parse))
+}
+
+/// Get CVE warnings for a specific device based on its LLDP/SNMP identity.
+///
+/// Checks vendor, model, and firmware (extracted from LLDP or SNMP deep parse
+/// data) against the bundled OT infrastructure CVE database.
+#[tauri::command]
+pub fn get_cve_warnings(
+    ip: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<CveMatch>, String> {
+    let state_inner = state.inner.lock().map_err(|e| e.to_string())?;
+
+    // Priority for vendor/model/firmware: LLDP > SNMP > asset info
+    let dp = state_inner.deep_parse_info.get(&ip);
+    let asset = state_inner.assets.iter().find(|a| a.ip_address == ip);
+
+    let (vendor, model, firmware) = if let Some(lldp) = dp.and_then(|d| d.lldp.as_ref()) {
+        (
+            lldp.vendor.clone().or_else(|| asset.and_then(|a| a.vendor.clone())).unwrap_or_default(),
+            lldp.model.clone().unwrap_or_default(),
+            lldp.firmware.clone(),
+        )
+    } else if let Some(snmp) = dp.and_then(|d| d.snmp.as_ref()) {
+        (
+            snmp.vendor.clone().or_else(|| asset.and_then(|a| a.vendor.clone())).unwrap_or_default(),
+            snmp.sys_descr.clone().unwrap_or_default(),
+            None,
+        )
+    } else {
+        (
+            asset.and_then(|a| a.vendor.clone()).unwrap_or_default(),
+            asset.and_then(|a| a.product_family.clone()).unwrap_or_default(),
+            None,
+        )
+    };
+
+    if vendor.is_empty() && model.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let matcher = CveMatcher::new()?;
+    Ok(matcher.check_device(&vendor, &model, firmware.as_deref()))
 }
 
 /// Generate a compliance report mapping findings to a specific framework.
