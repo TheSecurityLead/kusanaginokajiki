@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::sync::atomic::Ordering;
 use std::sync::mpsc;
 use std::thread::{self, JoinHandle};
@@ -9,6 +10,18 @@ use gm_capture::{PcapReader, LiveCaptureHandle, LiveCaptureConfig, ParsedPacket,
 
 use super::AppState;
 use super::processor::PacketProcessor;
+
+/// Payload for a real-time ATT&CK alert emitted during live capture.
+#[derive(Debug, Clone, Serialize)]
+pub struct LiveAttackAlert {
+    pub technique_id: String,
+    pub title: String,
+    pub severity: String,
+    pub description: String,
+    pub affected_assets: Vec<String>,
+    pub evidence: String,
+    pub timestamp: String,
+}
 
 // ─── PCAP Import ─────────────────────────────────────────────
 
@@ -434,6 +447,8 @@ fn spawn_processing_thread(
         let mut prev_packet_count: u64 = 0;
         let mut prev_stat_time = Instant::now();
         let flush_interval = Duration::from_millis(100);
+        // Track how many connections were checked to detect only new ones
+        let mut alert_connection_watermark: usize = 0;
 
         loop {
             match rx.recv_timeout(Duration::from_millis(50)) {
@@ -449,6 +464,7 @@ fn spawn_processing_thread(
                             &app,
                             &mut prev_packet_count,
                             &mut prev_stat_time,
+                            &mut alert_connection_watermark,
                         );
                         last_flush = Instant::now();
                     }
@@ -463,6 +479,7 @@ fn spawn_processing_thread(
                             &app,
                             &mut prev_packet_count,
                             &mut prev_stat_time,
+                            &mut alert_connection_watermark,
                         );
                         last_flush = Instant::now();
                     }
@@ -477,6 +494,7 @@ fn spawn_processing_thread(
                             &app,
                             &mut prev_packet_count,
                             &mut prev_stat_time,
+                            &mut alert_connection_watermark,
                         );
                     }
                     log::info!("Processing thread exiting (capture stopped)");
@@ -495,6 +513,7 @@ fn flush_batch(
     app: &tauri::AppHandle,
     prev_packet_count: &mut u64,
     prev_stat_time: &mut Instant,
+    alert_connection_watermark: &mut usize,
 ) {
     // Process each packet through the pipeline
     for packet in batch.drain(..) {
@@ -589,6 +608,9 @@ fn flush_batch(
             if let Err(e) = app.emit("capture-stats", &stats) {
                 log::warn!("Failed to emit capture-stats event: {}", e);
             }
+
+            // Run lightweight ATT&CK checks on new connections since last batch
+            run_live_attack_detection(state, app, alert_connection_watermark);
         }
         Err(e) => {
             log::error!("Failed to update state during live capture: {}", e);
@@ -596,4 +618,144 @@ fn flush_batch(
             let _ = app.emit("capture-error", &e);
         }
     }
+}
+
+/// Check new connections against lightweight Group 1 ATT&CK rules.
+///
+/// Only runs checks on connections added since the last call (using the
+/// watermark). Emits `live_attack_alert` events for any matches.
+///
+/// Checks performed (no CaptureContext required):
+/// - T0822: Remote access (VNC/RDP) to OT device
+/// - T0867: Lateral tool transfer (SMB/FTP) to OT device
+/// - T0868: Remote service (SSH/Telnet) to OT device
+/// - T0885: Web management UI (HTTP/HTTPS) to OT device
+fn run_live_attack_detection(
+    state: &AppState,
+    app: &tauri::AppHandle,
+    watermark: &mut usize,
+) {
+    let inner = match state.inner.lock() {
+        Ok(g) => g,
+        Err(_) => return,
+    };
+
+    let connections = &inner.connections;
+    if connections.len() <= *watermark {
+        // No new connections
+        *watermark = connections.len();
+        return;
+    }
+
+    // Build OT device IP set from asset inventory
+    let ot_ips: HashSet<&str> = inner.assets.iter()
+        .filter(|a| is_ot_device_type(&a.device_type))
+        .map(|a| a.ip_address.as_str())
+        .collect();
+
+    let now = chrono::Utc::now().to_rfc3339();
+
+    // Check only the newly added connections
+    for conn in &connections[*watermark..] {
+        let dst_is_ot = ot_ips.contains(conn.dst_ip.as_str());
+        let src_is_ot = ot_ips.contains(conn.src_ip.as_str());
+        if !dst_is_ot && !src_is_ot {
+            continue;
+        }
+
+        let target_ip = if dst_is_ot { &conn.dst_ip } else { &conn.src_ip };
+        let port = if dst_is_ot { conn.dst_port } else { conn.src_port };
+
+        if let Some(alert) = check_connection_for_live_alert(target_ip, port, conn, &now) {
+            if let Err(e) = app.emit("live_attack_alert", &alert) {
+                log::warn!("Failed to emit live_attack_alert: {}", e);
+            }
+        }
+    }
+
+    *watermark = connections.len();
+}
+
+/// Check a single connection for live ATT&CK alert conditions.
+/// Returns Some(alert) if the connection matches a lightweight rule.
+fn check_connection_for_live_alert(
+    ot_ip: &str,
+    port: u16,
+    conn: &super::ConnectionInfo,
+    timestamp: &str,
+) -> Option<LiveAttackAlert> {
+    match port {
+        // T0822 — Remote Desktop/VNC to OT device
+        3389 | 5900 | 5800 => Some(LiveAttackAlert {
+            technique_id: "T0822".to_string(),
+            title: "Remote Desktop Access to OT Device".to_string(),
+            severity: "high".to_string(),
+            description: format!(
+                "Remote desktop/VNC connection (port {}) to OT device {}",
+                port, ot_ip
+            ),
+            affected_assets: vec![ot_ip.to_string()],
+            evidence: format!(
+                "{}:{} → {}:{} ({})",
+                conn.src_ip, conn.src_port, conn.dst_ip, conn.dst_port, conn.protocol
+            ),
+            timestamp: timestamp.to_string(),
+        }),
+        // T0867 — Lateral tool transfer (SMB/FTP)
+        445 | 20 | 21 => Some(LiveAttackAlert {
+            technique_id: "T0867".to_string(),
+            title: "Lateral Tool Transfer to OT Device".to_string(),
+            severity: "high".to_string(),
+            description: format!(
+                "File transfer protocol (port {}) to OT device {}",
+                port, ot_ip
+            ),
+            affected_assets: vec![ot_ip.to_string()],
+            evidence: format!(
+                "{}:{} → {}:{} ({})",
+                conn.src_ip, conn.src_port, conn.dst_ip, conn.dst_port, conn.protocol
+            ),
+            timestamp: timestamp.to_string(),
+        }),
+        // T0868 — Remote services (SSH/Telnet)
+        22 | 23 => Some(LiveAttackAlert {
+            technique_id: "T0868".to_string(),
+            title: "Remote Service Access to OT Device".to_string(),
+            severity: "medium".to_string(),
+            description: format!(
+                "Remote service connection (port {}: {}) to OT device {}",
+                port,
+                if port == 22 { "SSH" } else { "Telnet" },
+                ot_ip
+            ),
+            affected_assets: vec![ot_ip.to_string()],
+            evidence: format!(
+                "{}:{} → {}:{} ({})",
+                conn.src_ip, conn.src_port, conn.dst_ip, conn.dst_port, conn.protocol
+            ),
+            timestamp: timestamp.to_string(),
+        }),
+        // T0885 — Web management UI on OT device
+        80 | 443 | 8080 | 8443 => Some(LiveAttackAlert {
+            technique_id: "T0885".to_string(),
+            title: "Web Management Access to OT Device".to_string(),
+            severity: "medium".to_string(),
+            description: format!(
+                "HTTP/HTTPS connection (port {}) to OT device {}",
+                port, ot_ip
+            ),
+            affected_assets: vec![ot_ip.to_string()],
+            evidence: format!(
+                "{}:{} → {}:{} ({})",
+                conn.src_ip, conn.src_port, conn.dst_ip, conn.dst_port, conn.protocol
+            ),
+            timestamp: timestamp.to_string(),
+        }),
+        _ => None,
+    }
+}
+
+/// Check if a device_type string represents an OT field device.
+fn is_ot_device_type(device_type: &str) -> bool {
+    matches!(device_type, "plc" | "rtu" | "hmi" | "scada_server" | "historian")
 }

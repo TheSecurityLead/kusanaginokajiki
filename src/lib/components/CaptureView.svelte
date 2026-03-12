@@ -7,7 +7,7 @@
 		onCaptureStats, onCaptureError,
 		saveSession, loadSession, listSessions, deleteSession,
 		exportSessionArchive, importSessionArchive,
-		importZeekLogs, importSuricataEve, importNmapXml, importMasscanJson,
+		importZeekLogs, importSuricataEve, importNmapXml, importMasscanJson, importWazuhAlerts,
 		getFindings
 	} from '$lib/utils/tauri';
 	import type { ImportProgressEvent } from '$lib/utils/tauri';
@@ -570,6 +570,36 @@
 		}
 	}
 
+	async function handleImportWazuh() {
+		try {
+			const { open } = await import('@tauri-apps/plugin-dialog');
+			const selected = await open({
+				title: 'Import Wazuh Alert Export',
+				multiple: false,
+				filters: [
+					{ name: 'JSON Files', extensions: ['json', 'jsonl', 'ndjson'] },
+					{ name: 'All Files', extensions: ['*'] }
+				]
+			});
+			if (!selected) return;
+			const path = selected as string;
+
+			ingestStatus = 'importing';
+			ingestMessage = 'Importing Wazuh alerts...';
+			lastIngestResult = null;
+
+			const result = await importWazuhAlerts(path);
+			lastIngestResult = result;
+			ingestStatus = 'done';
+			ingestMessage = `Wazuh: ${result.alert_count} alerts imported (${result.duration_ms}ms)`;
+
+			await refreshStores();
+		} catch (err) {
+			ingestStatus = 'error';
+			ingestMessage = `Wazuh import failed: ${err}`;
+		}
+	}
+
 	async function refreshStores() {
 		const [newAssets, newConnections, newTopology, newStats] = await Promise.all([
 			getAssets(), getConnections(), getTopology(), getProtocolStats()
@@ -947,6 +977,17 @@
 					<p class="ingest-card-desc">JSON output (-oJ) — IP, ports, banners</p>
 					<button class="action-btn warning" onclick={handleImportMasscan} disabled={ingestStatus === 'importing' || isCapturing}>
 						Import Masscan JSON
+					</button>
+				</div>
+
+				<div class="ingest-card">
+					<div class="ingest-card-header">
+						<span class="ingest-card-title">Wazuh</span>
+						<span class="ingest-badge">SIEM</span>
+					</div>
+					<p class="ingest-card-desc">Alert export (JSON/NDJSON) — correlated IDS/HIDS alerts with IP enrichment</p>
+					<button class="action-btn" onclick={handleImportWazuh} disabled={ingestStatus === 'importing' || isCapturing}>
+						Import Wazuh Alerts
 					</button>
 				</div>
 			</div>

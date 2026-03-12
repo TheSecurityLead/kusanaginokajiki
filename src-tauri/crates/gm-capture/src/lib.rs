@@ -12,9 +12,11 @@ pub mod live;
 mod packet;
 pub(crate) mod parsing;
 mod pcap_reader;
+mod pcap_filter;
 
 pub use error::CaptureError;
 pub use interface::{list_interfaces, NetworkInterface, InterfaceAddress, InterfaceFlags};
 pub use live::{LiveCaptureHandle, LiveCaptureConfig, CaptureStats};
 pub use packet::{ParsedPacket, TransportProtocol};
 pub use pcap_reader::{PcapReader, ProgressUpdate, FileProcessStats};
+pub use pcap_filter::filter_export_pcap;

@@ -14,6 +14,7 @@ pub mod zeek;
 pub mod suricata;
 pub mod nmap;
 pub mod masscan;
+pub mod wazuh;
 
 pub use error::IngestError;
 
@@ -35,6 +36,8 @@ pub enum IngestSource {
     Nmap,
     /// Masscan scan results — ACTIVE scan (imported only, never run)
     Masscan,
+    /// Wazuh HIDS/SIEM alert export
+    Wazuh,
 }
 
 impl IngestSource {
@@ -50,6 +53,7 @@ impl IngestSource {
             IngestSource::Suricata => "Suricata",
             IngestSource::Nmap => "Nmap",
             IngestSource::Masscan => "Masscan",
+            IngestSource::Wazuh => "Wazuh",
         }
     }
 }

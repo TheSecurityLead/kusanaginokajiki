@@ -976,3 +976,48 @@ export interface ProjectSummary {
 	created_at: string;
 	updated_at: string;
 }
+
+// ─── External Alerts (Phase 14D) ─────────────────────────
+
+/** An IDS/SIEM alert imported from Suricata or Wazuh. */
+export interface StoredAlert {
+	timestamp: string;
+	src_ip: string;
+	src_port: number;
+	dst_ip: string;
+	dst_port: number;
+	signature_id: number;
+	signature: string;
+	category: string;
+	/** 1 = high, 2 = medium, 3 = low */
+	severity: number;
+	source: string;
+}
+
+/** An IDS/SIEM alert enriched with device inventory data. */
+export interface CorrelatedAlert extends StoredAlert {
+	src_hostname: string | null;
+	src_device_type: string | null;
+	src_purdue_level: number | null;
+	dst_hostname: string | null;
+	dst_device_type: string | null;
+	dst_purdue_level: number | null;
+}
+
+/** Real-time ATT&CK alert emitted during live capture. */
+export interface LiveAttackAlert {
+	technique_id: string;
+	title: string;
+	severity: string;
+	description: string;
+	affected_assets: string[];
+	evidence: string;
+	timestamp: string;
+}
+
+/** Result of a filtered PCAP export. */
+export interface FilteredPcapResult {
+	output_path: string;
+	packets_written: number;
+	source_files: number;
+}

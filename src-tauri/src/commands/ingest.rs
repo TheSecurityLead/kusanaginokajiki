@@ -8,10 +8,10 @@ use std::time::Instant;
 use serde::Serialize;
 use tauri::State;
 
-use gm_ingest::{IngestResult, IngestedAsset};
+use gm_ingest::{IngestResult, IngestedAlert, IngestedAsset};
 use gm_parsers::IcsProtocol;
 
-use super::{AppState, AssetInfo, ConnectionInfo};
+use super::{AppState, AssetInfo, ConnectionInfo, StoredAlert};
 
 /// Result returned to the frontend from an ingest operation.
 #[derive(Serialize)]
@@ -94,6 +94,30 @@ pub async fn import_nmap_xml(
         "Nmap import: {} assets ({} new), {}ms [ACTIVE SCAN DATA]",
         import_result.asset_count, import_result.new_assets,
         import_result.duration_ms
+    );
+
+    Ok(import_result)
+}
+
+/// Import a Wazuh HIDS/SIEM alert export file.
+///
+/// Accepts both line-delimited JSON and JSON array formats.
+/// Alerts are stored for correlation with the device inventory.
+#[tauri::command]
+pub async fn import_wazuh_alerts(
+    path: String,
+    state: State<'_, AppState>,
+) -> Result<IngestImportResult, String> {
+    let start = Instant::now();
+
+    let ingest_result = gm_ingest::wazuh::parse_wazuh_alerts(Path::new(&path))
+        .map_err(|e| e.to_string())?;
+
+    let import_result = merge_ingest_result(ingest_result, &state, start)?;
+
+    log::info!(
+        "Wazuh import: {} alerts, {}ms",
+        import_result.alert_count, import_result.duration_ms
     );
 
     Ok(import_result)
@@ -216,6 +240,11 @@ fn merge_ingest_result(
         }
     }
 
+    // Store alerts for correlation
+    for alert in &ingest.alerts {
+        inner.imported_alerts.push(ingested_alert_to_stored(alert));
+    }
+
     // Rebuild topology from updated connections
     // The topology builder needs to be re-run with new data
     let mut topo = gm_topology::TopologyBuilder::new();
@@ -303,6 +332,22 @@ fn enrich_asset(existing: &mut AssetInfo, ingested: &IngestedAsset, is_active: b
     // Active scan tag
     if is_active && !existing.tags.contains(&"[active-scan]".to_string()) {
         existing.tags.push("[active-scan]".to_string());
+    }
+}
+
+/// Convert an IngestedAlert to the StoredAlert type used in AppState.
+fn ingested_alert_to_stored(alert: &IngestedAlert) -> StoredAlert {
+    StoredAlert {
+        timestamp: alert.timestamp.to_rfc3339(),
+        src_ip: alert.src_ip.clone(),
+        src_port: alert.src_port,
+        dst_ip: alert.dst_ip.clone(),
+        dst_port: alert.dst_port,
+        signature_id: alert.signature_id,
+        signature: alert.signature.clone(),
+        category: alert.category.clone(),
+        severity: alert.severity,
+        source: alert.source.display_name().to_string(),
     }
 }
 

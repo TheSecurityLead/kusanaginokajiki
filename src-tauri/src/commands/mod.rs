@@ -12,6 +12,7 @@ pub mod export;
 pub mod analysis;
 pub mod baseline;
 pub mod patterns;
+pub mod correlation;
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -87,6 +88,31 @@ pub struct AppStateInner {
     pub pattern_anomalies: Vec<PatternAnomaly>,
     /// Redundancy protocol frames observed (MRP/RSTP/HSR/PRP/DLR)
     pub redundancy_protocols: Vec<RedundancyInfo>,
+    /// Alerts imported from external IDS/SIEM tools (Suricata, Wazuh)
+    pub imported_alerts: Vec<StoredAlert>,
+}
+
+/// An alert imported from an external IDS/SIEM and stored in AppState.
+///
+/// Flattened from IngestedAlert for direct serialization.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StoredAlert {
+    /// RFC 3339 timestamp of the alert
+    pub timestamp: String,
+    pub src_ip: String,
+    pub src_port: u16,
+    pub dst_ip: String,
+    pub dst_port: u16,
+    /// IDS signature/rule ID (e.g. Suricata SID or Wazuh rule ID)
+    pub signature_id: u64,
+    /// Human-readable rule description
+    pub signature: String,
+    /// Alert category (e.g. "Attempted Attack", "ics")
+    pub category: String,
+    /// Severity: 1 = high, 2 = medium, 3 = low
+    pub severity: u8,
+    /// Source tool name: "Suricata" or "Wazuh"
+    pub source: String,
 }
 
 /// Asset information stored in application state.
@@ -520,6 +546,7 @@ impl AppState {
                 connection_stats: Vec::new(),
                 pattern_anomalies: Vec::new(),
                 redundancy_protocols: Vec::new(),
+                imported_alerts: Vec::new(),
             }),
         }
     }

@@ -139,6 +139,11 @@ fn main() {
             commands::ingest::import_suricata_eve,
             commands::ingest::import_nmap_xml,
             commands::ingest::import_masscan_json,
+            commands::ingest::import_wazuh_alerts,
+            // Alert Correlation (Phase 14D)
+            commands::correlation::get_correlated_alerts,
+            commands::correlation::get_alerts_for_ip,
+            commands::correlation::clear_alerts,
             // Wireshark Integration (Phase 8)
             commands::wireshark::detect_wireshark,
             commands::wireshark::open_in_wireshark,
@@ -155,6 +160,7 @@ fn main() {
             commands::export::export_sbom,
             commands::export::export_stix_bundle,
             commands::export::save_topology_image,
+            commands::export::export_filtered_pcap,
             // Security Analysis (Phase 10)
             commands::analysis::run_analysis,
             commands::analysis::get_findings,

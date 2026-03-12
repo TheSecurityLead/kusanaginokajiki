@@ -259,6 +259,59 @@ pub async fn export_stix_bundle(
     Ok(output_path)
 }
 
+// ─── Filtered PCAP Export Command ───────────────────────────
+
+/// Result of a filtered PCAP export operation.
+#[derive(serde::Serialize)]
+pub struct FilteredPcapResult {
+    pub output_path: String,
+    pub packets_written: u64,
+    pub source_files: usize,
+}
+
+/// Export packets from imported PCAPs matching given IP addresses and/or ports.
+///
+/// `filter_ips` — keep packets where src_ip or dst_ip matches (pass `[]` to skip)
+/// `filter_ports` — keep packets where src_port or dst_port matches (pass `[]` to skip)
+///
+/// If both filters are non-empty, a packet is included if it matches EITHER.
+/// If both filters are empty, all packets are exported (full copy).
+///
+/// Only real PCAP file paths are read; ingest-source tags like `[Suricata]` are skipped.
+#[tauri::command]
+pub async fn export_filtered_pcap(
+    filter_ips: Vec<String>,
+    filter_ports: Vec<u16>,
+    output_path: String,
+    state: State<'_, AppState>,
+) -> Result<FilteredPcapResult, String> {
+    let input_paths = {
+        let inner = state.inner.lock().map_err(|e| e.to_string())?;
+        inner.imported_files.clone()
+    };
+
+    let source_files = input_paths.iter().filter(|p| !p.starts_with('[')).count();
+
+    if source_files == 0 {
+        return Err("No PCAP files have been imported to export from.".to_string());
+    }
+
+    let packets_written =
+        gm_capture::filter_export_pcap(&input_paths, &filter_ips, &filter_ports, &output_path)
+            .map_err(|e| e.to_string())?;
+
+    log::info!(
+        "Filtered PCAP export: {} packets from {} files → {}",
+        packets_written, source_files, output_path
+    );
+
+    Ok(FilteredPcapResult {
+        output_path,
+        packets_written,
+        source_files,
+    })
+}
+
 // ─── Topology Image Export Command ──────────────────────────
 
 /// Save topology image data (PNG base64 or SVG string) to a file.

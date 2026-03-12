@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { filteredAssets, assetFilter, selectedAssetId, selectedAsset, protocolFilter, assets } from '$lib/stores';
-	import { getDeepParseInfo, getAssets, updateAsset, bulkUpdateAssets, getCredentialWarnings } from '$lib/utils/tauri';
-	import type { DeviceType, IcsProtocol, DeepParseInfo, AssetUpdate, Asset, EnipDetail, S7Detail, BacnetDetail, Iec104Detail, ProfinetDcpDetail, LldpDetail, DefaultCredential } from '$lib/types';
+	import { getDeepParseInfo, getAssets, updateAsset, bulkUpdateAssets, getCredentialWarnings, getAlertsForIp } from '$lib/utils/tauri';
+	import type { DeviceType, IcsProtocol, DeepParseInfo, AssetUpdate, Asset, EnipDetail, S7Detail, BacnetDetail, Iec104Detail, ProfinetDcpDetail, LldpDetail, DefaultCredential, CorrelatedAlert } from '$lib/types';
 
 	const deviceTypeLabels: Record<DeviceType, string> = {
 		plc: 'PLC',
@@ -118,14 +118,27 @@
 	let credWarnings = $state<DefaultCredential[]>([]);
 	let loadingCreds = $state(false);
 
+	// IDS/SIEM alerts for selected asset
+	let assetAlerts = $state<CorrelatedAlert[]>([]);
+
 	$effect(() => {
 		const asset = $selectedAsset;
 		if (asset) {
 			loadCredWarnings();
+			loadAssetAlerts(asset.ip_address);
 		} else {
 			credWarnings = [];
+			assetAlerts = [];
 		}
 	});
+
+	async function loadAssetAlerts(ip: string) {
+		try {
+			assetAlerts = await getAlertsForIp(ip);
+		} catch {
+			assetAlerts = [];
+		}
+	}
 
 	async function loadCredWarnings() {
 		loadingCreds = true;
@@ -844,6 +857,22 @@
 									<button class="copy-btn cred-copy" onclick={() => navigator.clipboard.writeText(`${cw.username}:${cw.password}`)}>
 										Copy Credentials
 									</button>
+								</div>
+							{/each}
+						</div>
+					{/if}
+
+					<!-- IDS/SIEM Alerts for this device -->
+					{#if assetAlerts.length > 0}
+						<div class="detail-section alert-section">
+							<h4 class="section-title alert-title">&#128680; External Alerts ({assetAlerts.length})</h4>
+							{#each assetAlerts as alert}
+								<div class="asset-alert-row">
+									<span class="alert-sev-badge sev-{alert.severity === 1 ? 'high' : alert.severity === 2 ? 'medium' : 'low'}">
+										{alert.severity === 1 ? 'HIGH' : alert.severity === 2 ? 'MED' : 'LOW'}
+									</span>
+									<span class="alert-source-tag">{alert.source}</span>
+									<span class="alert-sig-text">{alert.signature}</span>
 								</div>
 							{/each}
 						</div>
@@ -2198,5 +2227,51 @@
 		font-size: 11px;
 		color: var(--gm-text-muted, #64748b);
 		white-space: nowrap;
+	}
+
+	/* ── IDS/SIEM Alert Section ────────────────────── */
+
+	.alert-section {
+		border-color: rgba(239, 68, 68, 0.3) !important;
+	}
+
+	.alert-title {
+		color: #ef4444 !important;
+	}
+
+	.asset-alert-row {
+		display: flex;
+		align-items: flex-start;
+		gap: 6px;
+		margin-bottom: 6px;
+		flex-wrap: wrap;
+	}
+
+	.alert-sev-badge {
+		font-size: 9px;
+		font-weight: 700;
+		padding: 2px 5px;
+		border-radius: 3px;
+		flex-shrink: 0;
+	}
+
+	.alert-sev-badge.sev-high   { background: var(--gm-severity-high);   color: #fff; }
+	.alert-sev-badge.sev-medium { background: var(--gm-severity-medium); color: #fff; }
+	.alert-sev-badge.sev-low    { background: var(--gm-severity-low);    color: #fff; }
+
+	.alert-source-tag {
+		font-size: 9px;
+		padding: 2px 5px;
+		border-radius: 3px;
+		background: rgba(99, 102, 241, 0.2);
+		color: #a5b4fc;
+		font-weight: 600;
+		flex-shrink: 0;
+	}
+
+	.alert-sig-text {
+		font-size: 10px;
+		color: var(--gm-text-secondary);
+		line-height: 1.4;
 	}
 </style>

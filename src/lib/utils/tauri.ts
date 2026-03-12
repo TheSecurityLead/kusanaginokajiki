@@ -48,7 +48,10 @@ import type {
 	Project,
 	ProjectSummary,
 	RedundancyInfo,
-	SwitchSecurityFinding
+	SwitchSecurityFinding,
+	CorrelatedAlert,
+	LiveAttackAlert,
+	FilteredPcapResult
 } from '$lib/types';
 
 // ─── System Commands ──────────────────────────────────────────
@@ -560,4 +563,48 @@ export async function setActiveProject(id: number): Promise<Project> {
 /** Clear the active project */
 export async function clearActiveProject(): Promise<void> {
 	return invoke('clear_active_project');
+}
+
+// ─── External Alerts (Phase 14D) ─────────────────────────────
+
+/** Import a Wazuh HIDS/SIEM alert export file */
+export async function importWazuhAlerts(path: string): Promise<IngestImportResult> {
+	return invoke<IngestImportResult>('import_wazuh_alerts', { path });
+}
+
+/** Get all imported IDS/SIEM alerts, enriched with device inventory data */
+export async function getCorrelatedAlerts(): Promise<CorrelatedAlert[]> {
+	return invoke<CorrelatedAlert[]>('get_correlated_alerts');
+}
+
+/** Get alerts involving a specific IP address */
+export async function getAlertsForIp(ip: string): Promise<CorrelatedAlert[]> {
+	return invoke<CorrelatedAlert[]>('get_alerts_for_ip', { ip });
+}
+
+/** Clear all stored alerts */
+export async function clearAlerts(): Promise<void> {
+	return invoke('clear_alerts');
+}
+
+/** Export filtered packets from imported PCAPs to a new PCAP file */
+export async function exportFilteredPcap(
+	filterIps: string[],
+	filterPorts: number[],
+	outputPath: string
+): Promise<FilteredPcapResult> {
+	return invoke<FilteredPcapResult>('export_filtered_pcap', {
+		filterIps,
+		filterPorts,
+		outputPath
+	});
+}
+
+/** Listen for real-time ATT&CK alerts during live capture */
+export async function onLiveAttackAlert(
+	callback: (alert: LiveAttackAlert) => void
+): Promise<() => void> {
+	return listen<LiveAttackAlert>('live_attack_alert', (event) => {
+		callback(event.payload);
+	});
 }

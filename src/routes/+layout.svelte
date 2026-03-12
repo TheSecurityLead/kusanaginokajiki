@@ -2,12 +2,41 @@
 	import '../app.css';
 	import { activeTab, themeMode, activeProject } from '$lib/stores';
 	import type { ViewTab } from '$lib/stores';
-	import { clearActiveProject } from '$lib/utils/tauri';
+	import { clearActiveProject, onLiveAttackAlert } from '$lib/utils/tauri';
 	import { assetCount, connectionCount, captureStatus } from '$lib/stores';
 	import { getSettings, saveSettings } from '$lib/utils/tauri';
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { get } from 'svelte/store';
-	import type { ThemeMode } from '$lib/types';
+	import type { ThemeMode, LiveAttackAlert } from '$lib/types';
+
+	// ── Live ATT&CK Toast Notifications ──────────────────
+	interface Toast {
+		id: number;
+		alert: LiveAttackAlert;
+	}
+
+	let toasts = $state<Toast[]>([]);
+	let toastCounter = 0;
+	let liveAlertBadge = $state(0);
+	let unlisten: (() => void) | null = null;
+
+	function addToast(alert: LiveAttackAlert) {
+		const id = ++toastCounter;
+		toasts = [...toasts, { id, alert }];
+		liveAlertBadge++;
+		// Auto-dismiss after 8 seconds
+		setTimeout(() => {
+			toasts = toasts.filter((t) => t.id !== id);
+		}, 8000);
+	}
+
+	function dismissToast(id: number) {
+		toasts = toasts.filter((t) => t.id !== id);
+	}
+
+	function clearAlertBadge() {
+		liveAlertBadge = 0;
+	}
 
 	let { children } = $props();
 
@@ -82,6 +111,17 @@
 				applyTheme('system');
 			}
 		});
+
+		// Subscribe to live ATT&CK alerts from the backend
+		try {
+			unlisten = await onLiveAttackAlert(addToast);
+		} catch {
+			// Not available in browser dev mode
+		}
+	});
+
+	onDestroy(() => {
+		if (unlisten) unlisten();
 	});
 </script>
 
@@ -164,6 +204,30 @@
 		{@render children()}
 	</main>
 </div>
+
+<!-- Live ATT&CK Alert Toasts -->
+{#if toasts.length > 0}
+	<div class="toast-container">
+		{#each toasts as toast (toast.id)}
+			<div class="toast toast-sev-{toast.alert.severity}">
+				<div class="toast-header">
+					<span class="toast-technique">{toast.alert.technique_id}</span>
+					<span class="toast-sev">{toast.alert.severity.toUpperCase()}</span>
+					<button class="toast-close" onclick={() => dismissToast(toast.id)}>&#10005;</button>
+				</div>
+				<div class="toast-title">{toast.alert.title}</div>
+				<div class="toast-evidence">{toast.alert.evidence}</div>
+			</div>
+		{/each}
+	</div>
+{/if}
+
+<!-- Live alert badge (click to dismiss counter) -->
+{#if liveAlertBadge > 0}
+	<button class="live-alert-badge" onclick={clearAlertBadge} title="Live ATT&CK alerts detected during capture">
+		&#9888; {liveAlertBadge} live alert{liveAlertBadge !== 1 ? 's' : ''}
+	</button>
+{/if}
 
 <style>
 	.app-shell {
@@ -405,5 +469,102 @@
 		overflow: hidden;
 		display: flex;
 		flex-direction: column;
+	}
+
+	/* ── Live ATT&CK Toast Notifications ─────────────── */
+
+	:global(.toast-container) {
+		position: fixed;
+		bottom: 24px;
+		right: 24px;
+		display: flex;
+		flex-direction: column-reverse;
+		gap: 8px;
+		z-index: 9999;
+		max-width: 380px;
+	}
+
+	:global(.toast) {
+		background: #1a1f2e;
+		border: 1px solid var(--gm-border);
+		border-left: 3px solid var(--gm-severity-high);
+		border-radius: 8px;
+		padding: 12px 14px;
+		box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+
+	:global(.toast-sev-critical) { border-left-color: var(--gm-severity-critical); }
+	:global(.toast-sev-high)     { border-left-color: var(--gm-severity-high); }
+	:global(.toast-sev-medium)   { border-left-color: var(--gm-severity-medium); }
+	:global(.toast-sev-low)      { border-left-color: var(--gm-severity-low); }
+
+	:global(.toast-header) {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	:global(.toast-technique) {
+		font-size: 10px;
+		font-weight: 700;
+		font-family: 'JetBrains Mono', monospace;
+		color: var(--gm-text-muted);
+		background: rgba(255, 255, 255, 0.05);
+		padding: 2px 6px;
+		border-radius: 3px;
+	}
+
+	:global(.toast-sev) {
+		font-size: 10px;
+		font-weight: 700;
+		color: var(--gm-severity-high);
+		flex: 1;
+	}
+
+	:global(.toast-close) {
+		background: none;
+		border: none;
+		color: var(--gm-text-muted);
+		font-size: 10px;
+		cursor: pointer;
+		padding: 0 2px;
+	}
+
+	:global(.toast-close:hover) {
+		color: var(--gm-text-primary);
+	}
+
+	:global(.toast-title) {
+		font-size: 12px;
+		font-weight: 600;
+		color: var(--gm-text-primary);
+	}
+
+	:global(.toast-evidence) {
+		font-size: 10px;
+		color: var(--gm-text-muted);
+		font-family: 'JetBrains Mono', monospace;
+	}
+
+	:global(.live-alert-badge) {
+		position: fixed;
+		bottom: 24px;
+		left: 210px;
+		background: rgba(239, 68, 68, 0.15);
+		border: 1px solid rgba(239, 68, 68, 0.4);
+		border-radius: 6px;
+		color: #ef4444;
+		font-size: 11px;
+		font-weight: 600;
+		padding: 6px 12px;
+		cursor: pointer;
+		z-index: 9998;
+	}
+
+	:global(.live-alert-badge:hover) {
+		background: rgba(239, 68, 68, 0.25);
 	}
 </style>
