@@ -30,7 +30,8 @@ import type {
 	BaselineDiff,
 	ThemeMode,
 	TimelineRange,
-	Project
+	Project,
+	SegmentationReport
 } from '$lib/types';
 
 // ─── Core Application State ──────────────────────────────────
@@ -92,6 +93,11 @@ export const analysisSummary = writable<AnalysisSummary | null>(null);
 /** Last computed baseline diff (null if not run) */
 export const baselineDiff = writable<BaselineDiff | null>(null);
 
+// ─── Microsegmentation State (Phase 15) ──────────────────
+
+/** Last computed segmentation report (null if not run) */
+export const segmentationReport = writable<SegmentationReport | null>(null);
+
 // ─── Theme State (Phase 11) ──────────────────────────────
 
 /** Current theme mode */
@@ -132,7 +138,7 @@ export const captureStats = writable<CaptureStatsEvent>({
 export const selectedAssetId = writable<string | null>(null);
 
 /** Currently active view/tab */
-export type ViewTab = 'projects' | 'topology' | 'physical' | 'inventory' | 'capture' | 'signatures' | 'protocol_stats' | 'export' | 'analysis' | 'settings' | 'comm_patterns';
+export type ViewTab = 'projects' | 'topology' | 'physical' | 'inventory' | 'capture' | 'signatures' | 'protocol_stats' | 'export' | 'analysis' | 'settings' | 'comm_patterns' | 'segmentation';
 export const activeTab = writable<ViewTab>('projects');
 
 /** Currently active project (null if no project selected) */

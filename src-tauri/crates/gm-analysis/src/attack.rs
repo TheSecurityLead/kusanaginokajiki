@@ -15,14 +15,12 @@
 
 use std::collections::{HashMap, HashSet};
 
-use crate::{
-    AnalysisInput, CaptureContext, Finding, FindingType, Severity,
-};
+use crate::{AnalysisInput, CaptureContext, Finding, FindingType, Severity};
 
 /// Well-known OT server ports used to identify PLCs/RTUs.
 const OT_SERVER_PORTS: &[u16] = &[
-    102, 502, 1089, 1090, 1091, 2222, 2404, 4840,
-    5007, 5094, 18245, 18246, 20000, 34962, 34963, 34964, 44818, 47808,
+    102, 502, 1089, 1090, 1091, 2222, 2404, 4840, 5007, 5094, 18245, 18246, 20000, 34962, 34963,
+    34964, 44818, 47808,
 ];
 
 /// Modbus write function codes.
@@ -72,16 +70,22 @@ fn detect_t0855_unauthorized_writes(input: &AnalysisInput) -> Vec<Finding> {
 
         // Check for broadcast writes (unit ID 0 or 255)
         let has_broadcast_unit = modbus.unit_ids.contains(&0) || modbus.unit_ids.contains(&255);
-        let has_write_fcs = modbus.function_codes.iter()
+        let has_write_fcs = modbus
+            .function_codes
+            .iter()
             .any(|fc| MODBUS_WRITE_FCS.contains(&fc.code) && fc.count > 0);
 
         if has_broadcast_unit && has_write_fcs {
-            let write_count: u64 = modbus.function_codes.iter()
+            let write_count: u64 = modbus
+                .function_codes
+                .iter()
                 .filter(|fc| MODBUS_WRITE_FCS.contains(&fc.code))
                 .map(|fc| fc.count)
                 .sum();
 
-            let broadcast_ids: Vec<String> = modbus.unit_ids.iter()
+            let broadcast_ids: Vec<String> = modbus
+                .unit_ids
+                .iter()
                 .filter(|&&uid| uid == 0 || uid == 255)
                 .map(|uid| uid.to_string())
                 .collect();
@@ -92,18 +96,23 @@ fn detect_t0855_unauthorized_writes(input: &AnalysisInput) -> Vec<Finding> {
                 format!("Modbus broadcast write from {}", ip),
                 "Modbus write commands (FC 5/6/15/16) sent to broadcast unit IDs. \
                  This could indicate unauthorized command injection targeting all \
-                 devices on the Modbus network simultaneously.".to_string(),
+                 devices on the Modbus network simultaneously."
+                    .to_string(),
                 vec![ip.clone()],
                 format!(
                     "Source {} sent {} write commands to broadcast unit ID(s): {}",
-                    ip, write_count, broadcast_ids.join(", ")
+                    ip,
+                    write_count,
+                    broadcast_ids.join(", ")
                 ),
                 Some("T0855".to_string()),
             ));
         }
 
         // Check for high fan-out writes (writing to many different targets)
-        let write_targets: Vec<&str> = modbus.relationships.iter()
+        let write_targets: Vec<&str> = modbus
+            .relationships
+            .iter()
             .filter(|r| r.remote_role == "slave")
             .map(|r| r.remote_ip.as_str())
             .collect();
@@ -114,7 +123,8 @@ fn detect_t0855_unauthorized_writes(input: &AnalysisInput) -> Vec<Finding> {
                 Severity::High,
                 format!("High fan-out Modbus writes from {}", ip),
                 "A single device is sending Modbus write commands to many targets. \
-                 This pattern may indicate unauthorized mass command injection.".to_string(),
+                 This pattern may indicate unauthorized mass command injection."
+                    .to_string(),
                 std::iter::once(ip.clone())
                     .chain(write_targets.iter().map(|s| s.to_string()))
                     .collect(),
@@ -141,7 +151,9 @@ fn detect_t0814_diagnostic_dos(input: &AnalysisInput) -> Vec<Finding> {
     let mut findings = Vec::new();
 
     // Build set of engineering workstation IPs
-    let eng_ws_ips: HashSet<&str> = input.assets.iter()
+    let eng_ws_ips: HashSet<&str> = input
+        .assets
+        .iter()
         .filter(|a| a.device_type == "engineering_workstation")
         .map(|a| a.ip_address.as_str())
         .collect();
@@ -153,7 +165,9 @@ fn detect_t0814_diagnostic_dos(input: &AnalysisInput) -> Vec<Finding> {
         };
 
         // Look for FC 8 (Diagnostics) usage
-        let fc8_count: u64 = modbus.function_codes.iter()
+        let fc8_count: u64 = modbus
+            .function_codes
+            .iter()
             .filter(|fc| fc.code == 8)
             .map(|fc| fc.count)
             .sum();
@@ -164,7 +178,9 @@ fn detect_t0814_diagnostic_dos(input: &AnalysisInput) -> Vec<Finding> {
 
         // If the source is not an engineering workstation, flag it
         if !eng_ws_ips.contains(ip.as_str()) {
-            let device_type = input.assets.iter()
+            let device_type = input
+                .assets
+                .iter()
                 .find(|a| a.ip_address == *ip)
                 .map(|a| a.device_type.as_str())
                 .unwrap_or("unknown");
@@ -175,7 +191,8 @@ fn detect_t0814_diagnostic_dos(input: &AnalysisInput) -> Vec<Finding> {
                 format!("Modbus diagnostics (FC 8) from non-engineer: {}", ip),
                 "Modbus Function Code 8 (Diagnostics) can restart slave devices, \
                  clear counters, or force listen-only mode. This function code \
-                 should only originate from authorized engineering workstations.".to_string(),
+                 should only originate from authorized engineering workstations."
+                    .to_string(),
                 vec![ip.clone()],
                 format!(
                     "Device {} (type: {}) sent {} Modbus FC 8 diagnostic commands",
@@ -198,7 +215,9 @@ fn detect_t0856_dnp3_unsolicited(input: &AnalysisInput) -> Vec<Finding> {
     let mut findings = Vec::new();
 
     // Build set of known DNP3 master IPs
-    let known_masters: HashSet<String> = input.deep_parse.iter()
+    let known_masters: HashSet<String> = input
+        .deep_parse
+        .iter()
         .filter_map(|(ip, dp)| {
             dp.dnp3.as_ref().and_then(|d| {
                 if d.role == "master" || d.role == "both" {
@@ -221,7 +240,9 @@ fn detect_t0856_dnp3_unsolicited(input: &AnalysisInput) -> Vec<Finding> {
         }
 
         // Check if unsolicited responses go to unknown masters
-        let unknown_targets: Vec<String> = dnp3.relationships.iter()
+        let unknown_targets: Vec<String> = dnp3
+            .relationships
+            .iter()
             .filter(|r| r.remote_role == "master" && !known_masters.contains(&r.remote_ip))
             .map(|r| r.remote_ip.clone())
             .collect();
@@ -233,13 +254,15 @@ fn detect_t0856_dnp3_unsolicited(input: &AnalysisInput) -> Vec<Finding> {
                 format!("DNP3 unsolicited response from {} to unknown master", ip),
                 "DNP3 unsolicited responses (FC 130) are being sent to devices \
                  not recognized as authorized masters. This could indicate alarm \
-                 manipulation or unauthorized data exfiltration.".to_string(),
+                 manipulation or unauthorized data exfiltration."
+                    .to_string(),
                 std::iter::once(ip.clone())
                     .chain(unknown_targets.iter().cloned())
                     .collect(),
                 format!(
                     "Outstation {} sent unsolicited responses to unknown master(s): {}",
-                    ip, unknown_targets.join(", ")
+                    ip,
+                    unknown_targets.join(", ")
                 ),
                 Some("T0856".to_string()),
             ));
@@ -253,7 +276,8 @@ fn detect_t0856_dnp3_unsolicited(input: &AnalysisInput) -> Vec<Finding> {
                 format!("DNP3 unsolicited response with no known masters: {}", ip),
                 "DNP3 unsolicited responses detected but no authorized masters \
                  have been identified in the network. All unsolicited traffic \
-                 is potentially unauthorized.".to_string(),
+                 is potentially unauthorized."
+                    .to_string(),
                 vec![ip.clone()],
                 format!(
                     "Device {} sending DNP3 unsolicited responses (FC 130) \
@@ -277,11 +301,15 @@ fn detect_t0846_remote_discovery(input: &AnalysisInput) -> Vec<Finding> {
     let mut findings = Vec::new();
 
     // Build set of known OT device IPs (PLCs, RTUs, HMIs, etc.)
-    let ot_device_ips: HashSet<&str> = input.assets.iter()
-        .filter(|a| matches!(
-            a.device_type.as_str(),
-            "plc" | "rtu" | "hmi" | "historian" | "engineering_workstation" | "scada_server"
-        ))
+    let ot_device_ips: HashSet<&str> = input
+        .assets
+        .iter()
+        .filter(|a| {
+            matches!(
+                a.device_type.as_str(),
+                "plc" | "rtu" | "hmi" | "historian" | "engineering_workstation" | "scada_server"
+            )
+        })
         .map(|a| a.ip_address.as_str())
         .collect();
 
@@ -300,7 +328,9 @@ fn detect_t0846_remote_discovery(input: &AnalysisInput) -> Vec<Finding> {
 
         // Flag if source is IT/unknown AND targeting OT ports on multiple devices
         if !is_known_ot {
-            let src_type = src_asset.map(|a| a.device_type.as_str()).unwrap_or("unknown");
+            let src_type = src_asset
+                .map(|a| a.device_type.as_str())
+                .unwrap_or("unknown");
             if src_type == "it_device" || src_type == "unknown" {
                 scanner_targets
                     .entry(conn.src_ip.clone())
@@ -316,10 +346,15 @@ fn detect_t0846_remote_discovery(input: &AnalysisInput) -> Vec<Finding> {
             findings.push(Finding::new(
                 FindingType::AttackTechnique,
                 Severity::High,
-                format!("Unknown device {} polling {} PLCs/RTUs", scanner_ip, targets.len()),
+                format!(
+                    "Unknown device {} polling {} PLCs/RTUs",
+                    scanner_ip,
+                    targets.len()
+                ),
                 "A device not classified as OT equipment is connecting to \
                  multiple ICS devices on well-known OT service ports. This \
-                 behavior resembles network reconnaissance or unauthorized polling.".to_string(),
+                 behavior resembles network reconnaissance or unauthorized polling."
+                    .to_string(),
                 std::iter::once(scanner_ip.clone())
                     .chain(targets.iter().cloned())
                     .collect(),
@@ -355,9 +390,13 @@ fn detect_enip_attacks(input: &AnalysisInput) -> Vec<Finding> {
                 format!("CIP write to Assembly object from {}", ip),
                 "CIP Write or ReadModifyWrite command targeting an Assembly object was \
                  detected. Assembly objects control I/O data for connected devices and \
-                 writes may cause unexpected actuator behavior.".to_string(),
+                 writes may cause unexpected actuator behavior."
+                    .to_string(),
                 vec![ip.clone()],
-                format!("Source {} sent CIP Write/ReadModifyWrite to Assembly (class 0x04)", ip),
+                format!(
+                    "Source {} sent CIP Write/ReadModifyWrite to Assembly (class 0x04)",
+                    ip
+                ),
                 Some("T0855".to_string()),
             ));
         }
@@ -367,10 +406,14 @@ fn detect_enip_attacks(input: &AnalysisInput) -> Vec<Finding> {
             findings.push(Finding::new(
                 FindingType::AttackTechnique,
                 Severity::Critical,
-                format!("CIP File class access from {} (possible firmware operation)", ip),
+                format!(
+                    "CIP File class access from {} (possible firmware operation)",
+                    ip
+                ),
                 "Access to the CIP File object class (0x37) was detected. File class objects \
                  are used for firmware uploads and program file transfers. Unauthorized access \
-                 may indicate firmware modification or intellectual property theft.".to_string(),
+                 may indicate firmware modification or intellectual property theft."
+                    .to_string(),
                 vec![ip.clone()],
                 format!("Source {} accessed CIP File object class (0x37)", ip),
                 Some("T0836".to_string()),
@@ -379,7 +422,9 @@ fn detect_enip_attacks(input: &AnalysisInput) -> Vec<Finding> {
 
         // T0846: ListIdentity from an IT/unknown device — OT network reconnaissance
         if enip.list_identity_requests {
-            let src_type = input.assets.iter()
+            let src_type = input
+                .assets
+                .iter()
                 .find(|a| a.ip_address == *ip)
                 .map(|a| a.device_type.as_str())
                 .unwrap_or("unknown");
@@ -390,7 +435,8 @@ fn detect_enip_attacks(input: &AnalysisInput) -> Vec<Finding> {
                     format!("EtherNet/IP ListIdentity from non-OT device {}", ip),
                     "ListIdentity requests enumerate all EtherNet/IP devices on the network. \
                      This request from an unclassified or IT device may indicate network \
-                     reconnaissance of the OT environment.".to_string(),
+                     reconnaissance of the OT environment."
+                        .to_string(),
                     vec![ip.clone()],
                     format!(
                         "Device {} (type: {}) sent EtherNet/IP ListIdentity requests",
@@ -423,7 +469,8 @@ fn detect_s7_attacks(input: &AnalysisInput) -> Vec<Finding> {
                 format!("S7 program download from {}", ip),
                 "An S7 Download Start (function 0x1D) was detected. This initiates a \
                  program download to the PLC, which can replace the control logic and \
-                 cause unexpected physical process behavior.".to_string(),
+                 cause unexpected physical process behavior."
+                    .to_string(),
                 vec![ip.clone()],
                 format!("Source {} initiated S7comm Download Start (FC 0x1D)", ip),
                 Some("T0843".to_string()),
@@ -438,7 +485,8 @@ fn detect_s7_attacks(input: &AnalysisInput) -> Vec<Finding> {
                 format!("S7 program upload from {}", ip),
                 "An S7 Upload Start (function 0x1A) was detected. This reads the PLC \
                  program logic and may indicate intellectual property theft or \
-                 reconnaissance to understand process control before an attack.".to_string(),
+                 reconnaissance to understand process control before an attack."
+                    .to_string(),
                 vec![ip.clone()],
                 format!("Source {} initiated S7comm Upload Start (FC 0x1A)", ip),
                 Some("T0845".to_string()),
@@ -453,7 +501,8 @@ fn detect_s7_attacks(input: &AnalysisInput) -> Vec<Finding> {
                 format!("S7 PLC Stop command from {}", ip),
                 "An S7 PLC Stop command (function 0x29) was detected. This halts PLC \
                  execution, which will cause controlled processes to enter a safe state \
-                 or fail, potentially causing loss of control or production disruption.".to_string(),
+                 or fail, potentially causing loss of control or production disruption."
+                    .to_string(),
                 vec![ip.clone()],
                 format!("Source {} sent S7comm PLC Stop (FC 0x29)", ip),
                 Some("T0816".to_string()),
@@ -468,7 +517,8 @@ fn detect_s7_attacks(input: &AnalysisInput) -> Vec<Finding> {
                 format!("S7 PI Service (possible block delete) from {}", ip),
                 "An S7 PI Service command (function 0x28) was detected. This function \
                  can delete program blocks from the PLC, destroying control logic and \
-                 requiring full system restoration.".to_string(),
+                 requiring full system restoration."
+                    .to_string(),
                 vec![ip.clone()],
                 format!("Source {} sent S7comm PI Service (FC 0x28)", ip),
                 Some("T0809".to_string()),
@@ -483,7 +533,8 @@ fn detect_s7_attacks(input: &AnalysisInput) -> Vec<Finding> {
                 format!("S7 Write Var command from {}", ip),
                 "An S7 Write Var command (function 0x05) was detected. This writes values \
                  directly to PLC memory areas (inputs, outputs, merkers, data blocks), \
-                 which can cause unauthorized changes to process control variables.".to_string(),
+                 which can cause unauthorized changes to process control variables."
+                    .to_string(),
                 vec![ip.clone()],
                 format!("Source {} sent S7comm Write Var (FC 0x05)", ip),
                 Some("T0855".to_string()),
@@ -513,9 +564,13 @@ fn detect_iec104_attacks(input: &AnalysisInput) -> Vec<Finding> {
                 "IEC 60870-5-104 control command ASDUs (type IDs 45–69) were detected. \
                  These commands control physical process elements at the outstation \
                  (e.g., circuit breakers, valves, set-points). Unauthorized command \
-                 injection can cause unexpected physical process changes.".to_string(),
+                 injection can cause unexpected physical process changes."
+                    .to_string(),
                 vec![ip.clone()],
-                format!("Source {} sent IEC 104 control command ASDUs (type IDs 45–69)", ip),
+                format!(
+                    "Source {} sent IEC 104 control command ASDUs (type IDs 45–69)",
+                    ip
+                ),
                 Some("T0855".to_string()),
             ));
         }
@@ -529,16 +584,22 @@ fn detect_iec104_attacks(input: &AnalysisInput) -> Vec<Finding> {
                 "An IEC 104 Reset Process command (C_RP_NA_1, type ID 105) was detected. \
                  This command resets the outstation's process, potentially disrupting \
                  power grid control or other critical infrastructure operations and \
-                 causing a loss of control or availability.".to_string(),
+                 causing a loss of control or availability."
+                    .to_string(),
                 vec![ip.clone()],
-                format!("Source {} sent IEC 104 Reset Process (C_RP_NA_1, type ID 105)", ip),
+                format!(
+                    "Source {} sent IEC 104 Reset Process (C_RP_NA_1, type ID 105)",
+                    ip
+                ),
                 Some("T0816".to_string()),
             ));
         }
 
         // T0814: Interrogation from non-OT device — potential DoS / reconnaissance
         if iec104.has_interrogation {
-            let src_type = input.assets.iter()
+            let src_type = input
+                .assets
+                .iter()
                 .find(|a| a.ip_address == *ip)
                 .map(|a| a.device_type.as_str())
                 .unwrap_or("unknown");
@@ -550,7 +611,8 @@ fn detect_iec104_attacks(input: &AnalysisInput) -> Vec<Finding> {
                     "IEC 104 General Interrogation commands (C_IC_NA_1, type ID 100) were \
                      detected from a device not classified as OT equipment. Interrogation \
                      requests from unauthorized sources may indicate network reconnaissance \
-                     or an attempt to flood the outstation's response queue.".to_string(),
+                     or an attempt to flood the outstation's response queue."
+                        .to_string(),
                     vec![ip.clone()],
                     format!(
                         "Device {} (type: {}) sent IEC 104 General Interrogation (C_IC_NA_1)",
@@ -583,7 +645,8 @@ fn detect_bacnet_attacks(input: &AnalysisInput) -> Vec<Finding> {
                 format!("BACnet WriteProperty to output object from {}", ip),
                 "A BACnet WriteProperty to an AnalogOutput or BinaryOutput object was \
                  detected. Writing to output objects directly controls physical actuators \
-                 such as valves, dampers, and relays in building automation systems.".to_string(),
+                 such as valves, dampers, and relays in building automation systems."
+                    .to_string(),
                 vec![ip.clone()],
                 format!(
                     "Source {} wrote to BACnet AnalogOutput or BinaryOutput object",
@@ -602,7 +665,8 @@ fn detect_bacnet_attacks(input: &AnalysisInput) -> Vec<Finding> {
                 "A BACnet WriteProperty to a NotificationClass object was detected. \
                  NotificationClass objects control alarm routing and notification. \
                  Modifying these can suppress alarms, preventing operators from \
-                 detecting faults or process anomalies.".to_string(),
+                 detecting faults or process anomalies."
+                    .to_string(),
                 vec![ip.clone()],
                 format!(
                     "Source {} modified BACnet NotificationClass object (alarm routing)",
@@ -620,7 +684,8 @@ fn detect_bacnet_attacks(input: &AnalysisInput) -> Vec<Finding> {
                 format!("BACnet ReinitializeDevice from {}", ip),
                 "A BACnet ReinitializeDevice service was detected. This command can \
                  restart or restore a BACnet device to defaults, causing loss of \
-                 control and potentially overwriting operational configuration.".to_string(),
+                 control and potentially overwriting operational configuration."
+                    .to_string(),
                 vec![ip.clone()],
                 format!("Source {} sent BACnet ReinitializeDevice command", ip),
                 Some("T0816".to_string()),
@@ -635,9 +700,13 @@ fn detect_bacnet_attacks(input: &AnalysisInput) -> Vec<Finding> {
                 format!("BACnet DeviceCommunicationControl from {}", ip),
                 "A BACnet DeviceCommunicationControl service was detected. This command \
                  can disable a device's ability to initiate communications, causing a \
-                 denial of view for operators monitoring the building automation system.".to_string(),
+                 denial of view for operators monitoring the building automation system."
+                    .to_string(),
                 vec![ip.clone()],
-                format!("Source {} sent BACnet DeviceCommunicationControl command", ip),
+                format!(
+                    "Source {} sent BACnet DeviceCommunicationControl command",
+                    ip
+                ),
                 Some("T0811".to_string()),
             ));
         }
@@ -675,15 +744,24 @@ fn detect_flat_network(input: &AnalysisInput) -> Vec<Finding> {
             findings.push(Finding::new(
                 FindingType::AttackTechnique,
                 Severity::High,
-                format!("Flat network detected — {} of {} devices on {}", ips.len(), total, subnet),
+                format!(
+                    "Flat network detected — {} of {} devices on {}",
+                    ips.len(),
+                    total,
+                    subnet
+                ),
                 "More than 80% of discovered devices reside on a single /24 subnet. \
                  A flat network provides no lateral movement barriers — a single \
                  compromised device can reach all OT assets without traversing any \
-                 security boundary.".to_string(),
+                 security boundary."
+                    .to_string(),
                 ips.clone(),
                 format!(
                     "{}/{} devices ({:.0}%) are on subnet {} — no segmentation detected",
-                    ips.len(), total, pct * 100.0, subnet
+                    ips.len(),
+                    total,
+                    pct * 100.0,
+                    subnet
                 ),
                 Some("T0886".to_string()),
             ));
@@ -730,9 +808,7 @@ fn detect_cleartext_ot(input: &AnalysisInput) -> Vec<Finding> {
 
     for conn in &input.connections {
         if CLEARTEXT_OT_PORTS.contains(&conn.dst_port) {
-            *cleartext_by_proto
-                .entry(conn.protocol.clone())
-                .or_insert(0) += conn.packet_count;
+            *cleartext_by_proto.entry(conn.protocol.clone()).or_insert(0) += conn.packet_count;
             total_cleartext += conn.packet_count;
             total_ot += conn.packet_count;
         } else if conn.protocol == "OpcUa" && conn.dst_port == 4843 {
@@ -770,11 +846,14 @@ fn detect_cleartext_ot(input: &AnalysisInput) -> Vec<Finding> {
         format!("{:.0}% of OT traffic is unencrypted", pct),
         "Standard OT protocols (Modbus, DNP3, EtherNet/IP, S7comm, BACnet, IEC 104, PROFINET) \
          transmit all data in cleartext. An attacker with network access can read all process \
-         values, setpoints, and control commands without any decryption.".to_string(),
+         values, setpoints, and control commands without any decryption."
+            .to_string(),
         vec![],
         format!(
             "{:.1}% cleartext OT traffic ({} of {} packets). Breakdown: {}",
-            pct, total_cleartext, total_ot,
+            pct,
+            total_cleartext,
+            total_ot,
             proto_breakdown.join(", ")
         ),
         None,
@@ -878,19 +957,30 @@ mod tests {
     #[test]
     fn test_t0855_broadcast_write() {
         let mut input = make_input();
-        input.deep_parse.insert("10.0.0.100".to_string(), DeepParseSnapshot {
-            modbus: Some(ModbusSnapshot {
-                role: "master".to_string(),
-                unit_ids: vec![0, 1, 255],
-                function_codes: vec![
-                    FcSnapshot { code: 6, count: 50, is_write: true },
-                    FcSnapshot { code: 3, count: 200, is_write: false },
-                ],
-                relationships: vec![],
-                polling_intervals: vec![],
-            }),
-            ..Default::default()
-        });
+        input.deep_parse.insert(
+            "10.0.0.100".to_string(),
+            DeepParseSnapshot {
+                modbus: Some(ModbusSnapshot {
+                    role: "master".to_string(),
+                    unit_ids: vec![0, 1, 255],
+                    function_codes: vec![
+                        FcSnapshot {
+                            code: 6,
+                            count: 50,
+                            is_write: true,
+                        },
+                        FcSnapshot {
+                            code: 3,
+                            count: 200,
+                            is_write: false,
+                        },
+                    ],
+                    relationships: vec![],
+                    polling_intervals: vec![],
+                }),
+                ..Default::default()
+            },
+        );
 
         let findings = detect_t0855_unauthorized_writes(&input);
         assert!(!findings.is_empty());
@@ -901,24 +991,31 @@ mod tests {
     #[test]
     fn test_t0855_high_fanout() {
         let mut input = make_input();
-        let targets: Vec<RelationshipSnapshot> = (1..=6).map(|i| RelationshipSnapshot {
-            remote_ip: format!("10.0.0.{}", i),
-            remote_role: "slave".to_string(),
-            packet_count: 100,
-        }).collect();
+        let targets: Vec<RelationshipSnapshot> = (1..=6)
+            .map(|i| RelationshipSnapshot {
+                remote_ip: format!("10.0.0.{}", i),
+                remote_role: "slave".to_string(),
+                packet_count: 100,
+            })
+            .collect();
 
-        input.deep_parse.insert("10.0.0.100".to_string(), DeepParseSnapshot {
-            modbus: Some(ModbusSnapshot {
-                role: "master".to_string(),
-                unit_ids: vec![1, 2, 3],
-                function_codes: vec![
-                    FcSnapshot { code: 16, count: 100, is_write: true },
-                ],
-                relationships: targets,
-                polling_intervals: vec![],
-            }),
-            ..Default::default()
-        });
+        input.deep_parse.insert(
+            "10.0.0.100".to_string(),
+            DeepParseSnapshot {
+                modbus: Some(ModbusSnapshot {
+                    role: "master".to_string(),
+                    unit_ids: vec![1, 2, 3],
+                    function_codes: vec![FcSnapshot {
+                        code: 16,
+                        count: 100,
+                        is_write: true,
+                    }],
+                    relationships: targets,
+                    polling_intervals: vec![],
+                }),
+                ..Default::default()
+            },
+        );
 
         let findings = detect_t0855_unauthorized_writes(&input);
         assert!(findings.iter().any(|f| f.title.contains("fan-out")));
@@ -935,20 +1032,27 @@ mod tests {
             is_public_ip: false,
             tags: vec![],
             vendor: None,
+            hostname: None,
+            product_family: None,
         });
 
-        input.deep_parse.insert("10.0.0.50".to_string(), DeepParseSnapshot {
-            modbus: Some(ModbusSnapshot {
-                role: "master".to_string(),
-                unit_ids: vec![1],
-                function_codes: vec![
-                    FcSnapshot { code: 8, count: 10, is_write: false },
-                ],
-                relationships: vec![],
-                polling_intervals: vec![],
-            }),
-            ..Default::default()
-        });
+        input.deep_parse.insert(
+            "10.0.0.50".to_string(),
+            DeepParseSnapshot {
+                modbus: Some(ModbusSnapshot {
+                    role: "master".to_string(),
+                    unit_ids: vec![1],
+                    function_codes: vec![FcSnapshot {
+                        code: 8,
+                        count: 10,
+                        is_write: false,
+                    }],
+                    relationships: vec![],
+                    polling_intervals: vec![],
+                }),
+                ..Default::default()
+            },
+        );
 
         let findings = detect_t0814_diagnostic_dos(&input);
         assert_eq!(findings.len(), 1);
@@ -967,23 +1071,33 @@ mod tests {
             is_public_ip: false,
             tags: vec![],
             vendor: None,
+            hostname: None,
+            product_family: None,
         });
 
-        input.deep_parse.insert("10.0.0.50".to_string(), DeepParseSnapshot {
-            modbus: Some(ModbusSnapshot {
-                role: "master".to_string(),
-                unit_ids: vec![1],
-                function_codes: vec![
-                    FcSnapshot { code: 8, count: 10, is_write: false },
-                ],
-                relationships: vec![],
-                polling_intervals: vec![],
-            }),
-            ..Default::default()
-        });
+        input.deep_parse.insert(
+            "10.0.0.50".to_string(),
+            DeepParseSnapshot {
+                modbus: Some(ModbusSnapshot {
+                    role: "master".to_string(),
+                    unit_ids: vec![1],
+                    function_codes: vec![FcSnapshot {
+                        code: 8,
+                        count: 10,
+                        is_write: false,
+                    }],
+                    relationships: vec![],
+                    polling_intervals: vec![],
+                }),
+                ..Default::default()
+            },
+        );
 
         let findings = detect_t0814_diagnostic_dos(&input);
-        assert!(findings.is_empty(), "FC 8 from engineering workstation should not be flagged");
+        assert!(
+            findings.is_empty(),
+            "FC 8 from engineering workstation should not be flagged"
+        );
     }
 
     #[test]
@@ -991,21 +1105,26 @@ mod tests {
         let mut input = make_input();
 
         // Outstation sending unsolicited responses
-        input.deep_parse.insert("10.0.0.10".to_string(), DeepParseSnapshot {
-            dnp3: Some(Dnp3Snapshot {
-                role: "outstation".to_string(),
-                has_unsolicited: true,
-                function_codes: vec![
-                    FcSnapshot { code: 130, count: 5, is_write: false },
-                ],
-                relationships: vec![RelationshipSnapshot {
-                    remote_ip: "192.168.1.50".to_string(),
-                    remote_role: "master".to_string(),
-                    packet_count: 5,
-                }],
-            }),
-            ..Default::default()
-        });
+        input.deep_parse.insert(
+            "10.0.0.10".to_string(),
+            DeepParseSnapshot {
+                dnp3: Some(Dnp3Snapshot {
+                    role: "outstation".to_string(),
+                    has_unsolicited: true,
+                    function_codes: vec![FcSnapshot {
+                        code: 130,
+                        count: 5,
+                        is_write: false,
+                    }],
+                    relationships: vec![RelationshipSnapshot {
+                        remote_ip: "192.168.1.50".to_string(),
+                        remote_role: "master".to_string(),
+                        packet_count: 5,
+                    }],
+                }),
+                ..Default::default()
+            },
+        );
 
         let findings = detect_t0856_dnp3_unsolicited(&input);
         assert!(!findings.is_empty());
@@ -1026,6 +1145,8 @@ mod tests {
                 is_public_ip: false,
                 tags: vec![],
                 vendor: None,
+                hostname: None,
+                product_family: None,
             });
         }
 
@@ -1038,6 +1159,8 @@ mod tests {
             is_public_ip: false,
             tags: vec![],
             vendor: None,
+            hostname: None,
+            product_family: None,
         });
 
         // Scanner connecting to 3+ PLCs on Modbus port
@@ -1071,6 +1194,8 @@ mod tests {
             is_public_ip: false,
             tags: vec![],
             vendor: None,
+            hostname: None,
+            product_family: None,
         });
 
         for i in 1..=5 {
@@ -1082,6 +1207,8 @@ mod tests {
                 is_public_ip: false,
                 tags: vec![],
                 vendor: None,
+                hostname: None,
+                product_family: None,
             });
 
             input.connections.push(ConnectionSnapshot {
@@ -1095,21 +1222,27 @@ mod tests {
         }
 
         let findings = detect_t0846_remote_discovery(&input);
-        assert!(findings.is_empty(), "HMI polling PLCs should not trigger T0846");
+        assert!(
+            findings.is_empty(),
+            "HMI polling PLCs should not trigger T0846"
+        );
     }
 
     #[test]
     fn test_t0855_cip_write_assembly() {
         let mut input = make_input();
-        input.deep_parse.insert("10.0.0.50".to_string(), DeepParseSnapshot {
-            enip: Some(EnipSnapshot {
-                role: "scanner".to_string(),
-                cip_writes_to_assembly: true,
-                cip_file_access: false,
-                list_identity_requests: false,
-            }),
-            ..Default::default()
-        });
+        input.deep_parse.insert(
+            "10.0.0.50".to_string(),
+            DeepParseSnapshot {
+                enip: Some(EnipSnapshot {
+                    role: "scanner".to_string(),
+                    cip_writes_to_assembly: true,
+                    cip_file_access: false,
+                    list_identity_requests: false,
+                }),
+                ..Default::default()
+            },
+        );
 
         let findings = detect_enip_attacks(&input);
         assert_eq!(findings.len(), 1);
@@ -1120,15 +1253,18 @@ mod tests {
     #[test]
     fn test_t0836_cip_file_access() {
         let mut input = make_input();
-        input.deep_parse.insert("10.0.0.51".to_string(), DeepParseSnapshot {
-            enip: Some(EnipSnapshot {
-                role: "scanner".to_string(),
-                cip_writes_to_assembly: false,
-                cip_file_access: true,
-                list_identity_requests: false,
-            }),
-            ..Default::default()
-        });
+        input.deep_parse.insert(
+            "10.0.0.51".to_string(),
+            DeepParseSnapshot {
+                enip: Some(EnipSnapshot {
+                    role: "scanner".to_string(),
+                    cip_writes_to_assembly: false,
+                    cip_file_access: true,
+                    list_identity_requests: false,
+                }),
+                ..Default::default()
+            },
+        );
 
         let findings = detect_enip_attacks(&input);
         assert_eq!(findings.len(), 1);
@@ -1139,13 +1275,16 @@ mod tests {
     #[test]
     fn test_t0843_s7_download_start() {
         let mut input = make_input();
-        input.deep_parse.insert("10.0.0.20".to_string(), DeepParseSnapshot {
-            s7: Some(S7Snapshot {
-                role: "client".to_string(),
-                functions_seen: vec!["download_start".to_string()],
-            }),
-            ..Default::default()
-        });
+        input.deep_parse.insert(
+            "10.0.0.20".to_string(),
+            DeepParseSnapshot {
+                s7: Some(S7Snapshot {
+                    role: "client".to_string(),
+                    functions_seen: vec!["download_start".to_string()],
+                }),
+                ..Default::default()
+            },
+        );
 
         let findings = detect_s7_attacks(&input);
         assert_eq!(findings.len(), 1);
@@ -1156,13 +1295,16 @@ mod tests {
     #[test]
     fn test_t0816_s7_plc_stop() {
         let mut input = make_input();
-        input.deep_parse.insert("10.0.0.21".to_string(), DeepParseSnapshot {
-            s7: Some(S7Snapshot {
-                role: "client".to_string(),
-                functions_seen: vec!["plc_stop".to_string()],
-            }),
-            ..Default::default()
-        });
+        input.deep_parse.insert(
+            "10.0.0.21".to_string(),
+            DeepParseSnapshot {
+                s7: Some(S7Snapshot {
+                    role: "client".to_string(),
+                    functions_seen: vec!["plc_stop".to_string()],
+                }),
+                ..Default::default()
+            },
+        );
 
         let findings = detect_s7_attacks(&input);
         assert_eq!(findings.len(), 1);
@@ -1173,16 +1315,19 @@ mod tests {
     #[test]
     fn test_t0855_bacnet_write_output() {
         let mut input = make_input();
-        input.deep_parse.insert("10.0.0.30".to_string(), DeepParseSnapshot {
-            bacnet: Some(BacnetSnapshot {
-                role: "client".to_string(),
-                write_to_output: true,
-                write_to_notification_class: false,
-                reinitialize_device: false,
-                device_communication_control: false,
-            }),
-            ..Default::default()
-        });
+        input.deep_parse.insert(
+            "10.0.0.30".to_string(),
+            DeepParseSnapshot {
+                bacnet: Some(BacnetSnapshot {
+                    role: "client".to_string(),
+                    write_to_output: true,
+                    write_to_notification_class: false,
+                    reinitialize_device: false,
+                    device_communication_control: false,
+                }),
+                ..Default::default()
+            },
+        );
 
         let findings = detect_bacnet_attacks(&input);
         assert_eq!(findings.len(), 1);
@@ -1193,16 +1338,19 @@ mod tests {
     #[test]
     fn test_t0811_bacnet_comm_ctrl() {
         let mut input = make_input();
-        input.deep_parse.insert("10.0.0.31".to_string(), DeepParseSnapshot {
-            bacnet: Some(BacnetSnapshot {
-                role: "client".to_string(),
-                write_to_output: false,
-                write_to_notification_class: false,
-                reinitialize_device: false,
-                device_communication_control: true,
-            }),
-            ..Default::default()
-        });
+        input.deep_parse.insert(
+            "10.0.0.31".to_string(),
+            DeepParseSnapshot {
+                bacnet: Some(BacnetSnapshot {
+                    role: "client".to_string(),
+                    write_to_output: false,
+                    write_to_notification_class: false,
+                    reinitialize_device: false,
+                    device_communication_control: true,
+                }),
+                ..Default::default()
+            },
+        );
 
         let findings = detect_bacnet_attacks(&input);
         assert_eq!(findings.len(), 1);
@@ -1213,15 +1361,18 @@ mod tests {
     #[test]
     fn test_t0855_iec104_control_commands() {
         let mut input = make_input();
-        input.deep_parse.insert("10.0.0.40".to_string(), DeepParseSnapshot {
-            iec104: Some(Iec104Snapshot {
-                role: "master".to_string(),
-                has_control_commands: true,
-                has_reset_process: false,
-                has_interrogation: false,
-            }),
-            ..Default::default()
-        });
+        input.deep_parse.insert(
+            "10.0.0.40".to_string(),
+            DeepParseSnapshot {
+                iec104: Some(Iec104Snapshot {
+                    role: "master".to_string(),
+                    has_control_commands: true,
+                    has_reset_process: false,
+                    has_interrogation: false,
+                }),
+                ..Default::default()
+            },
+        );
 
         let findings = detect_iec104_attacks(&input);
         assert_eq!(findings.len(), 1);
@@ -1232,15 +1383,18 @@ mod tests {
     #[test]
     fn test_t0816_iec104_reset_process() {
         let mut input = make_input();
-        input.deep_parse.insert("10.0.0.41".to_string(), DeepParseSnapshot {
-            iec104: Some(Iec104Snapshot {
-                role: "master".to_string(),
-                has_control_commands: false,
-                has_reset_process: true,
-                has_interrogation: false,
-            }),
-            ..Default::default()
-        });
+        input.deep_parse.insert(
+            "10.0.0.41".to_string(),
+            DeepParseSnapshot {
+                iec104: Some(Iec104Snapshot {
+                    role: "master".to_string(),
+                    has_control_commands: false,
+                    has_reset_process: true,
+                    has_interrogation: false,
+                }),
+                ..Default::default()
+            },
+        );
 
         let findings = detect_iec104_attacks(&input);
         assert_eq!(findings.len(), 1);
@@ -1261,6 +1415,8 @@ mod tests {
                 is_public_ip: false,
                 tags: vec![],
                 vendor: None,
+                hostname: None,
+                product_family: None,
             });
         }
         // 1 device on different subnet
@@ -1272,6 +1428,8 @@ mod tests {
             is_public_ip: false,
             tags: vec![],
             vendor: None,
+            hostname: None,
+            product_family: None,
         });
 
         let findings = detect_flat_network(&input);
@@ -1291,9 +1449,14 @@ mod tests {
                 is_public_ip: false,
                 tags: vec![],
                 vendor: None,
+                hostname: None,
+                product_family: None,
             });
         }
         let findings = detect_flat_network(&input);
-        assert!(findings.is_empty(), "too few devices should not trigger flat network");
+        assert!(
+            findings.is_empty(),
+            "too few devices should not trigger flat network"
+        );
     }
 }

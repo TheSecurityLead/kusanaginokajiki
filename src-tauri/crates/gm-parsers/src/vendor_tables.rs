@@ -57,6 +57,22 @@ pub fn profinet_vendor_name(vendor_id: u16) -> &'static str {
     }
 }
 
+/// Look up PROFINET device product name from vendor_id + device_id.
+///
+/// Currently covers Siemens SCALANCE product lines. Returns `None` if the
+/// combination is not a known device.
+pub fn profinet_device_name(vendor_id: u16, device_id: u16) -> Option<&'static str> {
+    match (vendor_id, device_id) {
+        // Siemens SCALANCE industrial network infrastructure
+        (0x002A, 0x0203) => Some("Siemens SCALANCE X200 series"),
+        (0x002A, 0x0204) => Some("Siemens SCALANCE X300 series"),
+        (0x002A, 0x0207) => Some("Siemens SCALANCE X400 series"),
+        (0x002A, 0x020B) => Some("Siemens SCALANCE XR500 series"),
+        (0x002A, 0x0209) => Some("Siemens SCALANCE W700 series"),
+        _ => None,
+    }
+}
+
 /// Look up BACnet vendor name from ASHRAE-assigned vendor ID.
 /// Used for BACnet I-Am broadcasts.
 pub fn bacnet_vendor_name(vendor_id: u16) -> &'static str {
@@ -106,6 +122,28 @@ mod tests {
     #[test]
     fn test_profinet_unknown_vendor() {
         assert_eq!(profinet_vendor_name(0xFFFF), "Unknown Vendor");
+    }
+
+    #[test]
+    fn test_profinet_device_name_scalance() {
+        assert_eq!(
+            profinet_device_name(0x002A, 0x0203),
+            Some("Siemens SCALANCE X200 series")
+        );
+        assert_eq!(
+            profinet_device_name(0x002A, 0x020B),
+            Some("Siemens SCALANCE XR500 series")
+        );
+        assert_eq!(
+            profinet_device_name(0x002A, 0x0209),
+            Some("Siemens SCALANCE W700 series")
+        );
+    }
+
+    #[test]
+    fn test_profinet_device_name_unknown() {
+        assert_eq!(profinet_device_name(0x002A, 0xFFFF), None);
+        assert_eq!(profinet_device_name(0x0019, 0x0001), None);
     }
 
     #[test]

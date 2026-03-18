@@ -15,41 +15,48 @@
 //! They never modify state directly — the caller (commands layer) merges
 //! results back into AppState.
 
-pub mod attack;
-pub mod purdue;
-pub mod anomaly;
-pub mod error;
-pub mod default_creds;
-pub mod risk;
-pub mod naming;
-pub mod comm_patterns;
-pub mod infrastructure;
-pub mod switch_security;
-pub mod context_attacks;
-pub mod malware_patterns;
 pub mod allowlist;
+pub mod anomaly;
+pub mod attack;
+pub mod comm_patterns;
 pub mod compliance;
+pub mod context_attacks;
 pub mod cve_matcher;
+pub mod default_creds;
+pub mod error;
+pub mod infrastructure;
+pub mod malware_patterns;
+pub mod naming;
+pub mod purdue;
+pub mod risk;
+pub mod switch_security;
 
 pub use context_attacks::CaptureContext;
 
-pub use infrastructure::{InfrastructureRole, classify_infrastructure};
-pub use switch_security::{
-    SwitchFindingType, SwitchSecurityFinding, SwitchSecurityInput, assess_switch_security,
+pub use allowlist::{allowlist_to_csv, format_firewall_rules, generate_allowlist, AllowlistEntry};
+pub use compliance::{
+    generate_compliance_report, supported_frameworks, ComplianceMapping, ComplianceStatus,
 };
-pub use malware_patterns::{MalwareFinding, MalwarePattern, detect_malware_patterns, load_malware_patterns};
-pub use allowlist::{AllowlistEntry, generate_allowlist, allowlist_to_csv, format_firewall_rules};
-pub use compliance::{ComplianceMapping, ComplianceStatus, generate_compliance_report, supported_frameworks};
 pub use cve_matcher::{CveMatch, CveMatcher};
+pub use infrastructure::{classify_infrastructure, InfrastructureRole};
+pub use malware_patterns::{
+    detect_malware_patterns, load_malware_patterns, MalwareFinding, MalwarePattern,
+};
+pub use switch_security::{
+    assess_switch_security, SwitchFindingType, SwitchSecurityFinding, SwitchSecurityInput,
+};
 
-use serde::{Serialize, Deserialize};
-use uuid::Uuid;
 use chrono::Utc;
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
-pub use default_creds::{DefaultCredential, CredentialChecker};
-pub use risk::{CriticalityLevel, CriticalityAssessment, assess_criticality, assess_all as assess_criticality_all};
-pub use naming::{NamingSuggestion, suggest_name, suggest_all as suggest_names_all};
-pub use comm_patterns::{ConnectionStats, PatternAnomaly, PatternAnomalyType, PatternAnalyzer};
+pub use comm_patterns::{ConnectionStats, PatternAnalyzer, PatternAnomaly, PatternAnomalyType};
+pub use default_creds::{CredentialChecker, DefaultCredential};
+pub use naming::{suggest_all as suggest_names_all, suggest_name, NamingSuggestion};
+pub use risk::{
+    assess_all as assess_criticality_all, assess_criticality, CriticalityAssessment,
+    CriticalityLevel,
+};
 
 /// A security finding produced by analysis.
 ///
@@ -199,6 +206,10 @@ pub struct AssetSnapshot {
     pub is_public_ip: bool,
     pub tags: Vec<String>,
     pub vendor: Option<String>,
+    /// Hostname from LLDP system_name or SNMP sysName (e.g., "scalance-xm408").
+    pub hostname: Option<String>,
+    /// Product family from signatures or LLDP model (e.g., "SCALANCE XM408-8C").
+    pub product_family: Option<String>,
 }
 
 /// Minimal connection data needed for analysis.
@@ -385,11 +396,15 @@ pub fn run_full_analysis(input: &AnalysisInput, ctx: &CaptureContext) -> Analysi
     findings.sort_by(|a, b| b.severity.cmp(&a.severity));
 
     // Compute unencrypted OT percentage
-    let total_ot_packets: u64 = input.connections.iter()
+    let total_ot_packets: u64 = input
+        .connections
+        .iter()
         .filter(|c| is_ot_protocol(&c.protocol))
         .map(|c| c.packet_count)
         .sum();
-    let encrypted_ot_packets: u64 = input.connections.iter()
+    let encrypted_ot_packets: u64 = input
+        .connections
+        .iter()
         .filter(|c| c.protocol == "Https" || c.protocol == "Ssh")
         .map(|c| c.packet_count)
         .sum();
@@ -403,12 +418,30 @@ pub fn run_full_analysis(input: &AnalysisInput, ctx: &CaptureContext) -> Analysi
     // Build summary
     let summary = AnalysisSummary {
         total_findings: findings.len(),
-        critical_count: findings.iter().filter(|f| f.severity == Severity::Critical).count(),
-        high_count: findings.iter().filter(|f| f.severity == Severity::High).count(),
-        medium_count: findings.iter().filter(|f| f.severity == Severity::Medium).count(),
-        low_count: findings.iter().filter(|f| f.severity == Severity::Low).count(),
-        info_count: findings.iter().filter(|f| f.severity == Severity::Info).count(),
-        purdue_violations: findings.iter().filter(|f| f.finding_type == FindingType::PurdueViolation).count(),
+        critical_count: findings
+            .iter()
+            .filter(|f| f.severity == Severity::Critical)
+            .count(),
+        high_count: findings
+            .iter()
+            .filter(|f| f.severity == Severity::High)
+            .count(),
+        medium_count: findings
+            .iter()
+            .filter(|f| f.severity == Severity::Medium)
+            .count(),
+        low_count: findings
+            .iter()
+            .filter(|f| f.severity == Severity::Low)
+            .count(),
+        info_count: findings
+            .iter()
+            .filter(|f| f.severity == Severity::Info)
+            .count(),
+        purdue_violations: findings
+            .iter()
+            .filter(|f| f.finding_type == FindingType::PurdueViolation)
+            .count(),
         anomaly_count: anomalies.len(),
         assets_analyzed: input.assets.len(),
         connections_analyzed: input.connections.len(),
@@ -427,9 +460,19 @@ pub fn run_full_analysis(input: &AnalysisInput, ctx: &CaptureContext) -> Analysi
 fn is_ot_protocol(proto: &str) -> bool {
     matches!(
         proto,
-        "Modbus" | "Dnp3" | "EthernetIp" | "Bacnet" | "S7comm"
-            | "OpcUa" | "Profinet" | "Iec104" | "Mqtt" | "HartIp"
-            | "FoundationFieldbus" | "GeSrtp" | "WonderwareSuitelink"
+        "Modbus"
+            | "Dnp3"
+            | "EthernetIp"
+            | "Bacnet"
+            | "S7comm"
+            | "OpcUa"
+            | "Profinet"
+            | "Iec104"
+            | "Mqtt"
+            | "HartIp"
+            | "FoundationFieldbus"
+            | "GeSrtp"
+            | "WonderwareSuitelink"
     )
 }
 

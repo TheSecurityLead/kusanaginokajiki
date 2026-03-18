@@ -1,7 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::sync::Mutex;
 use clap::Parser;
+use std::sync::Mutex;
 use tauri::Manager;
 
 mod commands;
@@ -58,7 +58,9 @@ fn main() {
                     let inner = state.inner.lock();
                     if let Ok(mut inner) = inner {
                         match import_pcap_file(path, &mut inner) {
-                            Ok(count) => log::info!("CLI: imported {} packets from {}", count, path),
+                            Ok(count) => {
+                                log::info!("CLI: imported {} packets from {}", count, path)
+                            }
                             Err(e) => log::error!("CLI: failed to import {}: {}", path, e),
                         }
                     }
@@ -72,7 +74,9 @@ fn main() {
                         let inner = state.inner.lock();
                         if let Ok(mut inner) = inner {
                             match import_pcap_file(path, &mut inner) {
-                                Ok(count) => log::info!("CLI: imported {} packets from {}", count, path),
+                                Ok(count) => {
+                                    log::info!("CLI: imported {} packets from {}", count, path)
+                                }
                                 Err(e) => log::error!("CLI: failed to import {}: {}", path, e),
                             }
                         }
@@ -194,6 +198,9 @@ fn main() {
             commands::projects::delete_project,
             commands::projects::set_active_project,
             commands::projects::clear_active_project,
+            // Microsegmentation (Phase 15)
+            commands::segmentation::run_segmentation,
+            commands::segmentation::export_enforcement_config,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -203,10 +210,7 @@ fn main() {
 struct CliArgs(Mutex<Cli>);
 
 /// Import a PCAP file into the current state (used by CLI).
-fn import_pcap_file(
-    path: &str,
-    inner: &mut commands::AppStateInner,
-) -> Result<usize, String> {
+fn import_pcap_file(path: &str, inner: &mut commands::AppStateInner) -> Result<usize, String> {
     use gm_capture::PcapReader;
 
     let reader = PcapReader::new();

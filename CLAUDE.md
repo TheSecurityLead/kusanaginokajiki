@@ -12,14 +12,25 @@
 | `docs/PROJECT-REQUIREMENTS.md` | Phase tracking, deliverables, test counts |
 | `docs/PRODUCT-REQUIREMENTS.md` | Feature specs, ATT&CK detections, protocol matrix |
 | `docs/PROTOCOL-DEEP-PARSE.md` | Wire formats, Rust structs, test payloads |
-| `docs/knk-feature-roadmap.md` | Full roadmap, competitive analysis, implementation sketches |
+| `docs/CHANGELOG.md` | Phase-by-phase delivery history |
 
 ## Current State
 
-Phases 0–12 complete. Phase 13 (feature expansion) in progress.
+**Phases 0–15E complete. 431 tests passing. 95 Tauri commands. 31 YAML signatures. 10 deep-parsed protocols. 28k+ lines across 11 Rust crates.**
 
-**Phase 13A (Quick Wins):** Default creds, remediation priority, flat network detection, encryption audit, Wireshark filters, capture summary, SNMP strings, internet exposure, device naming, criticality scoring.
-**Phase 13B (Next Release):** Purdue layered layout, communication patterns, project management.
+### Phase 15 — Microsegmentation Recommendation Engine
+
+> Identity groups, IEC 62443 zones/conduits, enforcement configs, policy simulation
+
+- gm-segmentation crate (11th): SegmentationInput/AssetProfile/ObservedConnection decoupled from Tauri state
+- 15A: Identity Group Engine — clusters by Purdue level, role, vendor, communication community
+- 15B: Zone/Conduit Recommender — IEC 62443 zone boundaries, conduit definitions, flat network detection, compliance.rs integration
+- 15C: Least-Privilege Matrix — per-zone-pair allow rules with risk classification, extends allowlist.rs
+- 15D: Enforcement Export — Cisco IOS ACL, Cisco ASA, generic firewall, Suricata rules, JSON policy
+- 15E: Policy Simulation — replay traffic vs policy, risk reduction scoring, false positive detection via comm_patterns.rs
+- SegmentationView.svelte: 5 tabs (Policy Groups, Zones, Matrix, Enforcement, Simulation)
+- Commands: run_segmentation, export_enforcement_config
+- Consumes: purdue.rs, risk.rs, infrastructure.rs, comm_patterns.rs, allowlist.rs, compliance.rs
 
 ## Rules
 
@@ -30,8 +41,8 @@ Phases 0–12 complete. Phase 13 (feature expansion) in progress.
 
 ## File Map
 
-**Backend:** `src-tauri/src/commands/` (system, capture, processor, data, signatures, session, baseline, physical, ingest, wireshark, export, analysis) + `src-tauri/crates/` (gm-capture, gm-parsers, gm-signatures, gm-topology, gm-db, gm-physical, gm-ingest, gm-report, gm-analysis)
-**Frontend:** `src/lib/components/`, `src/lib/types/index.ts`, `src/lib/stores/index.ts`, `src/lib/utils/tauri.ts`
+**Backend:** `src-tauri/src/commands/` (system, capture, processor, data, signatures, session, baseline, physical, ingest, wireshark, export, analysis, correlation, patterns, projects, segmentation) + `src-tauri/crates/` (gm-capture, gm-parsers, gm-signatures, gm-topology, gm-db, gm-physical, gm-ingest, gm-report, gm-analysis, gm-segmentation)
+**Frontend:** `src/lib/components/` (20 views), `src/lib/layouts/purdueLayout.ts`, `src/lib/types/index.ts`, `src/lib/stores/index.ts`, `src/lib/utils/tauri.ts`
 
 ## Pitfalls
 
@@ -40,10 +51,14 @@ Phases 0–12 complete. Phase 13 (feature expansion) in progress.
 - Plugin config: `null` not `{}` in tauri.conf.json
 - Build order: `npm run build` before `cargo check`
 - DB: `~/.kusanaginokajiki/data.db`, rusqlite bundled, WAL mode
+- gm-segmentation: Consumes purdue.rs, risk.rs, comm_patterns.rs, allowlist.rs, compliance.rs outputs. No crate dependency on gm-analysis.
+- Enforcement configs: Cisco ACL names sanitized uppercase. Suricata SIDs start 9000001.
+- Zone score: 1.0 = perfect segmentation, 0.0 = flat. Cross-Purdue violation ratio.
+- SCALANCE detection: classify_scalance_model() in infrastructure.rs classifies by model prefix (X→Switch, W→AP, M→Router, S→Firewall). AssetSnapshot has hostname + product_family fields for LLDP/SNMP enrichment.
 
 ## Protocols
 
-7 deep-parsed: Modbus, DNP3, EtherNet/IP, S7comm, BACnet, IEC 104, PROFINET DCP. 19 total detected by port+signature.
+10 deep-parsed: Modbus, DNP3, EtherNet/IP, S7comm, BACnet, IEC 104, PROFINET DCP, LLDP, SNMP, Redundancy (MRP/RSTP/HSR/PRP/DLR). 19+ total detected by port+signature.
 
 ## Build
 

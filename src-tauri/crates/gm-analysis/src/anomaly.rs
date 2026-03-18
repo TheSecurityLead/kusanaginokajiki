@@ -7,10 +7,7 @@
 //! - **New device**: Previously unseen device on OT subnet
 //! - **Unexpected public IP**: Public routable IP on OT network
 
-use crate::{
-    AnalysisInput, AnomalyScore, AnomalyType, Severity,
-    Finding, FindingType,
-};
+use crate::{AnalysisInput, AnomalyScore, AnomalyType, Finding, FindingType, Severity};
 
 /// Run anomaly detection on the analysis input.
 ///
@@ -63,8 +60,18 @@ fn detect_polling_deviations(input: &AnalysisInput) -> (Vec<AnomalyScore>, Vec<F
 
             if cv > 0.5 {
                 // High variation — flag as anomaly
-                let confidence = if cv > 2.0 { 0.9 } else if cv > 1.0 { 0.7 } else { 0.5 };
-                let severity = if cv > 2.0 { Severity::High } else { Severity::Medium };
+                let confidence = if cv > 2.0 {
+                    0.9
+                } else if cv > 1.0 {
+                    0.7
+                } else {
+                    0.5
+                };
+                let severity = if cv > 2.0 {
+                    Severity::High
+                } else {
+                    Severity::Medium
+                };
 
                 anomalies.push(AnomalyScore {
                     anomaly_type: AnomalyType::PollingDeviation,
@@ -73,8 +80,7 @@ fn detect_polling_deviations(input: &AnalysisInput) -> (Vec<AnomalyScore>, Vec<F
                     affected_asset: ip.clone(),
                     evidence: format!(
                         "Polling from {} to {} (FC {}): avg={:.1}ms, range={:.1}ms, CV={:.2}",
-                        ip, pi.remote_ip, pi.function_code,
-                        pi.avg_interval_ms, range, cv
+                        ip, pi.remote_ip, pi.function_code, pi.avg_interval_ms, range, cv
                     ),
                 });
 
@@ -89,13 +95,18 @@ fn detect_polling_deviations(input: &AnalysisInput) -> (Vec<AnomalyScore>, Vec<F
                              should be consistent. High variation may indicate \
                              timing attacks, network instability, or unauthorized \
                              intermittent access.",
-                            ip, pi.remote_ip, cv * 100.0
+                            ip,
+                            pi.remote_ip,
+                            cv * 100.0
                         ),
                         vec![ip.clone(), pi.remote_ip.clone()],
                         format!(
                             "FC {} polling: avg={:.1}ms, min={:.1}ms, max={:.1}ms ({} samples)",
-                            pi.function_code, pi.avg_interval_ms,
-                            pi.min_interval_ms, pi.max_interval_ms, pi.sample_count
+                            pi.function_code,
+                            pi.avg_interval_ms,
+                            pi.min_interval_ms,
+                            pi.max_interval_ms,
+                            pi.sample_count
                         ),
                         None,
                     ));
@@ -118,7 +129,9 @@ fn detect_role_reversals(input: &AnalysisInput) -> (Vec<AnomalyScore>, Vec<Findi
         if let Some(ref modbus) = dp.modbus {
             if modbus.role == "slave" {
                 // Check if this slave sends master-like commands
-                let has_master_fcs = modbus.function_codes.iter()
+                let has_master_fcs = modbus
+                    .function_codes
+                    .iter()
                     .any(|fc| matches!(fc.code, 1..=6 | 15 | 16));
 
                 if has_master_fcs {
@@ -139,12 +152,15 @@ fn detect_role_reversals(input: &AnalysisInput) -> (Vec<AnomalyScore>, Vec<Findi
                         format!("Modbus role reversal: slave {} acting as master", ip),
                         "A device classified as a Modbus slave (responder) is sending \
                          master function codes (read/write requests). This could indicate \
-                         a compromised device or misconfigured network.".to_string(),
+                         a compromised device or misconfigured network."
+                            .to_string(),
                         vec![ip.clone()],
                         format!(
                             "Device {} (role: slave) sending master FCs: {}",
                             ip,
-                            modbus.function_codes.iter()
+                            modbus
+                                .function_codes
+                                .iter()
                                 .filter(|fc| matches!(fc.code, 1..=6 | 15 | 16))
                                 .map(|fc| format!("FC {} ({}x)", fc.code, fc.count))
                                 .collect::<Vec<_>>()
@@ -160,7 +176,9 @@ fn detect_role_reversals(input: &AnalysisInput) -> (Vec<AnomalyScore>, Vec<Findi
         if let Some(ref dnp3) = dp.dnp3 {
             if dnp3.role == "outstation" && dnp3.has_unsolicited {
                 // Check if the outstation also sends master commands
-                let has_master_fcs = dnp3.function_codes.iter()
+                let has_master_fcs = dnp3
+                    .function_codes
+                    .iter()
                     .any(|fc| matches!(fc.code, 1..=6));
 
                 if has_master_fcs {
@@ -169,10 +187,7 @@ fn detect_role_reversals(input: &AnalysisInput) -> (Vec<AnomalyScore>, Vec<Findi
                         severity: Severity::High,
                         confidence: 0.7,
                         affected_asset: ip.clone(),
-                        evidence: format!(
-                            "DNP3 outstation {} sending master function codes",
-                            ip
-                        ),
+                        evidence: format!("DNP3 outstation {} sending master function codes", ip),
                     });
                 }
             }
@@ -196,8 +211,7 @@ fn detect_unexpected_public_ips(input: &AnalysisInput) -> (Vec<AnomalyScore>, Ve
             continue;
         }
 
-        let has_ot = asset.protocols.iter()
-            .any(|p| is_ot_protocol_name(p));
+        let has_ot = asset.protocols.iter().any(|p| is_ot_protocol_name(p));
 
         if has_ot {
             anomalies.push(AnomalyScore {
@@ -241,9 +255,19 @@ fn detect_unexpected_public_ips(input: &AnalysisInput) -> (Vec<AnomalyScore>, Ve
 fn is_ot_protocol_name(name: &str) -> bool {
     matches!(
         name,
-        "modbus" | "dnp3" | "ethernet_ip" | "bacnet" | "s7comm"
-            | "opc_ua" | "profinet" | "iec104" | "mqtt" | "hart_ip"
-            | "foundation_fieldbus" | "ge_srtp" | "wonderware_suitelink"
+        "modbus"
+            | "dnp3"
+            | "ethernet_ip"
+            | "bacnet"
+            | "s7comm"
+            | "opc_ua"
+            | "profinet"
+            | "iec104"
+            | "mqtt"
+            | "hart_ip"
+            | "foundation_fieldbus"
+            | "ge_srtp"
+            | "wonderware_suitelink"
     )
 }
 
@@ -255,23 +279,30 @@ mod tests {
     #[test]
     fn test_polling_deviation_high_cv() {
         let mut input = AnalysisInput::default();
-        input.deep_parse.insert("10.0.0.1".to_string(), DeepParseSnapshot {
-            modbus: Some(ModbusSnapshot {
-                role: "master".to_string(),
-                unit_ids: vec![1],
-                function_codes: vec![FcSnapshot { code: 3, count: 100, is_write: false }],
-                relationships: vec![],
-                polling_intervals: vec![PollingSnapshot {
-                    remote_ip: "10.0.0.2".to_string(),
-                    function_code: 3,
-                    avg_interval_ms: 1000.0,
-                    min_interval_ms: 100.0,
-                    max_interval_ms: 5000.0,
-                    sample_count: 50,
-                }],
-            }),
-            ..Default::default()
-        });
+        input.deep_parse.insert(
+            "10.0.0.1".to_string(),
+            DeepParseSnapshot {
+                modbus: Some(ModbusSnapshot {
+                    role: "master".to_string(),
+                    unit_ids: vec![1],
+                    function_codes: vec![FcSnapshot {
+                        code: 3,
+                        count: 100,
+                        is_write: false,
+                    }],
+                    relationships: vec![],
+                    polling_intervals: vec![PollingSnapshot {
+                        remote_ip: "10.0.0.2".to_string(),
+                        function_code: 3,
+                        avg_interval_ms: 1000.0,
+                        min_interval_ms: 100.0,
+                        max_interval_ms: 5000.0,
+                        sample_count: 50,
+                    }],
+                }),
+                ..Default::default()
+            },
+        );
 
         let (anomalies, findings) = detect_polling_deviations(&input);
         assert!(!anomalies.is_empty());
@@ -282,44 +313,65 @@ mod tests {
     #[test]
     fn test_stable_polling_no_anomaly() {
         let mut input = AnalysisInput::default();
-        input.deep_parse.insert("10.0.0.1".to_string(), DeepParseSnapshot {
-            modbus: Some(ModbusSnapshot {
-                role: "master".to_string(),
-                unit_ids: vec![1],
-                function_codes: vec![FcSnapshot { code: 3, count: 100, is_write: false }],
-                relationships: vec![],
-                polling_intervals: vec![PollingSnapshot {
-                    remote_ip: "10.0.0.2".to_string(),
-                    function_code: 3,
-                    avg_interval_ms: 1000.0,
-                    min_interval_ms: 990.0,
-                    max_interval_ms: 1010.0,
-                    sample_count: 50,
-                }],
-            }),
-            ..Default::default()
-        });
+        input.deep_parse.insert(
+            "10.0.0.1".to_string(),
+            DeepParseSnapshot {
+                modbus: Some(ModbusSnapshot {
+                    role: "master".to_string(),
+                    unit_ids: vec![1],
+                    function_codes: vec![FcSnapshot {
+                        code: 3,
+                        count: 100,
+                        is_write: false,
+                    }],
+                    relationships: vec![],
+                    polling_intervals: vec![PollingSnapshot {
+                        remote_ip: "10.0.0.2".to_string(),
+                        function_code: 3,
+                        avg_interval_ms: 1000.0,
+                        min_interval_ms: 990.0,
+                        max_interval_ms: 1010.0,
+                        sample_count: 50,
+                    }],
+                }),
+                ..Default::default()
+            },
+        );
 
         let (anomalies, _) = detect_polling_deviations(&input);
-        assert!(anomalies.is_empty(), "Stable polling should not trigger anomaly");
+        assert!(
+            anomalies.is_empty(),
+            "Stable polling should not trigger anomaly"
+        );
     }
 
     #[test]
     fn test_role_reversal_modbus() {
         let mut input = AnalysisInput::default();
-        input.deep_parse.insert("10.0.0.5".to_string(), DeepParseSnapshot {
-            modbus: Some(ModbusSnapshot {
-                role: "slave".to_string(),
-                unit_ids: vec![1],
-                function_codes: vec![
-                    FcSnapshot { code: 3, count: 10, is_write: false },
-                    FcSnapshot { code: 6, count: 5, is_write: true },
-                ],
-                relationships: vec![],
-                polling_intervals: vec![],
-            }),
-            ..Default::default()
-        });
+        input.deep_parse.insert(
+            "10.0.0.5".to_string(),
+            DeepParseSnapshot {
+                modbus: Some(ModbusSnapshot {
+                    role: "slave".to_string(),
+                    unit_ids: vec![1],
+                    function_codes: vec![
+                        FcSnapshot {
+                            code: 3,
+                            count: 10,
+                            is_write: false,
+                        },
+                        FcSnapshot {
+                            code: 6,
+                            count: 5,
+                            is_write: true,
+                        },
+                    ],
+                    relationships: vec![],
+                    polling_intervals: vec![],
+                }),
+                ..Default::default()
+            },
+        );
 
         let (anomalies, findings) = detect_role_reversals(&input);
         assert!(!anomalies.is_empty());
@@ -338,6 +390,8 @@ mod tests {
             is_public_ip: true,
             tags: vec![],
             vendor: None,
+            hostname: None,
+            product_family: None,
         });
 
         let (anomalies, findings) = detect_unexpected_public_ips(&input);
@@ -357,9 +411,14 @@ mod tests {
             is_public_ip: true,
             tags: vec![],
             vendor: None,
+            hostname: None,
+            product_family: None,
         });
 
         let (anomalies, _) = detect_unexpected_public_ips(&input);
-        assert!(anomalies.is_empty(), "Public IT-only IP should not be flagged");
+        assert!(
+            anomalies.is_empty(),
+            "Public IT-only IP should not be flagged"
+        );
     }
 }

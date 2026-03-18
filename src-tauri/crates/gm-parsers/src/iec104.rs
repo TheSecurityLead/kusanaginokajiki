@@ -400,18 +400,14 @@ pub fn parse(payload: &[u8]) -> Option<Iec104Info> {
 
             // ASDU[6..9]: First IOA — 3-byte little-endian address
             let first_ioa = if asdu.len() >= 9 {
-                Some(
-                    asdu[6] as u32
-                        | (asdu[7] as u32) << 8
-                        | (asdu[8] as u32) << 16,
-                )
+                Some(asdu[6] as u32 | (asdu[7] as u32) << 8 | (asdu[8] as u32) << 16)
             } else {
                 None
             };
 
             // Classify as command (master→outstation) or monitoring (outstation→master)
-            let is_command = (45..=69).contains(&type_id_byte)
-                || (100..=107).contains(&type_id_byte);
+            let is_command =
+                (45..=69).contains(&type_id_byte) || (100..=107).contains(&type_id_byte);
             let is_monitor = (1..=44).contains(&type_id_byte);
 
             let role = if is_command {

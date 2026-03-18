@@ -43,21 +43,21 @@ pub enum RedundancyProtocol {
 impl RedundancyProtocol {
     pub fn as_str(self) -> &'static str {
         match self {
-            Self::Mrp  => "MRP",
+            Self::Mrp => "MRP",
             Self::Rstp => "RSTP",
-            Self::Hsr  => "HSR",
-            Self::Prp  => "PRP",
-            Self::Dlr  => "DLR",
+            Self::Hsr => "HSR",
+            Self::Prp => "PRP",
+            Self::Dlr => "DLR",
         }
     }
     /// Protocol hint string used in the synthetic src_ip field.
     pub fn hint(self) -> &'static str {
         match self {
-            Self::Mrp  => "mrp",
+            Self::Mrp => "mrp",
             Self::Rstp => "rstp",
-            Self::Hsr  => "hsr",
-            Self::Prp  => "prp",
-            Self::Dlr  => "dlr",
+            Self::Hsr => "hsr",
+            Self::Prp => "prp",
+            Self::Dlr => "dlr",
         }
     }
 }
@@ -162,10 +162,10 @@ pub fn detect_protocol(raw_data: &[u8]) -> Option<RedundancyProtocol> {
 pub fn parse(payload: &[u8], proto_hint: &str, source_mac: &str) -> Option<RedundancyInfo> {
     match proto_hint {
         "rstp" => parse_rstp(payload, source_mac),
-        "mrp"  => parse_mrp(payload, source_mac),
-        "hsr"  => parse_hsr(payload, source_mac),
-        "prp"  => parse_prp(payload, source_mac),
-        "dlr"  => parse_dlr(payload, source_mac),
+        "mrp" => parse_mrp(payload, source_mac),
+        "hsr" => parse_hsr(payload, source_mac),
+        "prp" => parse_prp(payload, source_mac),
+        "dlr" => parse_dlr(payload, source_mac),
         _ => None,
     }
 }
@@ -213,7 +213,8 @@ fn parse_rstp(payload: &[u8], source_mac: &str) -> Option<RedundancyInfo> {
             ring_id: None,
             priority: None,
             source_mac: source_mac.to_string(),
-            details: "RSTP Topology Change Notification (TCN) — link flap or new device".to_string(),
+            details: "RSTP Topology Change Notification (TCN) — link flap or new device"
+                .to_string(),
             is_manager: false,
             topology_change: true,
         });
@@ -229,7 +230,7 @@ fn parse_rstp(payload: &[u8], source_mac: &str) -> Option<RedundancyInfo> {
         0x01 => "alternate/backup",
         0x02 => "root",
         0x03 => "designated",
-        _    => "unknown",
+        _ => "unknown",
     };
 
     let (root_priority, root_mac, bridge_priority, is_root) = if payload.len() >= 30 {
@@ -237,8 +238,12 @@ fn parse_rstp(payload: &[u8], source_mac: &str) -> Option<RedundancyInfo> {
         let root_mac_bytes = &payload[10..16];
         let root_mac_str = format!(
             "{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
-            root_mac_bytes[0], root_mac_bytes[1], root_mac_bytes[2],
-            root_mac_bytes[3], root_mac_bytes[4], root_mac_bytes[5]
+            root_mac_bytes[0],
+            root_mac_bytes[1],
+            root_mac_bytes[2],
+            root_mac_bytes[3],
+            root_mac_bytes[4],
+            root_mac_bytes[5]
         );
         let bridge_prio = u16::from_be_bytes([payload[20], payload[21]]);
         // This device is root if its MAC matches the root bridge MAC
@@ -249,15 +254,15 @@ fn parse_rstp(payload: &[u8], source_mac: &str) -> Option<RedundancyInfo> {
     };
 
     let proto_name = if version == 0x02 { "RSTP" } else { "STP" };
-    let role = if is_root {
-        "root-bridge"
-    } else {
-        port_role
-    };
+    let role = if is_root { "root-bridge" } else { port_role };
 
     let details = format!(
         "{} BPDU: port-role={} root={} root-prio={} bridge-prio={}{}",
-        proto_name, port_role, root_mac, root_priority, bridge_priority,
+        proto_name,
+        port_role,
+        root_mac,
+        root_priority,
+        bridge_priority,
         if tc_flag { " [TC]" } else { "" }
     );
 
@@ -345,7 +350,11 @@ fn parse_mrp(payload: &[u8], source_mac: &str) -> Option<RedundancyInfo> {
         }
         0x0003 | 0x0004 => {
             // MRP_LinkDown / MRP_LinkUp: sent by Ring Clients (normal switches)
-            let event = if pdu_type == 0x0003 { "LinkDown" } else { "LinkUp" };
+            let event = if pdu_type == 0x0003 {
+                "LinkDown"
+            } else {
+                "LinkUp"
+            };
             Some(RedundancyInfo {
                 protocol: RedundancyProtocol::Mrp,
                 role: Some("ring-client".to_string()),
@@ -618,7 +627,7 @@ mod tests {
     #[test]
     fn test_parse_rstp_root_bridge() {
         let frame = build_rstp_frame(0x02, 0x0C, true); // Root device, designated port
-        // Payload = frame[14..]
+                                                        // Payload = frame[14..]
         let payload = &frame[14..];
         let src_mac = "aa:bb:cc:00:00:01";
         let info = parse_rstp(payload, src_mac).expect("should parse RSTP root bridge");

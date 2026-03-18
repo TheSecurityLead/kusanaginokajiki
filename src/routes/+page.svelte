@@ -19,6 +19,7 @@
 	import AnalysisView from '$lib/components/AnalysisView.svelte';
 	import CommunicationPatterns from '$lib/components/CommunicationPatterns.svelte';
 	import ProjectsView from '$lib/components/ProjectsView.svelte';
+	import SegmentationView from '$lib/components/SegmentationView.svelte';
 
 	let showTree = $state(true);
 
@@ -152,6 +153,8 @@
 	<CommunicationPatterns />
 {:else if $activeTab === 'analysis'}
 	<AnalysisView />
+{:else if $activeTab === 'segmentation'}
+	<SegmentationView />
 {:else if $activeTab === 'export'}
 	<ExportView />
 {:else if $activeTab === 'signatures'}

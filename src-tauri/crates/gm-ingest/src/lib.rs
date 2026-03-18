@@ -10,12 +10,12 @@
 //! compatible with the existing pipeline.
 
 pub mod error;
-pub mod zeek;
-pub mod suricata;
-pub mod nmap;
 pub mod masscan;
-pub mod wazuh;
+pub mod nmap;
 pub mod sinema;
+pub mod suricata;
+pub mod wazuh;
+pub mod zeek;
 
 pub use error::IngestError;
 

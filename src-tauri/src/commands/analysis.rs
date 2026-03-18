@@ -9,25 +9,23 @@ use tauri::State;
 use std::collections::{HashMap, HashSet};
 
 use gm_analysis::{
-    AnalysisInput, AnalysisResult, AssetSnapshot, ConnectionSnapshot,
-    DeepParseSnapshot, ModbusSnapshot, Dnp3Snapshot,
-    EnipSnapshot, S7Snapshot, BacnetSnapshot, Iec104Snapshot, ProfinetDcpSnapshot,
-    FcSnapshot, RelationshipSnapshot, PollingSnapshot,
-    Finding, PurdueAssignment, AnomalyScore,
-    CredentialChecker, CriticalityAssessment, NamingSuggestion,
-    DefaultCredential, CaptureContext,
-    SwitchSecurityFinding, SwitchSecurityInput, assess_switch_security,
-    MalwareFinding, detect_malware_patterns,
-    ComplianceMapping, generate_compliance_report,
-    CveMatch, CveMatcher,
+    assess_switch_security, detect_malware_patterns, generate_compliance_report, AnalysisInput,
+    AnalysisResult, AnomalyScore, AssetSnapshot, BacnetSnapshot, CaptureContext, ComplianceMapping,
+    ConnectionSnapshot, CredentialChecker, CriticalityAssessment, CveMatch, CveMatcher,
+    DeepParseSnapshot, DefaultCredential, Dnp3Snapshot, EnipSnapshot, FcSnapshot, Finding,
+    Iec104Snapshot, MalwareFinding, ModbusSnapshot, NamingSuggestion, PollingSnapshot,
+    ProfinetDcpSnapshot, PurdueAssignment, RelationshipSnapshot, S7Snapshot, SwitchSecurityFinding,
+    SwitchSecurityInput,
 };
 
 use super::AppState;
 
 /// Build AnalysisInput from current AppState.
 fn build_analysis_input(state: &super::AppStateInner) -> AnalysisInput {
-    let assets: Vec<AssetSnapshot> = state.assets.iter().map(|a| {
-        AssetSnapshot {
+    let assets: Vec<AssetSnapshot> = state
+        .assets
+        .iter()
+        .map(|a| AssetSnapshot {
             ip_address: a.ip_address.clone(),
             device_type: a.device_type.clone(),
             protocols: a.protocols.clone(),
@@ -35,72 +33,82 @@ fn build_analysis_input(state: &super::AppStateInner) -> AnalysisInput {
             is_public_ip: a.is_public_ip,
             tags: a.tags.clone(),
             vendor: a.vendor.clone(),
-        }
-    }).collect();
+            hostname: a.hostname.clone(),
+            product_family: a.product_family.clone(),
+        })
+        .collect();
 
-    let connections: Vec<ConnectionSnapshot> = state.connections.iter().map(|c| {
-        ConnectionSnapshot {
+    let connections: Vec<ConnectionSnapshot> = state
+        .connections
+        .iter()
+        .map(|c| ConnectionSnapshot {
             src_ip: c.src_ip.clone(),
             dst_ip: c.dst_ip.clone(),
             src_port: c.src_port,
             dst_port: c.dst_port,
             protocol: c.protocol.clone(),
             packet_count: c.packet_count,
-        }
-    }).collect();
+        })
+        .collect();
 
     let mut deep_parse = std::collections::HashMap::new();
     for (ip, dp) in &state.deep_parse_info {
-        let modbus = dp.modbus.as_ref().map(|m| {
-            ModbusSnapshot {
-                role: m.role.clone(),
-                unit_ids: m.unit_ids.clone(),
-                function_codes: m.function_codes.iter().map(|fc| {
-                    FcSnapshot {
-                        code: fc.code,
-                        count: fc.count,
-                        is_write: fc.is_write,
-                    }
-                }).collect(),
-                relationships: m.relationships.iter().map(|r| {
-                    RelationshipSnapshot {
-                        remote_ip: r.remote_ip.clone(),
-                        remote_role: r.remote_role.clone(),
-                        packet_count: r.packet_count,
-                    }
-                }).collect(),
-                polling_intervals: m.polling_intervals.iter().map(|pi| {
-                    PollingSnapshot {
-                        remote_ip: pi.remote_ip.clone(),
-                        function_code: pi.function_code,
-                        avg_interval_ms: pi.avg_interval_ms,
-                        min_interval_ms: pi.min_interval_ms,
-                        max_interval_ms: pi.max_interval_ms,
-                        sample_count: pi.sample_count,
-                    }
-                }).collect(),
-            }
+        let modbus = dp.modbus.as_ref().map(|m| ModbusSnapshot {
+            role: m.role.clone(),
+            unit_ids: m.unit_ids.clone(),
+            function_codes: m
+                .function_codes
+                .iter()
+                .map(|fc| FcSnapshot {
+                    code: fc.code,
+                    count: fc.count,
+                    is_write: fc.is_write,
+                })
+                .collect(),
+            relationships: m
+                .relationships
+                .iter()
+                .map(|r| RelationshipSnapshot {
+                    remote_ip: r.remote_ip.clone(),
+                    remote_role: r.remote_role.clone(),
+                    packet_count: r.packet_count,
+                })
+                .collect(),
+            polling_intervals: m
+                .polling_intervals
+                .iter()
+                .map(|pi| PollingSnapshot {
+                    remote_ip: pi.remote_ip.clone(),
+                    function_code: pi.function_code,
+                    avg_interval_ms: pi.avg_interval_ms,
+                    min_interval_ms: pi.min_interval_ms,
+                    max_interval_ms: pi.max_interval_ms,
+                    sample_count: pi.sample_count,
+                })
+                .collect(),
         });
 
-        let dnp3 = dp.dnp3.as_ref().map(|d| {
-            Dnp3Snapshot {
-                role: d.role.clone(),
-                has_unsolicited: d.has_unsolicited,
-                function_codes: d.function_codes.iter().map(|fc| {
-                    FcSnapshot {
-                        code: fc.code,
-                        count: fc.count,
-                        is_write: fc.is_write,
-                    }
-                }).collect(),
-                relationships: d.relationships.iter().map(|r| {
-                    RelationshipSnapshot {
-                        remote_ip: r.remote_ip.clone(),
-                        remote_role: r.remote_role.clone(),
-                        packet_count: r.packet_count,
-                    }
-                }).collect(),
-            }
+        let dnp3 = dp.dnp3.as_ref().map(|d| Dnp3Snapshot {
+            role: d.role.clone(),
+            has_unsolicited: d.has_unsolicited,
+            function_codes: d
+                .function_codes
+                .iter()
+                .map(|fc| FcSnapshot {
+                    code: fc.code,
+                    count: fc.count,
+                    is_write: fc.is_write,
+                })
+                .collect(),
+            relationships: d
+                .relationships
+                .iter()
+                .map(|r| RelationshipSnapshot {
+                    remote_ip: r.remote_ip.clone(),
+                    remote_role: r.remote_role.clone(),
+                    packet_count: r.packet_count,
+                })
+                .collect(),
         });
 
         let enip = dp.enip.as_ref().map(|e| EnipSnapshot {
@@ -134,7 +142,18 @@ fn build_analysis_input(state: &super::AppStateInner) -> AnalysisInput {
             role: p.role.clone(),
         });
 
-        deep_parse.insert(ip.clone(), DeepParseSnapshot { modbus, dnp3, enip, s7, bacnet, iec104, profinet_dcp });
+        deep_parse.insert(
+            ip.clone(),
+            DeepParseSnapshot {
+                modbus,
+                dnp3,
+                enip,
+                s7,
+                bacnet,
+                iec104,
+                profinet_dcp,
+            },
+        );
     }
 
     AnalysisInput {
@@ -148,12 +167,28 @@ fn build_analysis_input(state: &super::AppStateInner) -> AnalysisInput {
 fn build_capture_context(state: &super::AppStateInner) -> CaptureContext {
     // OT device IPs: assets running OT protocols or with OT device types.
     let ot_device_types = [
-        "plc", "rtu", "hmi", "historian", "engineering_workstation",
-        "scada_server", "io_server", "field_device", "controller",
+        "plc",
+        "rtu",
+        "hmi",
+        "historian",
+        "engineering_workstation",
+        "scada_server",
+        "io_server",
+        "field_device",
+        "controller",
     ];
     let ot_protocol_names = [
-        "Modbus", "Dnp3", "EthernetIp", "S7comm", "Bacnet", "OpcUa",
-        "Iec104", "ProfinetDcp", "HartIp", "GeSrtp", "WonderwareSuitelink",
+        "Modbus",
+        "Dnp3",
+        "EthernetIp",
+        "S7comm",
+        "Bacnet",
+        "OpcUa",
+        "Iec104",
+        "ProfinetDcp",
+        "HartIp",
+        "GeSrtp",
+        "WonderwareSuitelink",
     ];
 
     let mut ot_device_ips: HashSet<String> = state
@@ -170,8 +205,8 @@ fn build_capture_context(state: &super::AppStateInner) -> CaptureContext {
 
     // Also include IPs from connections to OT ports (passive inference).
     let ot_ports: &[u16] = &[
-        102, 502, 1089, 1090, 1091, 2222, 2404, 4840,
-        5007, 5094, 18245, 18246, 20000, 34962, 34963, 34964, 44818, 47808,
+        102, 502, 1089, 1090, 1091, 2222, 2404, 4840, 5007, 5094, 18245, 18246, 20000, 34962,
+        34963, 34964, 44818, 47808,
     ];
     for conn in &state.connections {
         if ot_ports.contains(&conn.dst_port) {
@@ -225,24 +260,60 @@ fn build_capture_context(state: &super::AppStateInner) -> CaptureContext {
     let mut capture_end = f64::NEG_INFINITY;
 
     for cs in &state.connection_stats {
-        if cs.first_seen < capture_start { capture_start = cs.first_seen; }
-        if cs.last_seen > capture_end { capture_end = cs.last_seen; }
+        if cs.first_seen < capture_start {
+            capture_start = cs.first_seen;
+        }
+        if cs.last_seen > capture_end {
+            capture_end = cs.last_seen;
+        }
 
-        let e = device_first_seen.entry(cs.src_ip.clone()).or_insert(f64::INFINITY);
-        if cs.first_seen < *e { *e = cs.first_seen; }
-        let e = device_last_seen.entry(cs.src_ip.clone()).or_insert(f64::NEG_INFINITY);
-        if cs.last_seen > *e { *e = cs.last_seen; }
+        let e = device_first_seen
+            .entry(cs.src_ip.clone())
+            .or_insert(f64::INFINITY);
+        if cs.first_seen < *e {
+            *e = cs.first_seen;
+        }
+        let e = device_last_seen
+            .entry(cs.src_ip.clone())
+            .or_insert(f64::NEG_INFINITY);
+        if cs.last_seen > *e {
+            *e = cs.last_seen;
+        }
 
-        let e = device_first_seen.entry(cs.dst_ip.clone()).or_insert(f64::INFINITY);
-        if cs.first_seen < *e { *e = cs.first_seen; }
-        let e = device_last_seen.entry(cs.dst_ip.clone()).or_insert(f64::NEG_INFINITY);
-        if cs.last_seen > *e { *e = cs.last_seen; }
+        let e = device_first_seen
+            .entry(cs.dst_ip.clone())
+            .or_insert(f64::INFINITY);
+        if cs.first_seen < *e {
+            *e = cs.first_seen;
+        }
+        let e = device_last_seen
+            .entry(cs.dst_ip.clone())
+            .or_insert(f64::NEG_INFINITY);
+        if cs.last_seen > *e {
+            *e = cs.last_seen;
+        }
     }
     // Sanitise infinity values.
-    let capture_start = if capture_start.is_finite() { capture_start } else { 0.0 };
-    let capture_end = if capture_end.is_finite() { capture_end } else { 0.0 };
-    for v in device_first_seen.values_mut() { if !v.is_finite() { *v = 0.0; } }
-    for v in device_last_seen.values_mut() { if !v.is_finite() { *v = 0.0; } }
+    let capture_start = if capture_start.is_finite() {
+        capture_start
+    } else {
+        0.0
+    };
+    let capture_end = if capture_end.is_finite() {
+        capture_end
+    } else {
+        0.0
+    };
+    for v in device_first_seen.values_mut() {
+        if !v.is_finite() {
+            *v = 0.0;
+        }
+    }
+    for v in device_last_seen.values_mut() {
+        if !v.is_finite() {
+            *v = 0.0;
+        }
+    }
 
     // Per-source dst ports.
     let mut per_source_dst_ports: HashMap<String, HashSet<u16>> = HashMap::new();
@@ -340,7 +411,9 @@ pub fn run_analysis(state: State<'_, AppState>) -> Result<AnalysisResult, String
 
     // Apply auto-assigned Purdue levels to assets (only where not manually set).
     // Build a lookup map first so this is O(assignments) not O(assets × assignments).
-    let purdue_map: std::collections::HashMap<&str, u8> = result.purdue_assignments.iter()
+    let purdue_map: std::collections::HashMap<&str, u8> = result
+        .purdue_assignments
+        .iter()
         .map(|a| (a.ip_address.as_str(), a.level))
         .collect();
 
@@ -409,9 +482,7 @@ pub fn get_credential_warnings(
 
 /// Assess criticality for all discovered assets.
 #[tauri::command]
-pub fn get_criticality(
-    state: State<'_, AppState>,
-) -> Result<Vec<CriticalityAssessment>, String> {
+pub fn get_criticality(state: State<'_, AppState>) -> Result<Vec<CriticalityAssessment>, String> {
     let state_inner = state.inner.lock().map_err(|e| e.to_string())?;
     let input = build_analysis_input(&state_inner);
     Ok(gm_analysis::assess_criticality_all(&input.assets))
@@ -419,9 +490,7 @@ pub fn get_criticality(
 
 /// Get naming suggestions for all discovered assets.
 #[tauri::command]
-pub fn get_naming_suggestions(
-    state: State<'_, AppState>,
-) -> Result<Vec<NamingSuggestion>, String> {
+pub fn get_naming_suggestions(state: State<'_, AppState>) -> Result<Vec<NamingSuggestion>, String> {
     let state_inner = state.inner.lock().map_err(|e| e.to_string())?;
     let input = build_analysis_input(&state_inner);
     Ok(gm_analysis::suggest_names_all(&input.assets))
@@ -438,33 +507,44 @@ pub fn get_switch_security_findings(
     let state_inner = state.inner.lock().map_err(|e| e.to_string())?;
 
     // Build asset snapshots
-    let assets: Vec<AssetSnapshot> = state_inner.assets.iter().map(|a| AssetSnapshot {
-        ip_address: a.ip_address.clone(),
-        device_type: a.device_type.clone(),
-        protocols: a.protocols.clone(),
-        purdue_level: a.purdue_level,
-        is_public_ip: a.is_public_ip,
-        tags: a.tags.clone(),
-        vendor: a.vendor.clone(),
-    }).collect();
+    let assets: Vec<AssetSnapshot> = state_inner
+        .assets
+        .iter()
+        .map(|a| AssetSnapshot {
+            ip_address: a.ip_address.clone(),
+            device_type: a.device_type.clone(),
+            protocols: a.protocols.clone(),
+            purdue_level: a.purdue_level,
+            is_public_ip: a.is_public_ip,
+            tags: a.tags.clone(),
+            vendor: a.vendor.clone(),
+            hostname: a.hostname.clone(),
+            product_family: a.product_family.clone(),
+        })
+        .collect();
 
     // Build protocols_by_ip from asset protocol lists
-    let protocols_by_ip = state_inner.assets.iter()
+    let protocols_by_ip = state_inner
+        .assets
+        .iter()
         .map(|a| (a.ip_address.clone(), a.protocols.clone()))
         .collect();
 
     // Collect redundancy protocol names and topology change flag
-    let redundancy_protocols_seen: Vec<String> = state_inner.redundancy_protocols
+    let redundancy_protocols_seen: Vec<String> = state_inner
+        .redundancy_protocols
         .iter()
         .map(|r| r.protocol.hint().to_string())
         .collect();
 
-    let topology_change_seen = state_inner.redundancy_protocols
+    let topology_change_seen = state_inner
+        .redundancy_protocols
         .iter()
         .any(|r| r.topology_change);
 
     // Collect VLAN IDs from LLDP data
-    let vlan_ids_seen: Vec<u16> = state_inner.deep_parse_info
+    let vlan_ids_seen: Vec<u16> = state_inner
+        .deep_parse_info
         .values()
         .filter_map(|dp| dp.lldp.as_ref())
         .flat_map(|lldp| lldp.vlan_ids.iter().copied())
@@ -474,7 +554,9 @@ pub fn get_switch_security_findings(
 
     // Find switches that match default credentials
     let checker = CredentialChecker::new()?;
-    let default_cred_switch_ips: Vec<String> = state_inner.assets.iter()
+    let default_cred_switch_ips: Vec<String> = state_inner
+        .assets
+        .iter()
         .filter(|a| {
             let dt = a.device_type.to_lowercase();
             dt.contains("switch")
@@ -516,24 +598,36 @@ pub fn get_malware_findings(state: State<'_, AppState>) -> Result<Vec<MalwareFin
         let modbus = dp.modbus.as_ref().map(|m| gm_analysis::ModbusSnapshot {
             role: m.role.clone(),
             unit_ids: m.unit_ids.clone(),
-            function_codes: m.function_codes.iter().map(|fc| gm_analysis::FcSnapshot {
-                code: fc.code,
-                count: fc.count,
-                is_write: fc.is_write,
-            }).collect(),
-            relationships: m.relationships.iter().map(|r| gm_analysis::RelationshipSnapshot {
-                remote_ip: r.remote_ip.clone(),
-                remote_role: r.remote_role.clone(),
-                packet_count: r.packet_count,
-            }).collect(),
-            polling_intervals: m.polling_intervals.iter().map(|pi| gm_analysis::PollingSnapshot {
-                remote_ip: pi.remote_ip.clone(),
-                function_code: pi.function_code,
-                avg_interval_ms: pi.avg_interval_ms,
-                min_interval_ms: pi.min_interval_ms,
-                max_interval_ms: pi.max_interval_ms,
-                sample_count: pi.sample_count,
-            }).collect(),
+            function_codes: m
+                .function_codes
+                .iter()
+                .map(|fc| gm_analysis::FcSnapshot {
+                    code: fc.code,
+                    count: fc.count,
+                    is_write: fc.is_write,
+                })
+                .collect(),
+            relationships: m
+                .relationships
+                .iter()
+                .map(|r| gm_analysis::RelationshipSnapshot {
+                    remote_ip: r.remote_ip.clone(),
+                    remote_role: r.remote_role.clone(),
+                    packet_count: r.packet_count,
+                })
+                .collect(),
+            polling_intervals: m
+                .polling_intervals
+                .iter()
+                .map(|pi| gm_analysis::PollingSnapshot {
+                    remote_ip: pi.remote_ip.clone(),
+                    function_code: pi.function_code,
+                    avg_interval_ms: pi.avg_interval_ms,
+                    min_interval_ms: pi.min_interval_ms,
+                    max_interval_ms: pi.max_interval_ms,
+                    sample_count: pi.sample_count,
+                })
+                .collect(),
         });
         let iec104 = dp.iec104.as_ref().map(|i| gm_analysis::Iec104Snapshot {
             role: i.role.clone(),
@@ -541,11 +635,14 @@ pub fn get_malware_findings(state: State<'_, AppState>) -> Result<Vec<MalwareFin
             has_reset_process: i.has_reset_process,
             has_interrogation: i.has_interrogation,
         });
-        deep_parse.insert(ip.clone(), gm_analysis::DeepParseSnapshot {
-            modbus,
-            iec104,
-            ..Default::default()
-        });
+        deep_parse.insert(
+            ip.clone(),
+            gm_analysis::DeepParseSnapshot {
+                modbus,
+                iec104,
+                ..Default::default()
+            },
+        );
     }
 
     Ok(detect_malware_patterns(&ctx, &connections, &deep_parse))
@@ -556,10 +653,7 @@ pub fn get_malware_findings(state: State<'_, AppState>) -> Result<Vec<MalwareFin
 /// Checks vendor, model, and firmware (extracted from LLDP or SNMP deep parse
 /// data) against the bundled OT infrastructure CVE database.
 #[tauri::command]
-pub fn get_cve_warnings(
-    ip: String,
-    state: State<'_, AppState>,
-) -> Result<Vec<CveMatch>, String> {
+pub fn get_cve_warnings(ip: String, state: State<'_, AppState>) -> Result<Vec<CveMatch>, String> {
     let state_inner = state.inner.lock().map_err(|e| e.to_string())?;
 
     // Priority for vendor/model/firmware: LLDP > SNMP > asset info
@@ -568,20 +662,28 @@ pub fn get_cve_warnings(
 
     let (vendor, model, firmware) = if let Some(lldp) = dp.and_then(|d| d.lldp.as_ref()) {
         (
-            lldp.vendor.clone().or_else(|| asset.and_then(|a| a.vendor.clone())).unwrap_or_default(),
+            lldp.vendor
+                .clone()
+                .or_else(|| asset.and_then(|a| a.vendor.clone()))
+                .unwrap_or_default(),
             lldp.model.clone().unwrap_or_default(),
             lldp.firmware.clone(),
         )
     } else if let Some(snmp) = dp.and_then(|d| d.snmp.as_ref()) {
         (
-            snmp.vendor.clone().or_else(|| asset.and_then(|a| a.vendor.clone())).unwrap_or_default(),
+            snmp.vendor
+                .clone()
+                .or_else(|| asset.and_then(|a| a.vendor.clone()))
+                .unwrap_or_default(),
             snmp.sys_descr.clone().unwrap_or_default(),
             None,
         )
     } else {
         (
             asset.and_then(|a| a.vendor.clone()).unwrap_or_default(),
-            asset.and_then(|a| a.product_family.clone()).unwrap_or_default(),
+            asset
+                .and_then(|a| a.product_family.clone())
+                .unwrap_or_default(),
             None,
         )
     };

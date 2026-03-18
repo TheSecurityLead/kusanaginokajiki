@@ -1,15 +1,15 @@
+use serde::Serialize;
 use std::collections::HashSet;
 use std::sync::atomic::Ordering;
 use std::sync::mpsc;
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
-use serde::Serialize;
-use tauri::{State, Emitter, Manager};
+use tauri::{Emitter, Manager, State};
 
-use gm_capture::{PcapReader, LiveCaptureHandle, LiveCaptureConfig, ParsedPacket, CaptureError};
+use gm_capture::{CaptureError, LiveCaptureConfig, LiveCaptureHandle, ParsedPacket, PcapReader};
 
-use super::AppState;
 use super::processor::PacketProcessor;
+use super::AppState;
 
 /// Payload for a real-time ATT&CK alert emitted during live capture.
 #[derive(Debug, Clone, Serialize)]
@@ -294,10 +294,13 @@ pub async fn start_capture(
         snaplen: 65535,
     };
 
-    let (handle, rx) = LiveCaptureHandle::start(config)
-        .map_err(|e| e.to_string())?;
+    let (handle, rx) = LiveCaptureHandle::start(config).map_err(|e| e.to_string())?;
 
-    log::info!("Live capture started on {} (filter: {:?})", interface_name, bpf_filter);
+    log::info!(
+        "Live capture started on {} (filter: {:?})",
+        interface_name,
+        bpf_filter
+    );
 
     // Spawn the processing thread
     let processing_handle = spawn_processing_thread(rx, app);
@@ -352,7 +355,9 @@ pub async fn stop_capture(
 
     log::info!(
         "Live capture stopped: {} packets, {} bytes, {:.1}s",
-        stats.packets_captured, stats.bytes_captured, stats.elapsed_seconds
+        stats.packets_captured,
+        stats.bytes_captured,
+        stats.elapsed_seconds
     );
 
     Ok(StopCaptureResult {
@@ -367,9 +372,7 @@ pub async fn stop_capture(
 
 /// Pause the live capture (packets arriving while paused are not captured).
 #[tauri::command]
-pub async fn pause_capture(
-    state: State<'_, AppState>,
-) -> Result<(), String> {
+pub async fn pause_capture(state: State<'_, AppState>) -> Result<(), String> {
     let inner = state.inner.lock().map_err(|e| e.to_string())?;
     if let Some(ref handle) = inner.live_capture {
         handle.pause();
@@ -382,9 +385,7 @@ pub async fn pause_capture(
 
 /// Resume a paused live capture.
 #[tauri::command]
-pub async fn resume_capture(
-    state: State<'_, AppState>,
-) -> Result<(), String> {
+pub async fn resume_capture(state: State<'_, AppState>) -> Result<(), String> {
     let inner = state.inner.lock().map_err(|e| e.to_string())?;
     if let Some(ref handle) = inner.live_capture {
         handle.resume();
@@ -397,9 +398,7 @@ pub async fn resume_capture(
 
 /// Get the current capture status.
 #[tauri::command]
-pub async fn get_capture_status(
-    state: State<'_, AppState>,
-) -> Result<CaptureStatusInfo, String> {
+pub async fn get_capture_status(state: State<'_, AppState>) -> Result<CaptureStatusInfo, String> {
     let inner = state.inner.lock().map_err(|e| e.to_string())?;
     if let Some(ref handle) = inner.live_capture {
         let stats = handle.stats();
@@ -630,11 +629,7 @@ fn flush_batch(
 /// - T0867: Lateral tool transfer (SMB/FTP) to OT device
 /// - T0868: Remote service (SSH/Telnet) to OT device
 /// - T0885: Web management UI (HTTP/HTTPS) to OT device
-fn run_live_attack_detection(
-    state: &AppState,
-    app: &tauri::AppHandle,
-    watermark: &mut usize,
-) {
+fn run_live_attack_detection(state: &AppState, app: &tauri::AppHandle, watermark: &mut usize) {
     let inner = match state.inner.lock() {
         Ok(g) => g,
         Err(_) => return,
@@ -648,7 +643,9 @@ fn run_live_attack_detection(
     }
 
     // Build OT device IP set from asset inventory
-    let ot_ips: HashSet<&str> = inner.assets.iter()
+    let ot_ips: HashSet<&str> = inner
+        .assets
+        .iter()
         .filter(|a| is_ot_device_type(&a.device_type))
         .map(|a| a.ip_address.as_str())
         .collect();
@@ -663,8 +660,16 @@ fn run_live_attack_detection(
             continue;
         }
 
-        let target_ip = if dst_is_ot { &conn.dst_ip } else { &conn.src_ip };
-        let port = if dst_is_ot { conn.dst_port } else { conn.src_port };
+        let target_ip = if dst_is_ot {
+            &conn.dst_ip
+        } else {
+            &conn.src_ip
+        };
+        let port = if dst_is_ot {
+            conn.dst_port
+        } else {
+            conn.src_port
+        };
 
         if let Some(alert) = check_connection_for_live_alert(target_ip, port, conn, &now) {
             if let Err(e) = app.emit("live_attack_alert", &alert) {
@@ -757,5 +762,8 @@ fn check_connection_for_live_alert(
 
 /// Check if a device_type string represents an OT field device.
 fn is_ot_device_type(device_type: &str) -> bool {
-    matches!(device_type, "plc" | "rtu" | "hmi" | "scada_server" | "historian")
+    matches!(
+        device_type,
+        "plc" | "rtu" | "hmi" | "scada_server" | "historian"
+    )
 }

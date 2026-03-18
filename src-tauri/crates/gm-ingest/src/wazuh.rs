@@ -14,8 +14,8 @@ use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::{IngestedAlert, IngestResult, IngestSource};
 use crate::error::IngestError;
+use crate::{IngestResult, IngestSource, IngestedAlert};
 
 // ─── Raw Wazuh JSON structures ────────────────────────────────
 
@@ -50,8 +50,7 @@ struct WazuhAgent {
 /// Accepts both line-delimited JSON (one object per line) and a JSON array.
 /// Alerts with no identifiable source IP are skipped.
 pub fn parse_wazuh_alerts(path: &Path) -> Result<IngestResult, IngestError> {
-    let content = fs::read_to_string(path)
-        .map_err(IngestError::Io)?;
+    let content = fs::read_to_string(path).map_err(IngestError::Io)?;
 
     let mut alerts: Vec<IngestedAlert> = Vec::new();
     let mut errors: Vec<String> = Vec::new();
@@ -119,14 +118,24 @@ fn convert_wazuh_alert(raw: WazuhAlertRaw) -> Option<IngestedAlert> {
     let rule = raw.rule.as_ref()?;
 
     // Parse timestamp
-    let timestamp = raw.timestamp
+    let timestamp = raw
+        .timestamp
         .as_deref()
-        .and_then(|s| DateTime::parse_from_rfc3339(s).ok().map(|d| d.with_timezone(&Utc)))
+        .and_then(|s| {
+            DateTime::parse_from_rfc3339(s)
+                .ok()
+                .map(|d| d.with_timezone(&Utc))
+        })
         .unwrap_or_else(Utc::now);
 
     // Extract rule description and ID
-    let signature = rule.description.clone().unwrap_or_else(|| "Unknown Rule".to_string());
-    let signature_id = rule.id.as_ref()
+    let signature = rule
+        .description
+        .clone()
+        .unwrap_or_else(|| "Unknown Rule".to_string());
+    let signature_id = rule
+        .id
+        .as_ref()
         .and_then(|v| match v {
             Value::Number(n) => n.as_u64(),
             Value::String(s) => s.parse::<u64>().ok(),
@@ -135,7 +144,8 @@ fn convert_wazuh_alert(raw: WazuhAlertRaw) -> Option<IngestedAlert> {
         .unwrap_or(0);
 
     // Category from rule groups
-    let category = rule.groups
+    let category = rule
+        .groups
         .as_ref()
         .and_then(|g| g.first())
         .cloned()
@@ -143,7 +153,13 @@ fn convert_wazuh_alert(raw: WazuhAlertRaw) -> Option<IngestedAlert> {
 
     // Wazuh severity: 1-15 scale, map to 1-3 (matching Suricata: 1=high, 2=medium, 3=low)
     let level = rule.level.unwrap_or(0);
-    let severity = if level >= 12 { 1 } else if level >= 7 { 2 } else { 3 };
+    let severity = if level >= 12 {
+        1
+    } else if level >= 7 {
+        2
+    } else {
+        3
+    };
 
     // Extract network data from the `data` field
     let (src_ip, dst_ip, src_port, dst_port) = extract_network_data(&raw.data, &raw.agent);
@@ -201,11 +217,16 @@ fn extract_network_data(
     // Try various field name conventions
     let src_ip = {
         let v = get_str("srcip");
-        if !v.is_empty() { v } else {
+        if !v.is_empty() {
+            v
+        } else {
             let v = get_str("src_ip");
-            if !v.is_empty() { v } else {
+            if !v.is_empty() {
+                v
+            } else {
                 // Fall back to agent.ip
-                agent.as_ref()
+                agent
+                    .as_ref()
                     .and_then(|a| a.ip.clone())
                     .unwrap_or_default()
             }
@@ -214,17 +235,29 @@ fn extract_network_data(
 
     let dst_ip = {
         let v = get_str("dstip");
-        if !v.is_empty() { v } else { get_str("dst_ip") }
+        if !v.is_empty() {
+            v
+        } else {
+            get_str("dst_ip")
+        }
     };
 
     let src_port = {
         let v = parse_port("srcport");
-        if v != 0 { v } else { parse_port("src_port") }
+        if v != 0 {
+            v
+        } else {
+            parse_port("src_port")
+        }
     };
 
     let dst_port = {
         let v = parse_port("dstport");
-        if v != 0 { v } else { parse_port("dst_port") }
+        if v != 0 {
+            v
+        } else {
+            parse_port("dst_port")
+        }
     };
 
     (src_ip, dst_ip, src_port, dst_port)
@@ -267,7 +300,7 @@ mod tests {
         assert_eq!(result.alerts.len(), 2);
         assert_eq!(result.alerts[0].severity, 1); // level 14 → high (1)
         assert_eq!(result.alerts[1].severity, 3); // level 5  → low  (3)
-        // Second alert's src_ip comes from agent.ip fallback
+                                                  // Second alert's src_ip comes from agent.ip fallback
         assert_eq!(result.alerts[1].src_ip, "10.0.0.3");
     }
 
@@ -296,13 +329,22 @@ mod tests {
         };
 
         let tmp = tempfile_with_content(&make_json(15));
-        assert_eq!(parse_wazuh_alerts(tmp.as_ref()).unwrap().alerts[0].severity, 1);
+        assert_eq!(
+            parse_wazuh_alerts(tmp.as_ref()).unwrap().alerts[0].severity,
+            1
+        );
 
         let tmp = tempfile_with_content(&make_json(9));
-        assert_eq!(parse_wazuh_alerts(tmp.as_ref()).unwrap().alerts[0].severity, 2);
+        assert_eq!(
+            parse_wazuh_alerts(tmp.as_ref()).unwrap().alerts[0].severity,
+            2
+        );
 
         let tmp = tempfile_with_content(&make_json(3));
-        assert_eq!(parse_wazuh_alerts(tmp.as_ref()).unwrap().alerts[0].severity, 3);
+        assert_eq!(
+            parse_wazuh_alerts(tmp.as_ref()).unwrap().alerts[0].severity,
+            3
+        );
     }
 
     /// Helper: write content to a temp file and return the tempfile handle.

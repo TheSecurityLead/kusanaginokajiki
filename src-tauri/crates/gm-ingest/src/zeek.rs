@@ -16,10 +16,7 @@ use std::path::Path;
 
 use chrono::{DateTime, Utc};
 
-use crate::{
-    IngestError, IngestResult, IngestSource,
-    IngestedAsset, IngestedConnection,
-};
+use crate::{IngestError, IngestResult, IngestSource, IngestedAsset, IngestedConnection};
 
 /// Parse one or more Zeek log files.
 ///
@@ -39,7 +36,8 @@ pub fn parse_zeek_logs(paths: &[&Path]) -> Result<IngestResult, IngestError> {
                 result.files_processed += 1;
             }
             Err(e) => {
-                let filename = path.file_name()
+                let filename = path
+                    .file_name()
                     .map(|f| f.to_string_lossy().to_string())
                     .unwrap_or_else(|| path.display().to_string());
                 result.errors.push(format!("{}: {}", filename, e));
@@ -161,21 +159,35 @@ fn parse_conn_record(record: &HashMap<String, &str>) -> Option<IngestedConnectio
     let src_port: u16 = record.get("id.orig_p")?.parse().ok()?;
     let dst_port: u16 = record.get("id.resp_p")?.parse().ok()?;
 
-    let transport = record.get("proto")
+    let transport = record
+        .get("proto")
         .map(|p| p.to_string())
         .unwrap_or_else(|| "tcp".to_string());
 
-    let service = record.get("service")
+    let service = record
+        .get("service")
         .map(|s| s.to_string())
         .unwrap_or_else(|| zeek_port_to_protocol(dst_port));
 
     let ts = record.get("ts").and_then(|t| parse_zeek_timestamp(t));
 
     // Zeek conn.log has orig_pkts/resp_pkts and orig_bytes/resp_bytes
-    let orig_pkts: u64 = record.get("orig_pkts").and_then(|v| v.parse().ok()).unwrap_or(1);
-    let resp_pkts: u64 = record.get("resp_pkts").and_then(|v| v.parse().ok()).unwrap_or(0);
-    let orig_bytes: u64 = record.get("orig_bytes").and_then(|v| v.parse().ok()).unwrap_or(0);
-    let resp_bytes: u64 = record.get("resp_bytes").and_then(|v| v.parse().ok()).unwrap_or(0);
+    let orig_pkts: u64 = record
+        .get("orig_pkts")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(1);
+    let resp_pkts: u64 = record
+        .get("resp_pkts")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0);
+    let orig_bytes: u64 = record
+        .get("orig_bytes")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0);
+    let resp_bytes: u64 = record
+        .get("resp_bytes")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0);
 
     Some(IngestedConnection {
         src_ip,

@@ -19,10 +19,10 @@
 //! 4. Payload byte pattern match (e.g., "Schneider" string in Modbus response)
 //! 5. Deep protocol parse confirmation (e.g., Modbus FC 43 Device ID response)
 
-mod error;
 mod engine;
+mod error;
 mod signature;
 
+pub use engine::{PacketData, SignatureEngine, TestResult};
 pub use error::SignatureError;
-pub use engine::{SignatureEngine, PacketData, TestResult};
-pub use signature::{Signature, SignatureFilter, SignatureMatch, ExtractedValue, PayloadExtractor};
+pub use signature::{ExtractedValue, PayloadExtractor, Signature, SignatureFilter, SignatureMatch};

@@ -35,8 +35,8 @@ use crate::{AnalysisInput, Finding, FindingType, Severity};
 
 /// Well-known OT server ports (mirrors the constant in `attack.rs`).
 const OT_PORTS: &[u16] = &[
-    102, 502, 1089, 1090, 1091, 2222, 2404, 4840,
-    5007, 5094, 18245, 18246, 20000, 34962, 34963, 34964, 44818, 47808,
+    102, 502, 1089, 1090, 1091, 2222, 2404, 4840, 5007, 5094, 18245, 18246, 20000, 34962, 34963,
+    34964, 44818, 47808,
 ];
 
 /// Remote access / management ports that should not appear on OT segments.
@@ -120,8 +120,15 @@ pub fn detect_context_attacks(input: &AnalysisInput, ctx: &CaptureContext) -> Ve
 fn is_ot_device_type(device_type: &str) -> bool {
     matches!(
         device_type,
-        "plc" | "rtu" | "hmi" | "historian" | "engineering_workstation"
-            | "scada_server" | "io_server" | "field_device" | "controller"
+        "plc"
+            | "rtu"
+            | "hmi"
+            | "historian"
+            | "engineering_workstation"
+            | "scada_server"
+            | "io_server"
+            | "field_device"
+            | "controller"
     )
 }
 
@@ -165,18 +172,26 @@ fn remote_service_name(port: u16) -> &'static str {
 fn is_ot_protocol_name(protocol: &str) -> bool {
     matches!(
         protocol,
-        "Modbus" | "Dnp3" | "EthernetIp" | "S7comm" | "Bacnet" | "OpcUa"
-            | "Iec104" | "ProfinetDcp" | "HartIp" | "GeSrtp"
-            | "WonderwareSuitelink" | "FfHse" | "Mqtt" | "Snmp"
+        "Modbus"
+            | "Dnp3"
+            | "EthernetIp"
+            | "S7comm"
+            | "Bacnet"
+            | "OpcUa"
+            | "Iec104"
+            | "ProfinetDcp"
+            | "HartIp"
+            | "GeSrtp"
+            | "WonderwareSuitelink"
+            | "FfHse"
+            | "Mqtt"
+            | "Snmp"
     )
 }
 
 /// Build the effective OT IP set: prefer `ctx.ot_device_ips` when non-empty,
 /// otherwise derive from asset classification.
-fn effective_ot_ips<'a>(
-    input: &'a AnalysisInput,
-    ctx: &'a CaptureContext,
-) -> HashSet<&'a str> {
+fn effective_ot_ips<'a>(input: &'a AnalysisInput, ctx: &'a CaptureContext) -> HashSet<&'a str> {
     if !ctx.ot_device_ips.is_empty() {
         ctx.ot_device_ips.iter().map(String::as_str).collect()
     } else {
@@ -229,11 +244,7 @@ fn detect_t0822_external_remote_services(
                 vec![conn.src_ip.clone(), conn.dst_ip.clone()],
                 format!(
                     "OT device {} → {} on {} (port {}), {} packets",
-                    conn.src_ip,
-                    conn.dst_ip,
-                    service,
-                    conn.dst_port,
-                    conn.packet_count
+                    conn.src_ip, conn.dst_ip, service, conn.dst_port, conn.packet_count
                 ),
                 Some("T0822".to_string()),
             ));
@@ -248,10 +259,7 @@ fn detect_t0822_external_remote_services(
 /// Detects FTP (port 21) or TFTP (port 69) traffic involving at least one
 /// OT device. File transfers within or to/from OT segments may indicate
 /// firmware uploads, tool staging, or configuration exfiltration.
-fn detect_t0867_lateral_tool_transfer(
-    input: &AnalysisInput,
-    ctx: &CaptureContext,
-) -> Vec<Finding> {
+fn detect_t0867_lateral_tool_transfer(input: &AnalysisInput, ctx: &CaptureContext) -> Vec<Finding> {
     let mut findings = Vec::new();
     let ot_ips = effective_ot_ips(input, ctx);
     let mut flagged: HashSet<(&str, &str)> = HashSet::new();
@@ -284,11 +292,7 @@ fn detect_t0867_lateral_tool_transfer(
                 vec![conn.src_ip.clone(), conn.dst_ip.clone()],
                 format!(
                     "{} from {} to {} (port {}), {} packets",
-                    proto_name,
-                    conn.src_ip,
-                    conn.dst_ip,
-                    conn.dst_port,
-                    conn.packet_count
+                    proto_name, conn.src_ip, conn.dst_ip, conn.dst_port, conn.packet_count
                 ),
                 Some("T0867".to_string()),
             ));
@@ -318,8 +322,7 @@ fn detect_t0885_commonly_used_port(input: &AnalysisInput) -> Vec<Finding> {
         }
         let key = (conn.src_ip.as_str(), conn.protocol.as_str(), conn.dst_port);
         if flagged.insert(key) {
-            let canonical_str: Vec<String> =
-                canonical.iter().map(|p| p.to_string()).collect();
+            let canonical_str: Vec<String> = canonical.iter().map(|p| p.to_string()).collect();
             findings.push(Finding::new(
                 FindingType::AttackTechnique,
                 Severity::Medium,
@@ -373,9 +376,7 @@ fn detect_t0849_masquerading(input: &AnalysisInput) -> Vec<Finding> {
     ];
 
     // Protocols that are clearly NOT OT (and would constitute masquerading).
-    let non_ot: &[&str] = &[
-        "Http", "Https", "Ssh", "Ftp", "Tftp", "Smtp", "Telnet",
-    ];
+    let non_ot: &[&str] = &["Http", "Https", "Ssh", "Ftp", "Tftp", "Smtp", "Telnet"];
 
     let mut flagged: HashSet<(&str, &str, u16)> = HashSet::new();
 
@@ -385,10 +386,7 @@ fn detect_t0849_masquerading(input: &AnalysisInput) -> Vec<Finding> {
             continue;
         }
         // Check if dst_port is a canonical OT port
-        if let Some(&(_, expected)) = ot_port_expected
-            .iter()
-            .find(|(p, _)| *p == conn.dst_port)
-        {
+        if let Some(&(_, expected)) = ot_port_expected.iter().find(|(p, _)| *p == conn.dst_port) {
             let key = (conn.src_ip.as_str(), proto, conn.dst_port);
             if flagged.insert(key) {
                 findings.push(Finding::new(
@@ -558,10 +556,7 @@ fn detect_t0806_brute_force_io(input: &AnalysisInput, ctx: &CaptureContext) -> V
 /// Detects a single source reading process data from many OT devices.
 /// Automated polling of many controllers is characteristic of adversarial
 /// data harvesting in preparation for targeted disruption.
-fn detect_t0802_automated_collection(
-    input: &AnalysisInput,
-    ctx: &CaptureContext,
-) -> Vec<Finding> {
+fn detect_t0802_automated_collection(input: &AnalysisInput, ctx: &CaptureContext) -> Vec<Finding> {
     let mut findings = Vec::new();
     const THRESHOLD: usize = 10;
 
@@ -609,8 +604,7 @@ fn detect_t0802_automated_collection(
         }
         for (src, targets) in src_to_ot {
             if targets.len() >= THRESHOLD {
-                let target_list: Vec<String> =
-                    targets.iter().map(|s| s.to_string()).collect();
+                let target_list: Vec<String> = targets.iter().map(|s| s.to_string()).collect();
                 findings.push(Finding::new(
                     FindingType::AttackTechnique,
                     Severity::Medium,
@@ -715,7 +709,10 @@ fn detect_t0840_network_connection_enumeration(
                  ICS network topology."
                     .to_string(),
                 vec![src.clone()],
-                format!("{} contacted {} distinct OT service ports", src, ot_port_count),
+                format!(
+                    "{} contacted {} distinct OT service ports",
+                    src, ot_port_count
+                ),
                 Some("T0840".to_string()),
             ));
         }
@@ -893,9 +890,7 @@ fn detect_t0881_service_stop(input: &AnalysisInput) -> Vec<Finding> {
     let mut device_incoming: HashMap<&str, u64> = HashMap::new();
     for conn in &input.connections {
         if OT_PORTS.contains(&conn.dst_port) {
-            *device_incoming
-                .entry(conn.dst_ip.as_str())
-                .or_insert(0) += conn.packet_count;
+            *device_incoming.entry(conn.dst_ip.as_str()).or_insert(0) += conn.packet_count;
         }
     }
 
@@ -925,7 +920,10 @@ fn detect_t0881_service_stop(input: &AnalysisInput) -> Vec<Finding> {
             findings.push(Finding::new(
                 FindingType::AttackTechnique,
                 Severity::High,
-                format!("Possible service stop on OT device {} (very low traffic)", ip),
+                format!(
+                    "Possible service stop on OT device {} (very low traffic)",
+                    ip
+                ),
                 "An OT device has active protocol classifications but is receiving \
                  significantly fewer packets than peer OT devices. This may indicate \
                  that a process service has been forced offline or stopped responding."
@@ -950,10 +948,7 @@ fn detect_t0881_service_stop(input: &AnalysisInput) -> Vec<Finding> {
 /// Detects non-OT devices that appear on the OT segment for less than five
 /// minutes and communicate with OT devices. Short-lived devices (laptops,
 /// USB adapters, maintenance tools) introduce uncontrolled access vectors.
-fn detect_t0864_transient_cyber_asset(
-    input: &AnalysisInput,
-    ctx: &CaptureContext,
-) -> Vec<Finding> {
+fn detect_t0864_transient_cyber_asset(input: &AnalysisInput, ctx: &CaptureContext) -> Vec<Finding> {
     let mut findings = Vec::new();
 
     if ctx.device_first_seen.is_empty() {
@@ -1047,10 +1042,7 @@ fn detect_t0830_adversary_in_the_middle(ctx: &CaptureContext) -> Vec<Finding> {
 /// Detects a non-OT device that acts as both client and server on the same
 /// OT protocol port — a topology characteristic of a connection proxy
 /// injected into an OT communication path.
-fn detect_t0884_connection_proxy(
-    input: &AnalysisInput,
-    ctx: &CaptureContext,
-) -> Vec<Finding> {
+fn detect_t0884_connection_proxy(input: &AnalysisInput, ctx: &CaptureContext) -> Vec<Finding> {
     let mut findings = Vec::new();
     let ot_ips = effective_ot_ips(input, ctx);
 
@@ -1136,7 +1128,11 @@ fn detect_t0866_exploitation_remote_services(
         let key = (conn.src_ip.as_str(), conn.dst_ip.as_str(), conn.dst_port);
         if flagged.insert(key) {
             let service = remote_service_name(conn.dst_port);
-            let src_label = if src_is_external { "External" } else { "Non-OT" };
+            let src_label = if src_is_external {
+                "External"
+            } else {
+                "Non-OT"
+            };
             findings.push(Finding::new(
                 FindingType::AttackTechnique,
                 Severity::High,
@@ -1151,12 +1147,7 @@ fn detect_t0866_exploitation_remote_services(
                 vec![conn.src_ip.clone(), conn.dst_ip.clone()],
                 format!(
                     "{} {} → OT device {} on {} (port {}), {} packets",
-                    src_label,
-                    conn.src_ip,
-                    conn.dst_ip,
-                    service,
-                    conn.dst_port,
-                    conn.packet_count
+                    src_label, conn.src_ip, conn.dst_ip, service, conn.dst_port, conn.packet_count
                 ),
                 Some("T0866".to_string()),
             ));
@@ -1209,7 +1200,11 @@ fn detect_t0800_firmware_update_mode(input: &AnalysisInput) -> Vec<Finding> {
                         std::iter::once(ip.clone())
                             .chain(targets.iter().cloned())
                             .collect(),
-                        format!("{} used CIP File Access targeting: {}", ip, targets.join(", ")),
+                        format!(
+                            "{} used CIP File Access targeting: {}",
+                            ip,
+                            targets.join(", ")
+                        ),
                         Some("T0800".to_string()),
                     ));
                 }
@@ -1265,10 +1260,7 @@ fn detect_t0800_firmware_update_mode(input: &AnalysisInput) -> Vec<Finding> {
 /// Detects a single device issuing read operations to many OT service
 /// endpoints. Comprehensive process state monitoring across controllers is
 /// characteristic of adversarial surveillance in preparation for disruption.
-fn detect_t0801_monitor_process_state(
-    input: &AnalysisInput,
-    ctx: &CaptureContext,
-) -> Vec<Finding> {
+fn detect_t0801_monitor_process_state(input: &AnalysisInput, ctx: &CaptureContext) -> Vec<Finding> {
     let mut findings = Vec::new();
     const THRESHOLD: usize = 20;
 
@@ -1334,9 +1326,8 @@ fn detect_t0801_monitor_process_state(
 mod tests {
     use super::*;
     use crate::{
-        AnalysisInput, AssetSnapshot, ConnectionSnapshot, DeepParseSnapshot,
+        AnalysisInput, AssetSnapshot, ConnectionSnapshot, DeepParseSnapshot, Dnp3Snapshot,
         EnipSnapshot, FcSnapshot, ModbusSnapshot, RelationshipSnapshot, S7Snapshot,
-        Dnp3Snapshot,
     };
 
     fn asset(ip: &str, device_type: &str, protocols: &[&str]) -> AssetSnapshot {
@@ -1348,6 +1339,8 @@ mod tests {
             is_public_ip: false,
             tags: vec![],
             vendor: None,
+            hostname: None,
+            product_family: None,
         }
     }
 
@@ -1387,7 +1380,10 @@ mod tests {
         input.connections = vec![conn("10.0.0.200", "1.2.3.4", 3389, "Unknown", 5)];
         let ctx = CaptureContext::default();
         let findings = detect_t0822_external_remote_services(&input, &ctx);
-        assert!(findings.is_empty(), "RDP from IT device should not be flagged by T0822");
+        assert!(
+            findings.is_empty(),
+            "RDP from IT device should not be flagged by T0822"
+        );
     }
 
     // ── T0867 ──
@@ -1401,7 +1397,10 @@ mod tests {
         input.connections = vec![conn("10.0.0.2", "10.0.0.1", 21, "Ftp", 20)];
         let ctx = CaptureContext::default();
         let findings = detect_t0867_lateral_tool_transfer(&input, &ctx);
-        assert!(!findings.is_empty(), "FTP involving OT device should be flagged");
+        assert!(
+            !findings.is_empty(),
+            "FTP involving OT device should be flagged"
+        );
         assert_eq!(findings[0].technique_id, Some("T0867".to_string()));
     }
 
@@ -1423,7 +1422,10 @@ mod tests {
         // Modbus identified on port 503 (not 502)
         input.connections = vec![conn("10.0.0.1", "10.0.0.2", 503, "Modbus", 100)];
         let findings = detect_t0885_commonly_used_port(&input);
-        assert!(!findings.is_empty(), "Modbus on port 503 should trigger T0885");
+        assert!(
+            !findings.is_empty(),
+            "Modbus on port 503 should trigger T0885"
+        );
         assert_eq!(findings[0].technique_id, Some("T0885".to_string()));
     }
 
@@ -1442,7 +1444,10 @@ mod tests {
         // HTTP traffic on port 502
         input.connections = vec![conn("10.0.0.100", "10.0.0.1", 502, "Http", 10)];
         let findings = detect_t0849_masquerading(&input);
-        assert!(!findings.is_empty(), "HTTP on port 502 should trigger T0849");
+        assert!(
+            !findings.is_empty(),
+            "HTTP on port 502 should trigger T0849"
+        );
         assert_eq!(findings[0].technique_id, Some("T0849".to_string()));
     }
 
@@ -1505,7 +1510,10 @@ mod tests {
         );
         let ctx = CaptureContext::default();
         let findings = detect_t0806_brute_force_io(&input, &ctx);
-        assert!(!findings.is_empty(), "550 Modbus writes to single slave should trigger T0806");
+        assert!(
+            !findings.is_empty(),
+            "550 Modbus writes to single slave should trigger T0806"
+        );
     }
 
     // ── T0802 ──
@@ -1513,13 +1521,14 @@ mod tests {
     fn test_t0802_many_ot_targets_from_context() {
         let mut input = AnalysisInput::default();
         let mut ctx = CaptureContext::default();
-        let targets: HashSet<String> = (1..=12)
-            .map(|i| format!("10.0.0.{}", i))
-            .collect();
+        let targets: HashSet<String> = (1..=12).map(|i| format!("10.0.0.{}", i)).collect();
         ctx.per_source_read_targets
             .insert("192.168.1.99".to_string(), targets);
         let findings = detect_t0802_automated_collection(&input, &ctx);
-        assert!(!findings.is_empty(), "Polling 12 OT targets should trigger T0802");
+        assert!(
+            !findings.is_empty(),
+            "Polling 12 OT targets should trigger T0802"
+        );
         assert_eq!(findings[0].technique_id, Some("T0802".to_string()));
         let _ = &mut input;
     }
@@ -1565,7 +1574,10 @@ mod tests {
         }
         let ctx = CaptureContext::default();
         let findings = detect_t0840_network_connection_enumeration(&input, &ctx);
-        assert!(!findings.is_empty(), "Connecting to 12 OT hosts should trigger T0840");
+        assert!(
+            !findings.is_empty(),
+            "Connecting to 12 OT hosts should trigger T0840"
+        );
         assert_eq!(findings[0].technique_id, Some("T0840".to_string()));
     }
 
@@ -1574,8 +1586,8 @@ mod tests {
     fn test_t0803_plc_receives_no_commands() {
         let mut input = AnalysisInput::default();
         input.assets = vec![
-            asset("10.0.0.1", "plc", &["Modbus"]),    // field device
-            asset("10.0.0.100", "hmi", &["Modbus"]),  // controller
+            asset("10.0.0.1", "plc", &["Modbus"]),   // field device
+            asset("10.0.0.100", "hmi", &["Modbus"]), // controller
         ];
         // Controller sends to port 502 but to a different PLC (not 10.0.0.1)
         input.connections = vec![
@@ -1583,7 +1595,10 @@ mod tests {
             conn("10.0.0.1", "10.0.0.100", 49152, "Modbus", 10), // PLC has some traffic
         ];
         let findings = detect_t0803_block_command_reporting(&input);
-        assert!(!findings.is_empty(), "PLC with no incoming OT commands should trigger T0803");
+        assert!(
+            !findings.is_empty(),
+            "PLC with no incoming OT commands should trigger T0803"
+        );
         assert_eq!(findings[0].technique_id, Some("T0803".to_string()));
     }
 
@@ -1609,7 +1624,10 @@ mod tests {
         );
         // Outstation has NO outgoing connections at all — so detect_t0804 should flag it.
         let findings = detect_t0804_block_reporting_message(&input);
-        assert!(!findings.is_empty(), "Outstation with master but no outgoing traffic → T0804");
+        assert!(
+            !findings.is_empty(),
+            "Outstation with master but no outgoing traffic → T0804"
+        );
         assert_eq!(findings[0].technique_id, Some("T0804".to_string()));
     }
 
@@ -1625,10 +1643,16 @@ mod tests {
         ];
         // 10.0.0.1 and 10.0.0.2 receive lots of traffic; 10.0.0.3 receives almost none.
         for _ in 0..10 {
-            input.connections.push(conn("10.0.0.100", "10.0.0.1", 502, "Modbus", 1000));
-            input.connections.push(conn("10.0.0.100", "10.0.0.2", 502, "Modbus", 1000));
+            input
+                .connections
+                .push(conn("10.0.0.100", "10.0.0.1", 502, "Modbus", 1000));
+            input
+                .connections
+                .push(conn("10.0.0.100", "10.0.0.2", 502, "Modbus", 1000));
         }
-        input.connections.push(conn("10.0.0.100", "10.0.0.3", 502, "Modbus", 1));
+        input
+            .connections
+            .push(conn("10.0.0.100", "10.0.0.3", 502, "Modbus", 1));
         let findings = detect_t0881_service_stop(&input);
         let t0881 = findings.iter().any(|f| {
             f.technique_id == Some("T0881".to_string())
@@ -1644,11 +1668,16 @@ mod tests {
         let mut ctx = CaptureContext::default();
         ctx.ot_device_ips.insert("10.0.0.1".to_string());
         // Transient laptop: seen for 120 seconds, connected to OT device.
-        ctx.device_first_seen.insert("192.168.0.99".to_string(), 0.0);
-        ctx.device_last_seen.insert("192.168.0.99".to_string(), 120.0);
+        ctx.device_first_seen
+            .insert("192.168.0.99".to_string(), 0.0);
+        ctx.device_last_seen
+            .insert("192.168.0.99".to_string(), 120.0);
         input.connections = vec![conn("192.168.0.99", "10.0.0.1", 502, "Modbus", 3)];
         let findings = detect_t0864_transient_cyber_asset(&input, &ctx);
-        assert!(!findings.is_empty(), "Device seen for 120s touching OT should trigger T0864");
+        assert!(
+            !findings.is_empty(),
+            "Device seen for 120s touching OT should trigger T0864"
+        );
         assert_eq!(findings[0].technique_id, Some("T0864".to_string()));
     }
 
@@ -1670,7 +1699,10 @@ mod tests {
             ..Default::default()
         };
         let findings = detect_t0830_adversary_in_the_middle(&ctx);
-        assert!(!findings.is_empty(), "Two MACs for one IP should trigger T0830");
+        assert!(
+            !findings.is_empty(),
+            "Two MACs for one IP should trigger T0830"
+        );
         assert_eq!(findings[0].technique_id, Some("T0830".to_string()));
         assert_eq!(findings[0].severity, Severity::Critical);
     }
@@ -1705,7 +1737,10 @@ mod tests {
         ctx.ot_device_ips.insert("10.0.0.1".to_string());
         ctx.external_ips.insert("203.0.113.5".to_string());
         let findings = detect_t0866_exploitation_remote_services(&input, &ctx);
-        assert!(!findings.is_empty(), "External SSH to OT PLC should trigger T0866");
+        assert!(
+            !findings.is_empty(),
+            "External SSH to OT PLC should trigger T0866"
+        );
         assert_eq!(findings[0].technique_id, Some("T0866".to_string()));
     }
 
@@ -1728,7 +1763,10 @@ mod tests {
             },
         );
         let findings = detect_t0800_firmware_update_mode(&input);
-        assert!(!findings.is_empty(), "CIP File access to PLC should trigger T0800");
+        assert!(
+            !findings.is_empty(),
+            "CIP File access to PLC should trigger T0800"
+        );
         assert_eq!(findings[0].technique_id, Some("T0800".to_string()));
     }
 
@@ -1748,7 +1786,10 @@ mod tests {
         }
         let ctx = CaptureContext::default();
         let findings = detect_t0801_monitor_process_state(&input, &ctx);
-        assert!(!findings.is_empty(), "25 OT endpoints polled should trigger T0801");
+        assert!(
+            !findings.is_empty(),
+            "25 OT endpoints polled should trigger T0801"
+        );
         assert_eq!(findings[0].technique_id, Some("T0801".to_string()));
     }
 }

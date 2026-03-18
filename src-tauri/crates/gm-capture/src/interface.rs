@@ -1,5 +1,5 @@
-use serde::Serialize;
 use crate::CaptureError;
+use serde::Serialize;
 
 /// Represents a network interface available for capture.
 #[derive(Debug, Clone, Serialize)]
@@ -39,8 +39,7 @@ pub struct InterfaceFlags {
 /// }
 /// ```
 pub fn list_interfaces() -> Result<Vec<NetworkInterface>, CaptureError> {
-    let devices = pcap::Device::list()
-        .map_err(|e| CaptureError::InterfaceList(e.to_string()))?;
+    let devices = pcap::Device::list().map_err(|e| CaptureError::InterfaceList(e.to_string()))?;
 
     let interfaces = devices
         .into_iter()
@@ -58,9 +57,10 @@ pub fn list_interfaces() -> Result<Vec<NetworkInterface>, CaptureError> {
             // pcap doesn't directly expose all flags, so we infer what we can
             let is_loopback = device.name.contains("lo")
                 || device.name.contains("Loopback")
-                || device.addresses.iter().any(|a| {
-                    a.addr.to_string() == "127.0.0.1" || a.addr.to_string() == "::1"
-                });
+                || device
+                    .addresses
+                    .iter()
+                    .any(|a| a.addr.to_string() == "127.0.0.1" || a.addr.to_string() == "::1");
 
             NetworkInterface {
                 name: device.name,
@@ -97,7 +97,10 @@ mod tests {
             }
             Err(e) => {
                 // Acceptable in CI environments without libpcap
-                eprintln!("Could not list interfaces (expected in some environments): {}", e);
+                eprintln!(
+                    "Could not list interfaces (expected in some environments): {}",
+                    e
+                );
             }
         }
     }

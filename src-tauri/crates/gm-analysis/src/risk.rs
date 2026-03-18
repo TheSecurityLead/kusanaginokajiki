@@ -46,7 +46,11 @@ pub struct CriticalityAssessment {
 /// 4. Historian/Gateway/OPC → Medium
 /// 5. Purdue level fallback (L1→Critical, L2→High, L3→Medium, L4+→Low)
 /// 6. No info → Low
-pub fn assess_criticality(role: &str, protocols: &[String], purdue_level: Option<u8>) -> CriticalityLevel {
+pub fn assess_criticality(
+    role: &str,
+    protocols: &[String],
+    purdue_level: Option<u8>,
+) -> CriticalityLevel {
     let role_lower = role.to_lowercase();
 
     // Safety override — highest priority
@@ -126,7 +130,12 @@ pub fn assess_all(assets: &[crate::AssetSnapshot]) -> Vec<CriticalityAssessment>
         .collect()
 }
 
-fn build_reason(role: &str, _protocols: &[String], purdue_level: Option<u8>, level: CriticalityLevel) -> String {
+fn build_reason(
+    role: &str,
+    _protocols: &[String],
+    purdue_level: Option<u8>,
+    level: CriticalityLevel,
+) -> String {
     match level {
         CriticalityLevel::Critical => {
             if role.to_lowercase().contains("safety") {
@@ -135,7 +144,9 @@ fn build_reason(role: &str, _protocols: &[String], purdue_level: Option<u8>, lev
                 format!("Control device ({}) — direct process impact", role)
             }
         }
-        CriticalityLevel::High => format!("Supervisory device ({}) — operator visibility impact", role),
+        CriticalityLevel::High => {
+            format!("Supervisory device ({}) — operator visibility impact", role)
+        }
         CriticalityLevel::Medium => format!("Data/integration layer ({}) — indirect impact", role),
         CriticalityLevel::Low => {
             if let Some(lvl) = purdue_level {
@@ -162,10 +173,7 @@ mod tests {
 
     #[test]
     fn test_hmi_is_high() {
-        assert_eq!(
-            assess_criticality("hmi", &[], None),
-            CriticalityLevel::High
-        );
+        assert_eq!(assess_criticality("hmi", &[], None), CriticalityLevel::High);
     }
 
     #[test]

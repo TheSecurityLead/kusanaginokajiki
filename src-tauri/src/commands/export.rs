@@ -4,17 +4,16 @@
 //! export formats using the gm-report crate, plus the allowlist generator
 //! from gm-analysis.
 
-use std::collections::{HashMap, HashSet};
 use serde::Deserialize;
+use std::collections::{HashMap, HashSet};
 use tauri::State;
 
-use gm_report::{
-    ExportAsset, ExportConnection, ExportProtocolStat, ExportFinding,
-    ReportConfig, ReportData,
-};
 use gm_analysis::{
-    AllowlistEntry, AssetSnapshot, ConnectionSnapshot,
-    generate_allowlist, allowlist_to_csv, format_firewall_rules,
+    allowlist_to_csv, format_firewall_rules, generate_allowlist, AllowlistEntry, AssetSnapshot,
+    ConnectionSnapshot,
+};
+use gm_report::{
+    ExportAsset, ExportConnection, ExportFinding, ExportProtocolStat, ReportConfig, ReportData,
 };
 
 use super::AppState;
@@ -23,41 +22,49 @@ use super::AppState;
 
 /// Convert the in-memory AppState assets to ExportAsset format.
 fn state_assets_to_export(state: &super::AppStateInner) -> Vec<ExportAsset> {
-    state.assets.iter().map(|a| ExportAsset {
-        ip_address: a.ip_address.clone(),
-        mac_address: a.mac_address.clone(),
-        hostname: a.hostname.clone(),
-        device_type: a.device_type.clone(),
-        vendor: a.vendor.clone(),
-        product_family: a.product_family.clone(),
-        protocols: a.protocols.clone(),
-        confidence: a.confidence,
-        purdue_level: a.purdue_level,
-        oui_vendor: a.oui_vendor.clone(),
-        country: a.country.clone(),
-        is_public_ip: a.is_public_ip,
-        first_seen: a.first_seen.clone(),
-        last_seen: a.last_seen.clone(),
-        notes: a.notes.clone(),
-        tags: a.tags.clone(),
-        packet_count: a.packet_count,
-    }).collect()
+    state
+        .assets
+        .iter()
+        .map(|a| ExportAsset {
+            ip_address: a.ip_address.clone(),
+            mac_address: a.mac_address.clone(),
+            hostname: a.hostname.clone(),
+            device_type: a.device_type.clone(),
+            vendor: a.vendor.clone(),
+            product_family: a.product_family.clone(),
+            protocols: a.protocols.clone(),
+            confidence: a.confidence,
+            purdue_level: a.purdue_level,
+            oui_vendor: a.oui_vendor.clone(),
+            country: a.country.clone(),
+            is_public_ip: a.is_public_ip,
+            first_seen: a.first_seen.clone(),
+            last_seen: a.last_seen.clone(),
+            notes: a.notes.clone(),
+            tags: a.tags.clone(),
+            packet_count: a.packet_count,
+        })
+        .collect()
 }
 
 /// Convert the in-memory connections to ExportConnection format.
 fn state_connections_to_export(state: &super::AppStateInner) -> Vec<ExportConnection> {
-    state.connections.iter().map(|c| ExportConnection {
-        src_ip: c.src_ip.clone(),
-        src_port: c.src_port,
-        dst_ip: c.dst_ip.clone(),
-        dst_port: c.dst_port,
-        protocol: c.protocol.clone(),
-        transport: c.transport.clone(),
-        packet_count: c.packet_count,
-        byte_count: c.byte_count,
-        first_seen: c.first_seen.clone(),
-        last_seen: c.last_seen.clone(),
-    }).collect()
+    state
+        .connections
+        .iter()
+        .map(|c| ExportConnection {
+            src_ip: c.src_ip.clone(),
+            src_port: c.src_port,
+            dst_ip: c.dst_ip.clone(),
+            dst_port: c.dst_port,
+            protocol: c.protocol.clone(),
+            transport: c.transport.clone(),
+            packet_count: c.packet_count,
+            byte_count: c.byte_count,
+            first_seen: c.first_seen.clone(),
+            last_seen: c.last_seen.clone(),
+        })
+        .collect()
 }
 
 /// Compute protocol stats from connections.
@@ -65,15 +72,15 @@ fn compute_protocol_stats(state: &super::AppStateInner) -> Vec<ExportProtocolSta
     let mut stats: HashMap<String, ExportProtocolStat> = HashMap::new();
 
     for conn in &state.connections {
-        let entry = stats.entry(conn.protocol.clone()).or_insert_with(|| {
-            ExportProtocolStat {
+        let entry = stats
+            .entry(conn.protocol.clone())
+            .or_insert_with(|| ExportProtocolStat {
                 protocol: conn.protocol.clone(),
                 packet_count: 0,
                 byte_count: 0,
                 connection_count: 0,
                 unique_devices: 0,
-            }
-        });
+            });
         entry.packet_count += conn.packet_count;
         entry.byte_count += conn.byte_count;
         entry.connection_count += 1;
@@ -133,7 +140,11 @@ pub async fn export_connections_csv(
     let connections = state_connections_to_export(&inner);
     let csv = gm_report::csv_export::connections_to_csv(&connections).map_err(|e| e.to_string())?;
     gm_report::csv_export::write_csv_file(&output_path, &csv).map_err(|e| e.to_string())?;
-    log::info!("Exported {} connections to CSV: {}", connections.len(), output_path);
+    log::info!(
+        "Exported {} connections to CSV: {}",
+        connections.len(),
+        output_path
+    );
     Ok(output_path)
 }
 
@@ -151,8 +162,9 @@ pub async fn export_topology_json(
     let stats = compute_protocol_stats(&inner);
     let session_name = inner.current_session_name.as_deref();
 
-    let json = gm_report::json_export::topology_to_json(&assets, &connections, &stats, session_name)
-        .map_err(|e| e.to_string())?;
+    let json =
+        gm_report::json_export::topology_to_json(&assets, &connections, &stats, session_name)
+            .map_err(|e| e.to_string())?;
     gm_report::json_export::write_json_file(&output_path, &json).map_err(|e| e.to_string())?;
     log::info!("Exported topology JSON to: {}", output_path);
     Ok(output_path)
@@ -201,7 +213,8 @@ pub async fn generate_pdf_report(
     let report_config = ReportConfig {
         assessor_name: config.assessor_name,
         client_name: config.client_name,
-        assessment_date: config.assessment_date
+        assessment_date: config
+            .assessment_date
             .unwrap_or_else(|| chrono::Utc::now().format("%Y-%m-%d").to_string()),
         title: config.title,
         include_executive_summary: config.include_executive_summary,
@@ -235,11 +248,21 @@ pub async fn export_sbom(
     let content = match format.as_str() {
         "csv" => gm_report::sbom::sbom_to_csv(&entries).map_err(|e| e.to_string())?,
         "json" => gm_report::sbom::sbom_to_json(&entries).map_err(|e| e.to_string())?,
-        _ => return Err(format!("Unsupported SBOM format: {}. Use 'csv' or 'json'.", format)),
+        _ => {
+            return Err(format!(
+                "Unsupported SBOM format: {}. Use 'csv' or 'json'.",
+                format
+            ))
+        }
     };
 
     std::fs::write(&output_path, content).map_err(|e| e.to_string())?;
-    log::info!("Exported SBOM ({}) with {} entries to: {}", format, entries.len(), output_path);
+    log::info!(
+        "Exported SBOM ({}) with {} entries to: {}",
+        format,
+        entries.len(),
+        output_path
+    );
     Ok(output_path)
 }
 
@@ -307,7 +330,9 @@ pub async fn export_filtered_pcap(
 
     log::info!(
         "Filtered PCAP export: {} packets from {} files → {}",
-        packets_written, source_files, output_path
+        packets_written,
+        source_files,
+        output_path
     );
 
     Ok(FilteredPcapResult {
@@ -328,16 +353,15 @@ pub async fn save_topology_image(
 ) -> Result<String, String> {
     if let Some(base64_data) = image_data.strip_prefix("data:image/png;base64,") {
         // Decode base64 PNG
-        let bytes = base64_decode(base64_data)
-            .map_err(|e| format!("Invalid base64 data: {}", e))?;
+        let bytes =
+            base64_decode(base64_data).map_err(|e| format!("Invalid base64 data: {}", e))?;
         std::fs::write(&output_path, bytes).map_err(|e| e.to_string())?;
     } else if image_data.starts_with("<?xml") || image_data.starts_with("<svg") {
         // SVG content
         std::fs::write(&output_path, &image_data).map_err(|e| e.to_string())?;
     } else {
         // Assume raw base64 PNG without data: prefix
-        let bytes = base64_decode(&image_data)
-            .map_err(|e| format!("Invalid image data: {}", e))?;
+        let bytes = base64_decode(&image_data).map_err(|e| format!("Invalid image data: {}", e))?;
         std::fs::write(&output_path, bytes).map_err(|e| e.to_string())?;
     }
 
@@ -349,27 +373,37 @@ pub async fn save_topology_image(
 
 /// Build AssetSnapshot slices from AppStateInner for allowlist generation.
 fn state_assets_to_snapshots(state: &super::AppStateInner) -> Vec<AssetSnapshot> {
-    state.assets.iter().map(|a| AssetSnapshot {
-        ip_address: a.ip_address.clone(),
-        device_type: a.device_type.clone(),
-        protocols: a.protocols.clone(),
-        purdue_level: a.purdue_level,
-        is_public_ip: a.is_public_ip,
-        tags: a.tags.clone(),
-        vendor: a.vendor.clone(),
-    }).collect()
+    state
+        .assets
+        .iter()
+        .map(|a| AssetSnapshot {
+            ip_address: a.ip_address.clone(),
+            device_type: a.device_type.clone(),
+            protocols: a.protocols.clone(),
+            purdue_level: a.purdue_level,
+            is_public_ip: a.is_public_ip,
+            tags: a.tags.clone(),
+            vendor: a.vendor.clone(),
+            hostname: a.hostname.clone(),
+            product_family: a.product_family.clone(),
+        })
+        .collect()
 }
 
 /// Build ConnectionSnapshot slices from AppStateInner for allowlist generation.
 fn state_connections_to_snapshots(state: &super::AppStateInner) -> Vec<ConnectionSnapshot> {
-    state.connections.iter().map(|c| ConnectionSnapshot {
-        src_ip: c.src_ip.clone(),
-        dst_ip: c.dst_ip.clone(),
-        src_port: c.src_port,
-        dst_port: c.dst_port,
-        protocol: c.protocol.clone(),
-        packet_count: c.packet_count,
-    }).collect()
+    state
+        .connections
+        .iter()
+        .map(|c| ConnectionSnapshot {
+            src_ip: c.src_ip.clone(),
+            dst_ip: c.dst_ip.clone(),
+            src_port: c.src_port,
+            dst_port: c.dst_port,
+            protocol: c.protocol.clone(),
+            packet_count: c.packet_count,
+        })
+        .collect()
 }
 
 /// Generate a communication allowlist from observed network traffic.
@@ -404,7 +438,11 @@ pub async fn export_allowlist_csv(
     let entries = generate_allowlist(&connections, &assets, &comm_stats);
     let csv = allowlist_to_csv(&entries);
     std::fs::write(&output_path, csv).map_err(|e| e.to_string())?;
-    log::info!("Exported communication allowlist ({} entries) to CSV: {}", entries.len(), output_path);
+    log::info!(
+        "Exported communication allowlist ({} entries) to CSV: {}",
+        entries.len(),
+        output_path
+    );
     Ok(output_path)
 }
 
@@ -423,7 +461,11 @@ pub async fn export_firewall_rules(
     let entries = generate_allowlist(&connections, &assets, &comm_stats);
     let rules = format_firewall_rules(&entries);
     std::fs::write(&output_path, rules).map_err(|e| e.to_string())?;
-    log::info!("Exported firewall rule suggestions ({} rules) to: {}", entries.len(), output_path);
+    log::info!(
+        "Exported firewall rule suggestions ({} rules) to: {}",
+        entries.len(),
+        output_path
+    );
     Ok(output_path)
 }
 

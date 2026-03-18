@@ -1,7 +1,7 @@
 //! Database schema initialization.
 
-use rusqlite::Connection;
 use crate::error::DbError;
+use rusqlite::Connection;
 
 /// All CREATE TABLE statements for the Kusanagi Kajiki database.
 const SCHEMA_SQL: &str = r#"

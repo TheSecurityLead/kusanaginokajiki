@@ -1,16 +1,14 @@
 //! Session management commands: save, load, list, delete sessions,
 //! update and bulk update assets, export/import ZIP archives.
 
-use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use tauri::State;
 
 use gm_db::{AssetRow, ConnectionRow};
 use gm_topology::TopologyBuilder;
 
-use super::{
-    AppState, AssetInfo, ConnectionInfo, DeepParseInfo,
-};
+use super::{AppState, AssetInfo, ConnectionInfo, DeepParseInfo};
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -96,8 +94,13 @@ pub async fn save_session(
             .map_err(|e| e.to_string())?;
     }
 
-    log::info!("Saved session '{}' ({}) with {} assets, {} connections",
-        name, session_id, inner.assets.len(), inner.connections.len());
+    log::info!(
+        "Saved session '{}' ({}) with {} assets, {} connections",
+        name,
+        session_id,
+        inner.assets.len(),
+        inner.connections.len()
+    );
 
     Ok(SessionInfo {
         id: session_row.id,
@@ -124,8 +127,8 @@ pub async fn load_session(
     let session_row = db.get_session(&session_id).map_err(|e| e.to_string())?;
 
     // Parse metadata
-    let metadata: SessionMetadata = serde_json::from_str(&session_row.metadata)
-        .unwrap_or(SessionMetadata {
+    let metadata: SessionMetadata =
+        serde_json::from_str(&session_row.metadata).unwrap_or(SessionMetadata {
             deep_parse_info: HashMap::new(),
             imported_files: Vec::new(),
         });
@@ -135,8 +138,11 @@ pub async fn load_session(
     let assets: Vec<AssetInfo> = asset_rows.into_iter().map(row_to_asset_info).collect();
 
     // Load connections from DB
-    let conn_rows = db.list_connections(&session_id).map_err(|e| e.to_string())?;
-    let connections: Vec<ConnectionInfo> = conn_rows.into_iter().map(row_to_connection_info).collect();
+    let conn_rows = db
+        .list_connections(&session_id)
+        .map_err(|e| e.to_string())?;
+    let connections: Vec<ConnectionInfo> =
+        conn_rows.into_iter().map(row_to_connection_info).collect();
 
     // Rebuild topology from loaded connections
     let mut topo_builder = TopologyBuilder::new();
@@ -178,14 +184,14 @@ pub async fn load_session(
 
 /// List saved sessions. When a project is active, returns only that project's sessions.
 #[tauri::command]
-pub async fn list_sessions(
-    state: State<'_, AppState>,
-) -> Result<Vec<SessionInfo>, String> {
+pub async fn list_sessions(state: State<'_, AppState>) -> Result<Vec<SessionInfo>, String> {
     let inner = state.inner.lock().map_err(|e| e.to_string())?;
     let db = inner.db.as_ref().ok_or("Database not available")?;
 
     let rows = match inner.current_project_id {
-        Some(project_id) => db.list_sessions_for_project(project_id).map_err(|e| e.to_string())?,
+        Some(project_id) => db
+            .list_sessions_for_project(project_id)
+            .map_err(|e| e.to_string())?,
         None => db.list_sessions().map_err(|e| e.to_string())?,
     };
 
@@ -205,10 +211,7 @@ pub async fn list_sessions(
 
 /// Delete a session by ID.
 #[tauri::command]
-pub async fn delete_session(
-    session_id: String,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
+pub async fn delete_session(session_id: String, state: State<'_, AppState>) -> Result<(), String> {
     let inner = state.inner.lock().map_err(|e| e.to_string())?;
     let db = inner.db.as_ref().ok_or("Database not available")?;
     db.delete_session(&session_id).map_err(|e| e.to_string())?;
@@ -238,7 +241,11 @@ pub async fn update_asset(
         asset.device_type = dt.clone();
     }
     if let Some(ref hostname) = updates.hostname {
-        asset.hostname = if hostname.is_empty() { None } else { Some(hostname.clone()) };
+        asset.hostname = if hostname.is_empty() {
+            None
+        } else {
+            Some(hostname.clone())
+        };
     }
     if let Some(ref notes) = updates.notes {
         asset.notes = notes.clone();
@@ -291,7 +298,11 @@ pub async fn bulk_update_assets(
                 asset.device_type = dt.clone();
             }
             if let Some(ref hostname) = updates.hostname {
-                asset.hostname = if hostname.is_empty() { None } else { Some(hostname.clone()) };
+                asset.hostname = if hostname.is_empty() {
+                    None
+                } else {
+                    Some(hostname.clone())
+                };
             }
             if let Some(ref notes) = updates.notes {
                 asset.notes = notes.clone();
@@ -334,7 +345,9 @@ pub async fn export_session_archive(
     // Load session data from DB
     let session = db.get_session(&session_id).map_err(|e| e.to_string())?;
     let assets = db.list_assets(&session_id).map_err(|e| e.to_string())?;
-    let connections = db.list_connections(&session_id).map_err(|e| e.to_string())?;
+    let connections = db
+        .list_connections(&session_id)
+        .map_err(|e| e.to_string())?;
 
     // Build the session data JSON
     let session_data = serde_json::json!({
@@ -365,18 +378,26 @@ pub async fn export_session_archive(
         .compression_method(zip::CompressionMethod::Deflated);
 
     // Write manifest.json
-    zip.start_file("manifest.json", options).map_err(|e| e.to_string())?;
+    zip.start_file("manifest.json", options)
+        .map_err(|e| e.to_string())?;
     std::io::Write::write_all(
         &mut zip,
-        serde_json::to_string_pretty(&manifest).map_err(|e| e.to_string())?.as_bytes(),
-    ).map_err(|e| e.to_string())?;
+        serde_json::to_string_pretty(&manifest)
+            .map_err(|e| e.to_string())?
+            .as_bytes(),
+    )
+    .map_err(|e| e.to_string())?;
 
     // Write session.json
-    zip.start_file("session.json", options).map_err(|e| e.to_string())?;
+    zip.start_file("session.json", options)
+        .map_err(|e| e.to_string())?;
     std::io::Write::write_all(
         &mut zip,
-        serde_json::to_string_pretty(&session_data).map_err(|e| e.to_string())?.as_bytes(),
-    ).map_err(|e| e.to_string())?;
+        serde_json::to_string_pretty(&session_data)
+            .map_err(|e| e.to_string())?
+            .as_bytes(),
+    )
+    .map_err(|e| e.to_string())?;
 
     zip.finish().map_err(|e| e.to_string())?;
 
@@ -409,17 +430,16 @@ pub async fn import_session_archive(
         .as_str()
         .unwrap_or("")
         .to_string();
-    let metadata_str = session_json.get("metadata")
+    let metadata_str = session_json
+        .get("metadata")
         .map(|m| m.to_string())
         .unwrap_or_else(|| "{}".to_string());
 
-    let assets: Vec<AssetRow> = serde_json::from_value(
-        session_json["assets"].clone()
-    ).unwrap_or_default();
+    let assets: Vec<AssetRow> =
+        serde_json::from_value(session_json["assets"].clone()).unwrap_or_default();
 
-    let connections: Vec<ConnectionRow> = serde_json::from_value(
-        session_json["connections"].clone()
-    ).unwrap_or_default();
+    let connections: Vec<ConnectionRow> =
+        serde_json::from_value(session_json["connections"].clone()).unwrap_or_default();
 
     // Save to database with a new session ID
     let mut inner = state.inner.lock().map_err(|e| e.to_string())?;
@@ -440,24 +460,35 @@ pub async fn import_session_archive(
     }
 
     let session = db.get_session(&new_session_id).map_err(|e| e.to_string())?;
-    let asset_count = db.list_assets(&new_session_id).map_err(|e| e.to_string())?.len() as i64;
-    let conn_count = db.list_connections(&new_session_id).map_err(|e| e.to_string())?.len() as i64;
+    let asset_count = db
+        .list_assets(&new_session_id)
+        .map_err(|e| e.to_string())?
+        .len() as i64;
+    let conn_count = db
+        .list_connections(&new_session_id)
+        .map_err(|e| e.to_string())?
+        .len() as i64;
 
     db.update_session_counts(&new_session_id, asset_count, conn_count)
         .map_err(|e| e.to_string())?;
 
     // Also load the imported session into current state
-    let metadata: SessionMetadata = serde_json::from_str(&metadata_str)
-        .unwrap_or(SessionMetadata {
+    let metadata: SessionMetadata =
+        serde_json::from_str(&metadata_str).unwrap_or(SessionMetadata {
             deep_parse_info: HashMap::new(),
             imported_files: Vec::new(),
         });
 
     let loaded_assets = db.list_assets(&new_session_id).map_err(|e| e.to_string())?;
-    let loaded_conns = db.list_connections(&new_session_id).map_err(|e| e.to_string())?;
+    let loaded_conns = db
+        .list_connections(&new_session_id)
+        .map_err(|e| e.to_string())?;
 
     let assets_vec: Vec<AssetInfo> = loaded_assets.into_iter().map(row_to_asset_info).collect();
-    let conns_vec: Vec<ConnectionInfo> = loaded_conns.into_iter().map(row_to_connection_info).collect();
+    let conns_vec: Vec<ConnectionInfo> = loaded_conns
+        .into_iter()
+        .map(row_to_connection_info)
+        .collect();
 
     // Rebuild topology
     let mut topo_builder = TopologyBuilder::new();
@@ -482,7 +513,11 @@ pub async fn import_session_archive(
     inner.current_session_id = Some(new_session_id);
     inner.current_session_name = Some(session_name.clone());
 
-    log::info!("Imported session archive '{}' from {}", session_name, archive_path);
+    log::info!(
+        "Imported session archive '{}' from {}",
+        session_name,
+        archive_path
+    );
 
     Ok(SessionInfo {
         id: session.id,

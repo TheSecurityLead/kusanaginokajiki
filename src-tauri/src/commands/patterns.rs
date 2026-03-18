@@ -4,10 +4,10 @@
 //! were populated by `PacketProcessor::build_pattern_results()` during
 //! PCAP import or live capture.
 
-use tauri::State;
+use super::AppState;
 use gm_analysis::{ConnectionStats, PatternAnomaly};
 use gm_parsers::RedundancyInfo;
-use super::AppState;
+use tauri::State;
 
 /// Get per-connection timing statistics for the current dataset.
 #[tauri::command]

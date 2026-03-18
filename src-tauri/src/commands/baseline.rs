@@ -3,8 +3,8 @@
 //! Detects new devices, missing devices, changed devices, and
 //! new/missing connections between the current capture and a baseline session.
 
-use std::collections::{HashMap, HashSet};
 use serde::Serialize;
+use std::collections::{HashMap, HashSet};
 use tauri::State;
 
 use super::{AppState, AssetInfo};
@@ -96,11 +96,17 @@ pub fn compare_sessions(
     let db = inner.db.as_ref().ok_or("Database not available")?;
 
     // Load baseline session info
-    let session_row = db.get_session(&baseline_session_id).map_err(|e| e.to_string())?;
+    let session_row = db
+        .get_session(&baseline_session_id)
+        .map_err(|e| e.to_string())?;
 
     // Load baseline assets and connections
-    let baseline_asset_rows = db.list_assets(&baseline_session_id).map_err(|e| e.to_string())?;
-    let baseline_conn_rows = db.list_connections(&baseline_session_id).map_err(|e| e.to_string())?;
+    let baseline_asset_rows = db
+        .list_assets(&baseline_session_id)
+        .map_err(|e| e.to_string())?;
+    let baseline_conn_rows = db
+        .list_connections(&baseline_session_id)
+        .map_err(|e| e.to_string())?;
 
     // Convert baseline assets to a map by IP for comparison
     let baseline_assets: HashMap<String, _> = baseline_asset_rows
@@ -148,8 +154,8 @@ pub fn compare_sessions(
     // Find missing assets (in baseline but not current)
     for (ip, baseline) in &baseline_assets {
         if !current_assets.contains_key(ip) {
-            let protocols: Vec<String> = serde_json::from_str(&baseline.protocols)
-                .unwrap_or_default();
+            let protocols: Vec<String> =
+                serde_json::from_str(&baseline.protocols).unwrap_or_default();
             missing_assets.push(DriftAsset {
                 ip_address: baseline.ip_address.clone(),
                 mac_address: baseline.mac_address.clone(),
@@ -166,13 +172,27 @@ pub fn compare_sessions(
     // Connection key: (src_ip, dst_ip, dst_port, protocol)
     let baseline_conn_keys: HashSet<(String, String, i64, String)> = baseline_conn_rows
         .iter()
-        .map(|c| (c.src_ip.clone(), c.dst_ip.clone(), c.dst_port, c.protocol.clone()))
+        .map(|c| {
+            (
+                c.src_ip.clone(),
+                c.dst_ip.clone(),
+                c.dst_port,
+                c.protocol.clone(),
+            )
+        })
         .collect();
 
     let current_conn_keys: HashSet<(String, String, u16, String)> = inner
         .connections
         .iter()
-        .map(|c| (c.src_ip.clone(), c.dst_ip.clone(), c.dst_port, c.protocol.clone()))
+        .map(|c| {
+            (
+                c.src_ip.clone(),
+                c.dst_ip.clone(),
+                c.dst_port,
+                c.protocol.clone(),
+            )
+        })
         .collect();
 
     let mut new_connections = Vec::new();
@@ -180,7 +200,12 @@ pub fn compare_sessions(
 
     // New connections (in current but not baseline)
     for conn in &inner.connections {
-        let key = (conn.src_ip.clone(), conn.dst_ip.clone(), conn.dst_port as i64, conn.protocol.clone());
+        let key = (
+            conn.src_ip.clone(),
+            conn.dst_ip.clone(),
+            conn.dst_port as i64,
+            conn.protocol.clone(),
+        );
         if !baseline_conn_keys.contains(&key) {
             new_connections.push(DriftConnection {
                 src_ip: conn.src_ip.clone(),
@@ -194,7 +219,12 @@ pub fn compare_sessions(
 
     // Missing connections (in baseline but not current)
     for conn in &baseline_conn_rows {
-        let key = (conn.src_ip.clone(), conn.dst_ip.clone(), conn.dst_port as u16, conn.protocol.clone());
+        let key = (
+            conn.src_ip.clone(),
+            conn.dst_ip.clone(),
+            conn.dst_port as u16,
+            conn.protocol.clone(),
+        );
         if !current_conn_keys.contains(&key) {
             missing_connections.push(DriftConnection {
                 src_ip: conn.src_ip.clone(),
@@ -210,10 +240,13 @@ pub fn compare_sessions(
 
     let total_baseline = baseline_assets.len();
     let total_current = current_assets.len();
-    let total_changes = new_assets.len() + missing_assets.len() + changed_assets.len()
-        + new_connections.len() + missing_connections.len();
-    let total_items = total_baseline.max(total_current)
-        + baseline_conn_keys.len().max(current_conn_keys.len());
+    let total_changes = new_assets.len()
+        + missing_assets.len()
+        + changed_assets.len()
+        + new_connections.len()
+        + missing_connections.len();
+    let total_items =
+        total_baseline.max(total_current) + baseline_conn_keys.len().max(current_conn_keys.len());
     let drift_score = if total_items > 0 {
         (total_changes as f64 / total_items as f64).min(1.0)
     } else {
@@ -282,8 +315,8 @@ fn diff_asset(baseline: &gm_db::AssetRow, current: &AssetInfo) -> Vec<AssetChang
         });
     }
 
-    let baseline_protocols: Vec<String> = serde_json::from_str(&baseline.protocols)
-        .unwrap_or_default();
+    let baseline_protocols: Vec<String> =
+        serde_json::from_str(&baseline.protocols).unwrap_or_default();
     let mut bp_sorted = baseline_protocols.clone();
     bp_sorted.sort();
     let mut cp_sorted = current.protocols.clone();
@@ -310,8 +343,13 @@ fn diff_asset(baseline: &gm_db::AssetRow, current: &AssetInfo) -> Vec<AssetChang
     if baseline_purdue != current.purdue_level {
         changes.push(AssetChange {
             field: "purdue_level".to_string(),
-            baseline_value: baseline_purdue.map(|l| l.to_string()).unwrap_or_else(|| "none".to_string()),
-            current_value: current.purdue_level.map(|l| l.to_string()).unwrap_or_else(|| "none".to_string()),
+            baseline_value: baseline_purdue
+                .map(|l| l.to_string())
+                .unwrap_or_else(|| "none".to_string()),
+            current_value: current
+                .purdue_level
+                .map(|l| l.to_string())
+                .unwrap_or_else(|| "none".to_string()),
         });
     }
 

@@ -1,12 +1,12 @@
-use std::collections::{HashMap, HashSet};
 use serde::Serialize;
+use std::collections::{HashMap, HashSet};
 use tauri::State;
 
-use gm_topology::TopologyGraph;
 use super::{
-    AppState, AssetInfo, ConnectionInfo, PacketSummary, ProtocolStatInfo,
-    DeepParseInfo, FunctionCodeStat,
+    AppState, AssetInfo, ConnectionInfo, DeepParseInfo, FunctionCodeStat, PacketSummary,
+    ProtocolStatInfo,
 };
+use gm_topology::TopologyGraph;
 
 /// Maximum nodes returned by get_topology. Excess nodes (by packet count) are
 /// dropped to prevent the webview from being asked to render a massive graph.
@@ -42,7 +42,9 @@ pub fn get_topology(state: State<'_, AppState>) -> Result<TopologyGraph, String>
     let retained: HashSet<&str> = nodes.iter().map(|n| n.id.as_str()).collect();
 
     // Filter edges to connections between retained nodes, then cap.
-    let mut edges: Vec<_> = topo.edges.iter()
+    let mut edges: Vec<_> = topo
+        .edges
+        .iter()
         .filter(|e| retained.contains(e.source.as_str()) && retained.contains(e.target.as_str()))
         .cloned()
         .collect();
@@ -101,15 +103,15 @@ pub fn get_protocol_stats(state: State<'_, AppState>) -> Result<Vec<ProtocolStat
     let mut devices_per_proto: HashMap<String, HashSet<String>> = HashMap::new();
 
     for conn in &state_inner.connections {
-        let entry = stats.entry(conn.protocol.clone()).or_insert_with(|| {
-            ProtocolStatInfo {
+        let entry = stats
+            .entry(conn.protocol.clone())
+            .or_insert_with(|| ProtocolStatInfo {
                 protocol: conn.protocol.clone(),
                 packet_count: 0,
                 byte_count: 0,
                 connection_count: 0,
                 unique_devices: 0,
-            }
-        });
+            });
         entry.packet_count += conn.packet_count;
         entry.byte_count += conn.byte_count;
         entry.connection_count += 1;
@@ -190,27 +192,29 @@ pub fn get_function_code_stats(
     let mut result: HashMap<String, Vec<FunctionCodeStat>> = HashMap::new();
 
     if !modbus_fcs.is_empty() {
-        let mut fcs: Vec<FunctionCodeStat> = modbus_fcs.into_iter().map(|(code, count)| {
-            FunctionCodeStat {
+        let mut fcs: Vec<FunctionCodeStat> = modbus_fcs
+            .into_iter()
+            .map(|(code, count)| FunctionCodeStat {
                 code,
                 name: gm_parsers::modbus_function_code_name(code).to_string(),
                 count,
                 is_write: matches!(code, 5 | 6 | 15 | 16 | 22 | 23),
-            }
-        }).collect();
+            })
+            .collect();
         fcs.sort_by(|a, b| b.count.cmp(&a.count));
         result.insert("modbus".to_string(), fcs);
     }
 
     if !dnp3_fcs.is_empty() {
-        let mut fcs: Vec<FunctionCodeStat> = dnp3_fcs.into_iter().map(|(code, count)| {
-            FunctionCodeStat {
+        let mut fcs: Vec<FunctionCodeStat> = dnp3_fcs
+            .into_iter()
+            .map(|(code, count)| FunctionCodeStat {
                 code,
                 name: gm_parsers::dnp3_function_code_name(code).to_string(),
                 count,
                 is_write: matches!(code, 2..=6),
-            }
-        }).collect();
+            })
+            .collect();
         fcs.sort_by(|a, b| b.count.cmp(&a.count));
         result.insert("dnp3".to_string(), fcs);
     }

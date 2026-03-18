@@ -1,5 +1,5 @@
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use serde::{Serialize, Deserialize};
 
 /// List all available network interfaces.
 ///
@@ -119,14 +119,16 @@ pub fn list_plugins() -> Result<Vec<PluginManifest>, String> {
         let manifest_path = path.join("manifest.json");
         if manifest_path.exists() {
             match std::fs::read_to_string(&manifest_path) {
-                Ok(content) => {
-                    match serde_json::from_str::<PluginManifest>(&content) {
-                        Ok(manifest) => plugins.push(manifest),
-                        Err(e) => {
-                            log::warn!("Invalid plugin manifest at {}: {}", manifest_path.display(), e);
-                        }
+                Ok(content) => match serde_json::from_str::<PluginManifest>(&content) {
+                    Ok(manifest) => plugins.push(manifest),
+                    Err(e) => {
+                        log::warn!(
+                            "Invalid plugin manifest at {}: {}",
+                            manifest_path.display(),
+                            e
+                        );
                     }
-                }
+                },
                 Err(e) => {
                     log::warn!("Failed to read {}: {}", manifest_path.display(), e);
                 }

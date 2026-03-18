@@ -10,7 +10,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use crate::{ArpEntry, CdpNeighbor, MacTableEntry, PhysicalPort, PhysicalSwitch, PhysicalError};
+use crate::{ArpEntry, CdpNeighbor, MacTableEntry, PhysicalError, PhysicalPort, PhysicalSwitch};
 
 // ─── JunOS Config Parser ──────────────────────────────────────────
 
@@ -90,8 +90,9 @@ fn parse_junos_interfaces_from_config(content: &str) -> Vec<PhysicalPort> {
             // Strip unit suffix for the canonical name (ge-0/0/0.0 → ge-0/0/0)
             let canonical = strip_unit_suffix(&iface_name);
 
-            let entry = ports.entry(canonical.clone()).or_insert_with(|| {
-                PhysicalPort {
+            let entry = ports
+                .entry(canonical.clone())
+                .or_insert_with(|| PhysicalPort {
                     name: canonical.clone(),
                     short_name: canonical.clone(),
                     description: None,
@@ -105,11 +106,15 @@ fn parse_junos_interfaces_from_config(content: &str) -> Vec<PhysicalPort> {
                     cdp_neighbor: None,
                     speed: None,
                     duplex: None,
-                }
-            });
+                });
 
             // Parse IP address: "ge-0/0/0 unit 0 family inet address X.X.X.X/Y"
-            if parts.len() >= 6 && parts[1] == "unit" && parts[3] == "family" && parts[4] == "inet" && parts[5] == "address" {
+            if parts.len() >= 6
+                && parts[1] == "unit"
+                && parts[3] == "family"
+                && parts[4] == "inet"
+                && parts[5] == "address"
+            {
                 if let Some(addr_cidr) = parts.get(6) {
                     if let Some((ip, prefix)) = addr_cidr.split_once('/') {
                         entry.ip_address = Some(ip.to_string());
@@ -181,7 +186,11 @@ fn prefix_to_mask(prefix: u8) -> Option<String> {
     if prefix > 32 {
         return None;
     }
-    let mask: u32 = if prefix == 0 { 0 } else { !0u32 << (32 - prefix) };
+    let mask: u32 = if prefix == 0 {
+        0
+    } else {
+        !0u32 << (32 - prefix)
+    };
     Some(format!(
         "{}.{}.{}.{}",
         (mask >> 24) & 0xff,
@@ -232,21 +241,23 @@ pub fn parse_interfaces_terse(content: &str) -> Vec<PhysicalPort> {
         // Link state
         let _link_up = parts.get(2).map(|s| *s == "up").unwrap_or(false);
 
-        let entry = ports.entry(canonical.clone()).or_insert_with(|| PhysicalPort {
-            name: canonical.clone(),
-            short_name: canonical.clone(),
-            description: None,
-            vlans: Vec::new(),
-            mode: "unknown".to_string(),
-            shutdown: !admin_up,
-            ip_address: None,
-            subnet_mask: None,
-            mac_addresses: Vec::new(),
-            ip_addresses: Vec::new(),
-            cdp_neighbor: None,
-            speed: None,
-            duplex: None,
-        });
+        let entry = ports
+            .entry(canonical.clone())
+            .or_insert_with(|| PhysicalPort {
+                name: canonical.clone(),
+                short_name: canonical.clone(),
+                description: None,
+                vlans: Vec::new(),
+                mode: "unknown".to_string(),
+                shutdown: !admin_up,
+                ip_address: None,
+                subnet_mask: None,
+                mac_addresses: Vec::new(),
+                ip_addresses: Vec::new(),
+                cdp_neighbor: None,
+                speed: None,
+                duplex: None,
+            });
 
         // Only update shutdown if we're looking at the physical (non-unit) interface
         if !raw_name.contains('.') {
@@ -335,11 +346,18 @@ pub fn parse_ethernet_switching_table(content: &str, _hostname: &str) -> Vec<Mac
             mac_address: mac,
             vlan,
             port,
-            entry_type: if entry_type == "learn" { "dynamic".to_string() } else { entry_type },
+            entry_type: if entry_type == "learn" {
+                "dynamic".to_string()
+            } else {
+                entry_type
+            },
         });
     }
 
-    log::info!("Parsed {} JunOS ethernet-switching table entries", entries.len());
+    log::info!(
+        "Parsed {} JunOS ethernet-switching table entries",
+        entries.len()
+    );
     entries
 }
 
@@ -390,7 +408,10 @@ pub fn parse_lldp_neighbors(content: &str) -> Vec<(String, CdpNeighbor)> {
         }
 
         // Split on 2+ spaces to handle fixed-width columns
-        let parts: Vec<&str> = line_trimmed.split("  ").filter(|s| !s.trim().is_empty()).collect();
+        let parts: Vec<&str> = line_trimmed
+            .split("  ")
+            .filter(|s| !s.trim().is_empty())
+            .collect();
         if parts.len() < 5 {
             // Try whitespace split as fallback
             let ws_parts: Vec<&str> = line_trimmed.split_whitespace().collect();
@@ -403,13 +424,16 @@ pub fn parse_lldp_neighbors(content: &str) -> Vec<(String, CdpNeighbor)> {
             let remote_port = ws_parts[3].trim().to_string();
             let system_name = ws_parts[4..].join(" ").trim().to_string();
 
-            neighbors.push((local_port, CdpNeighbor {
-                device_id: system_name,
-                remote_port,
-                platform: None,
-                ip_address: Some(chassis_id),
-                capabilities: Vec::new(),
-            }));
+            neighbors.push((
+                local_port,
+                CdpNeighbor {
+                    device_id: system_name,
+                    remote_port,
+                    platform: None,
+                    ip_address: Some(chassis_id),
+                    capabilities: Vec::new(),
+                },
+            ));
             continue;
         }
 
@@ -419,13 +443,16 @@ pub fn parse_lldp_neighbors(content: &str) -> Vec<(String, CdpNeighbor)> {
         let remote_port = parts[3].trim().to_string();
         let system_name = parts[4].trim().to_string();
 
-        neighbors.push((local_port, CdpNeighbor {
-            device_id: system_name,
-            remote_port,
-            platform: None,
-            ip_address: Some(chassis_id),
-            capabilities: Vec::new(),
-        }));
+        neighbors.push((
+            local_port,
+            CdpNeighbor {
+                device_id: system_name,
+                remote_port,
+                platform: None,
+                ip_address: Some(chassis_id),
+                capabilities: Vec::new(),
+            },
+        ));
     }
 
     log::info!("Parsed {} JunOS LLDP neighbors", neighbors.len());

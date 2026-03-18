@@ -1,16 +1,16 @@
 //! gm-report: PDF report generation, CSV/JSON/SBOM/STIX export
 //! for Kusanagi Kajiki ICS/SCADA network assessment tool.
 
-pub mod error;
-pub mod pdf;
 pub mod csv_export;
+pub mod error;
 pub mod json_export;
+pub mod pdf;
 pub mod sbom;
 pub mod stix;
 
 pub use error::ReportError;
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 /// Configuration for PDF report generation.
 #[derive(Debug, Clone, Serialize, Deserialize)]

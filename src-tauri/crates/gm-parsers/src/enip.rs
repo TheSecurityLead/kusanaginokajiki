@@ -838,7 +838,10 @@ mod tests {
 
         let result = parse(data).expect("ForwardOpen should parse");
         assert!(matches!(result.cip_service, Some(CipService::ForwardOpen)));
-        assert!(matches!(result.cip_class, Some(CipClass::ConnectionManager)));
+        assert!(matches!(
+            result.cip_class,
+            Some(CipClass::ConnectionManager)
+        ));
         assert!(matches!(result.role, EnipRole::Scanner));
     }
 

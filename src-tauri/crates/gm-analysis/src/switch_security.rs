@@ -18,8 +18,8 @@
 //! | MultipleMgmtProtocols | Device using both Telnet and SNMP | Medium |
 //! | DefaultCredentials | Switch uses known-default credentials | Critical |
 
-use serde::{Deserialize, Serialize};
 use crate::{AssetSnapshot, Severity};
+use serde::{Deserialize, Serialize};
 
 // ─── Finding Types ─────────────────────────────────────────────────────────────
 
@@ -55,14 +55,14 @@ pub enum SwitchFindingType {
 impl SwitchFindingType {
     pub fn title(&self) -> &'static str {
         match self {
-            Self::FlatNetwork         => "Flat Network — No VLAN Segmentation",
-            Self::DefaultVlan         => "Default VLAN 1 in Use",
-            Self::NoRedundancy        => "No Ring Redundancy Protocol Detected",
-            Self::RogueSwitch         => "Unrecognised Switch Detected",
-            Self::TrunkToEndDevice    => "Trunk Link to OT End Device",
-            Self::TopologyChange      => "Redundancy Topology Change Observed",
+            Self::FlatNetwork => "Flat Network — No VLAN Segmentation",
+            Self::DefaultVlan => "Default VLAN 1 in Use",
+            Self::NoRedundancy => "No Ring Redundancy Protocol Detected",
+            Self::RogueSwitch => "Unrecognised Switch Detected",
+            Self::TrunkToEndDevice => "Trunk Link to OT End Device",
+            Self::TopologyChange => "Redundancy Topology Change Observed",
             Self::MultipleMgmtProtocols => "Insecure Management Protocol Active",
-            Self::DefaultCredentials  => "Default Credentials in Use",
+            Self::DefaultCredentials => "Default Credentials in Use",
         }
     }
 }
@@ -140,7 +140,9 @@ pub fn assess_switch_security(input: &SwitchSecurityInput<'_>) -> Vec<SwitchSecu
     let mut findings = Vec::new();
 
     // Identify infrastructure assets (switches) from the asset list
-    let switch_ips: Vec<&str> = input.assets.iter()
+    let switch_ips: Vec<&str> = input
+        .assets
+        .iter()
         .filter(|a| is_switch_device_type(&a.device_type))
         .map(|a| a.ip_address.as_str())
         .collect();
@@ -149,7 +151,9 @@ pub fn assess_switch_security(input: &SwitchSecurityInput<'_>) -> Vec<SwitchSecu
     //
     // Heuristic: if there are multiple OT devices visible but only one or zero
     // distinct VLANs, the network is likely flat.
-    let ot_device_count = input.assets.iter()
+    let ot_device_count = input
+        .assets
+        .iter()
         .filter(|a| is_ot_device(&a.device_type))
         .count();
 
@@ -217,7 +221,8 @@ pub fn assess_switch_security(input: &SwitchSecurityInput<'_>) -> Vec<SwitchSecu
              device insertion into the ring, which may indicate a cabling issue, a \
              rogue device connection, or an ongoing network disruption.",
             switch_ips.iter().map(|s| s.to_string()).collect(),
-            "Topology Change Notification (TCN/MRP_TC) frame observed in packet capture".to_string(),
+            "Topology Change Notification (TCN/MRP_TC) frame observed in packet capture"
+                .to_string(),
             "Investigate the source of the topology change. Check switch logs for port \
              flap events. Verify no unauthorised devices were connected to ring ports. \
              Consider enabling BPDU Guard / Root Guard on access ports.",
@@ -229,13 +234,14 @@ pub fn assess_switch_security(input: &SwitchSecurityInput<'_>) -> Vec<SwitchSecu
         if !is_switch_device_type(&asset.device_type) {
             continue;
         }
-        let protos = input.protocols_by_ip
+        let protos = input
+            .protocols_by_ip
             .get(&asset.ip_address)
             .map(|v| v.as_slice())
             .unwrap_or(&[]);
 
-        let has_telnet  = protos.iter().any(|p| p == "telnet");
-        let has_secure  = protos.iter().any(|p| p == "ssh" || p == "https");
+        let has_telnet = protos.iter().any(|p| p == "telnet");
+        let has_secure = protos.iter().any(|p| p == "ssh" || p == "https");
 
         if has_telnet && has_secure {
             findings.push(SwitchSecurityFinding::new(
@@ -285,8 +291,7 @@ fn is_switch_device_type(device_type: &str) -> bool {
     let dt = device_type.to_lowercase();
     matches!(
         dt.as_str(),
-        "switch" | "managed switch" | "managed_switch"
-            | "unmanaged switch" | "unmanaged_switch"
+        "switch" | "managed switch" | "managed_switch" | "unmanaged switch" | "unmanaged_switch"
     )
 }
 
@@ -295,8 +300,18 @@ fn is_ot_device(device_type: &str) -> bool {
     let dt = device_type.to_lowercase();
     matches!(
         dt.as_str(),
-        "plc" | "rtu" | "hmi" | "historian" | "scada" | "ied" | "controller"
-            | "sensor" | "actuator" | "drive" | "vfd" | "dcs"
+        "plc"
+            | "rtu"
+            | "hmi"
+            | "historian"
+            | "scada"
+            | "ied"
+            | "controller"
+            | "sensor"
+            | "actuator"
+            | "drive"
+            | "vfd"
+            | "dcs"
     )
 }
 
@@ -315,6 +330,8 @@ mod tests {
             is_public_ip: false,
             tags: Vec::new(),
             vendor: None,
+            hostname: None,
+            product_family: None,
         }
     }
 
@@ -331,11 +348,13 @@ mod tests {
             protocols_by_ip: Default::default(),
             redundancy_protocols_seen: vec!["mrp".to_string()],
             topology_change_seen: false,
-            vlan_ids_seen: vec![],   // no VLANs → flat
+            vlan_ids_seen: vec![], // no VLANs → flat
             default_cred_switch_ips: vec![],
         };
         let findings = assess_switch_security(&input);
-        assert!(findings.iter().any(|f| f.finding_type == SwitchFindingType::FlatNetwork));
+        assert!(findings
+            .iter()
+            .any(|f| f.finding_type == SwitchFindingType::FlatNetwork));
     }
 
     #[test]
@@ -350,7 +369,9 @@ mod tests {
             default_cred_switch_ips: vec![],
         };
         let findings = assess_switch_security(&input);
-        assert!(findings.iter().any(|f| f.finding_type == SwitchFindingType::DefaultVlan));
+        assert!(findings
+            .iter()
+            .any(|f| f.finding_type == SwitchFindingType::DefaultVlan));
     }
 
     #[test]
@@ -359,13 +380,15 @@ mod tests {
         let input = SwitchSecurityInput {
             assets: &assets,
             protocols_by_ip: Default::default(),
-            redundancy_protocols_seen: vec![],  // no redundancy
+            redundancy_protocols_seen: vec![], // no redundancy
             topology_change_seen: false,
             vlan_ids_seen: vec![],
             default_cred_switch_ips: vec![],
         };
         let findings = assess_switch_security(&input);
-        assert!(findings.iter().any(|f| f.finding_type == SwitchFindingType::NoRedundancy));
+        assert!(findings
+            .iter()
+            .any(|f| f.finding_type == SwitchFindingType::NoRedundancy));
     }
 
     #[test]
@@ -375,12 +398,14 @@ mod tests {
             assets: &assets,
             protocols_by_ip: Default::default(),
             redundancy_protocols_seen: vec!["mrp".to_string()],
-            topology_change_seen: true,  // TC seen
+            topology_change_seen: true, // TC seen
             vlan_ids_seen: vec![],
             default_cred_switch_ips: vec![],
         };
         let findings = assess_switch_security(&input);
-        assert!(findings.iter().any(|f| f.finding_type == SwitchFindingType::TopologyChange));
+        assert!(findings
+            .iter()
+            .any(|f| f.finding_type == SwitchFindingType::TopologyChange));
     }
 
     #[test]
@@ -400,7 +425,9 @@ mod tests {
             default_cred_switch_ips: vec![],
         };
         let findings = assess_switch_security(&input);
-        assert!(findings.iter().any(|f| f.finding_type == SwitchFindingType::MultipleMgmtProtocols));
+        assert!(findings
+            .iter()
+            .any(|f| f.finding_type == SwitchFindingType::MultipleMgmtProtocols));
     }
 
     #[test]
@@ -415,17 +442,21 @@ mod tests {
             default_cred_switch_ips: vec!["10.0.0.1".to_string()],
         };
         let findings = assess_switch_security(&input);
-        assert!(findings.iter().any(|f| f.finding_type == SwitchFindingType::DefaultCredentials));
-        assert_eq!(findings.iter().find(|f| f.finding_type == SwitchFindingType::DefaultCredentials)
-            .map(|f| f.severity), Some(Severity::Critical));
+        assert!(findings
+            .iter()
+            .any(|f| f.finding_type == SwitchFindingType::DefaultCredentials));
+        assert_eq!(
+            findings
+                .iter()
+                .find(|f| f.finding_type == SwitchFindingType::DefaultCredentials)
+                .map(|f| f.severity),
+            Some(Severity::Critical)
+        );
     }
 
     #[test]
     fn test_no_switches_no_findings() {
-        let assets = vec![
-            make_asset("10.0.0.2", "plc"),
-            make_asset("10.0.0.3", "hmi"),
-        ];
+        let assets = vec![make_asset("10.0.0.2", "plc"), make_asset("10.0.0.3", "hmi")];
         let input = SwitchSecurityInput {
             assets: &assets,
             protocols_by_ip: Default::default(),
@@ -437,6 +468,8 @@ mod tests {
         let findings = assess_switch_security(&input);
         // No redundancy finding because there are no switches
         // Flat network won't trigger either (only 2 OT devices, need ≥3)
-        assert!(!findings.iter().any(|f| f.finding_type == SwitchFindingType::NoRedundancy));
+        assert!(!findings
+            .iter()
+            .any(|f| f.finding_type == SwitchFindingType::NoRedundancy));
     }
 }

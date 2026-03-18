@@ -27,8 +27,9 @@ struct CountryField {
 impl GeoIpLookup {
     /// Load a GeoIP database from an MMDB file.
     pub fn load_from_file(path: &Path) -> Result<Self, DbError> {
-        let reader = maxminddb::Reader::open_readfile(path)
-            .map_err(|e| DbError::GeoIp(format!("Failed to open MMDB {}: {}", path.display(), e)))?;
+        let reader = maxminddb::Reader::open_readfile(path).map_err(|e| {
+            DbError::GeoIp(format!("Failed to open MMDB {}: {}", path.display(), e))
+        })?;
         log::info!("Loaded GeoIP database from {}", path.display());
         Ok(Self {
             reader: Some(reader),

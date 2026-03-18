@@ -46,7 +46,9 @@ fn asset_to_sbom_entry(asset: &ExportAsset) -> SbomEntry {
         ip_address: asset.ip_address.clone(),
         mac_address: asset.mac_address.clone().unwrap_or_default(),
         hostname: asset.hostname.clone().unwrap_or_default(),
-        vendor: asset.vendor.clone()
+        vendor: asset
+            .vendor
+            .clone()
             .or_else(|| asset.oui_vendor.clone())
             .unwrap_or_default(),
         product: asset.product_family.clone().unwrap_or_default(),

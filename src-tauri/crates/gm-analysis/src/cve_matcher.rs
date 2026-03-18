@@ -199,7 +199,10 @@ mod tests {
         let matcher = CveMatcher::new().unwrap();
         let matches = matcher.check_device("Siemens", "SCALANCE X-200", Some("V5.0.0"));
         if matches.len() >= 2 {
-            assert!(matches[0].cvss >= matches[1].cvss, "results should be sorted by CVSS");
+            assert!(
+                matches[0].cvss >= matches[1].cvss,
+                "results should be sorted by CVSS"
+            );
         }
     }
 

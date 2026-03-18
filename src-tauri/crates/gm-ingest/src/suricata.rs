@@ -15,8 +15,7 @@ use chrono::{DateTime, Utc};
 use serde::Deserialize;
 
 use crate::{
-    IngestError, IngestResult, IngestSource,
-    IngestedAsset, IngestedConnection, IngestedAlert,
+    IngestError, IngestResult, IngestSource, IngestedAlert, IngestedAsset, IngestedConnection,
 };
 
 /// Parse a Suricata eve.json file.
@@ -76,7 +75,11 @@ fn process_eve_event(event: &EveEvent, result: &mut IngestResult) {
                     dst_ip: event.dest_ip.clone(),
                     dst_port: event.dest_port.unwrap_or(0),
                     protocol: protocol.clone(),
-                    transport: event.proto.clone().unwrap_or_else(|| "tcp".to_string()).to_lowercase(),
+                    transport: event
+                        .proto
+                        .clone()
+                        .unwrap_or_else(|| "tcp".to_string())
+                        .to_lowercase(),
                     packet_count: flow.pkts_toserver.unwrap_or(0) + flow.pkts_toclient.unwrap_or(0),
                     byte_count: flow.bytes_toserver.unwrap_or(0) + flow.bytes_toclient.unwrap_or(0),
                     first_seen: flow.start.or(Some(ts)),

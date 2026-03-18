@@ -1,6 +1,6 @@
+use log::{debug, warn};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
-use log::{debug, warn};
 
 use crate::error::CaptureError;
 use crate::packet::ParsedPacket;
@@ -67,13 +67,17 @@ impl PcapReader {
             let timestamp = parsing::timestamp_from_pcap(*raw_packet.header);
 
             // Check for LLDP (Ethertype 0x88CC) before IP parsing
-            if let Some(lldp_pkt) = parsing::try_extract_lldp_packet(raw_packet.data, timestamp, &origin_file) {
+            if let Some(lldp_pkt) =
+                parsing::try_extract_lldp_packet(raw_packet.data, timestamp, &origin_file)
+            {
                 packets.push(lldp_pkt);
                 continue;
             }
 
             // Check for Layer-2 redundancy protocols (MRP/RSTP/HSR/PRP/DLR)
-            if let Some(red_pkt) = parsing::try_extract_redundancy_packet(raw_packet.data, timestamp, &origin_file) {
+            if let Some(red_pkt) =
+                parsing::try_extract_redundancy_packet(raw_packet.data, timestamp, &origin_file)
+            {
                 packets.push(red_pkt);
                 continue;
             }
@@ -81,7 +85,12 @@ impl PcapReader {
             // Parse with etherparse — zero-copy slicing of packet headers
             match etherparse::SlicedPacket::from_ethernet(raw_packet.data) {
                 Ok(parsed) => {
-                    if let Some(packet) = parsing::extract_packet_info(&parsed, raw_packet.data, timestamp, &origin_file) {
+                    if let Some(packet) = parsing::extract_packet_info(
+                        &parsed,
+                        raw_packet.data,
+                        timestamp,
+                        &origin_file,
+                    ) {
                         packets.push(packet);
                     } else {
                         skipped += 1;
@@ -96,14 +105,14 @@ impl PcapReader {
         }
 
         if skipped > 0 {
-            warn!("Skipped {} unparseable packets out of {}", skipped, packets.len() + skipped as usize);
+            warn!(
+                "Skipped {} unparseable packets out of {}",
+                skipped,
+                packets.len() + skipped as usize
+            );
         }
 
-        log::info!(
-            "Parsed {} packets from {}",
-            packets.len(),
-            path.display()
-        );
+        log::info!("Parsed {} packets from {}", packets.len(), path.display());
 
         Ok(packets)
     }
@@ -147,10 +156,14 @@ impl PcapReader {
             let timestamp = parsing::timestamp_from_pcap(header);
 
             // Check for LLDP (Ethertype 0x88CC) before IP parsing
-            if let Some(lldp_pkt) = parsing::try_extract_lldp_packet(raw_packet.data, timestamp, &origin_file) {
+            if let Some(lldp_pkt) =
+                parsing::try_extract_lldp_packet(raw_packet.data, timestamp, &origin_file)
+            {
                 on_packet(&lldp_pkt);
                 stats.packet_count += 1;
-            } else if let Some(red_pkt) = parsing::try_extract_redundancy_packet(raw_packet.data, timestamp, &origin_file) {
+            } else if let Some(red_pkt) =
+                parsing::try_extract_redundancy_packet(raw_packet.data, timestamp, &origin_file)
+            {
                 on_packet(&red_pkt);
                 stats.packet_count += 1;
             } else {

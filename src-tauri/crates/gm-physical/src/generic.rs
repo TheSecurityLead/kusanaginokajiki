@@ -8,7 +8,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{PhysicalPort, PhysicalSwitch, PhysicalTopology, PhysicalError};
+use crate::{PhysicalError, PhysicalPort, PhysicalSwitch, PhysicalTopology};
 
 /// A generic device record from CSV or JSON import.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -36,13 +36,13 @@ pub fn parse_devices_csv(content: &str) -> Result<Vec<GenericDevice>, PhysicalEr
         None => return Ok(devices),
     };
 
-    let headers: Vec<&str> = header_line.split(',').map(|s| s.trim().trim_matches('"')).collect();
+    let headers: Vec<&str> = header_line
+        .split(',')
+        .map(|s| s.trim().trim_matches('"'))
+        .collect();
 
     // Build column index map
-    let col_idx: HashMap<&str, usize> = headers.iter()
-        .enumerate()
-        .map(|(i, h)| (*h, i))
-        .collect();
+    let col_idx: HashMap<&str, usize> = headers.iter().enumerate().map(|(i, h)| (*h, i)).collect();
 
     for line in lines {
         let line = line.trim();
@@ -51,12 +51,19 @@ pub fn parse_devices_csv(content: &str) -> Result<Vec<GenericDevice>, PhysicalEr
         }
 
         // Split by comma, strip whitespace and quotes from each field
-        let fields: Vec<&str> = line.split(',').map(|s| s.trim().trim_matches('"')).collect();
+        let fields: Vec<&str> = line
+            .split(',')
+            .map(|s| s.trim().trim_matches('"'))
+            .collect();
 
         let get_field = |name: &str| -> Option<String> {
             let idx = col_idx.get(name)?;
             let val = fields.get(*idx)?;
-            if val.is_empty() { None } else { Some(val.to_string()) }
+            if val.is_empty() {
+                None
+            } else {
+                Some(val.to_string())
+            }
         };
 
         let vlan = get_field("vlan").and_then(|s| s.parse::<u16>().ok());
@@ -111,26 +118,31 @@ pub fn csv_to_switch(devices: &[GenericDevice]) -> PhysicalTopology {
     let mut switch_map: HashMap<String, HashMap<String, PhysicalPort>> = HashMap::new();
 
     for device in devices {
-        let hostname = device.hostname.clone().unwrap_or_else(|| "unknown".to_string());
+        let hostname = device
+            .hostname
+            .clone()
+            .unwrap_or_else(|| "unknown".to_string());
         let port_name = device.port.clone().unwrap_or_else(|| "port0".to_string());
 
         let switch_ports = switch_map.entry(hostname).or_default();
 
-        let port = switch_ports.entry(port_name.clone()).or_insert_with(|| PhysicalPort {
-            name: port_name.clone(),
-            short_name: port_name.clone(),
-            description: device.device_type.clone(),
-            vlans: Vec::new(),
-            mode: "unknown".to_string(),
-            shutdown: false,
-            ip_address: None,
-            subnet_mask: None,
-            mac_addresses: Vec::new(),
-            ip_addresses: Vec::new(),
-            cdp_neighbor: None,
-            speed: None,
-            duplex: None,
-        });
+        let port = switch_ports
+            .entry(port_name.clone())
+            .or_insert_with(|| PhysicalPort {
+                name: port_name.clone(),
+                short_name: port_name.clone(),
+                description: device.device_type.clone(),
+                vlans: Vec::new(),
+                mode: "unknown".to_string(),
+                shutdown: false,
+                ip_address: None,
+                subnet_mask: None,
+                mac_addresses: Vec::new(),
+                ip_addresses: Vec::new(),
+                cdp_neighbor: None,
+                speed: None,
+                duplex: None,
+            });
 
         // Add VLAN
         if let Some(v) = device.vlan {
@@ -234,7 +246,11 @@ SW-OT-2,10.0.0.1,00:50:79:66:68:00,rtu,1,100
         // Should create 2 switches: SW-OT-1 and SW-OT-2
         assert_eq!(topo.switches.len(), 2);
 
-        let sw1 = topo.switches.iter().find(|s| s.hostname == "SW-OT-1").unwrap();
+        let sw1 = topo
+            .switches
+            .iter()
+            .find(|s| s.hostname == "SW-OT-1")
+            .unwrap();
         assert_eq!(sw1.ports.len(), 3);
 
         let gi1 = sw1.ports.iter().find(|p| p.name == "Gi1/0/1").unwrap();

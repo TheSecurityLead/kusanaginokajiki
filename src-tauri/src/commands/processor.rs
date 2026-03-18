@@ -7,31 +7,24 @@
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
+use gm_analysis::{ConnectionStats, PatternAnalyzer, PatternAnomaly};
 use gm_capture::ParsedPacket;
+use gm_db::{GeoIpLookup, OuiLookup};
 use gm_parsers::{
-    identify_protocol, deep_parse, IcsProtocol, DeepParseResult,
-    ModbusRole, ModbusDeviceId, Dnp3Role,
-    modbus_function_code_name, dnp3_function_code_name,
-    EnipRole, EnipCommand, CipService, CipClass,
-    S7Role, S7Function,
-    BacnetRole, BacnetService, BacnetObjectType,
-    Iec104Role, AsduTypeId,
-    ProfinetRole,
-    LldpInfo, parse_lldp,
-    RedundancyInfo, parse_redundancy,
-    SnmpDeviceInfo, parse_snmp_response,
+    deep_parse, dnp3_function_code_name, identify_protocol, modbus_function_code_name, parse_lldp,
+    parse_redundancy, parse_snmp_response, AsduTypeId, BacnetObjectType, BacnetRole, BacnetService,
+    CipClass, CipService, DeepParseResult, Dnp3Role, EnipCommand, EnipRole, IcsProtocol,
+    Iec104Role, LldpInfo, ModbusDeviceId, ModbusRole, ProfinetRole, RedundancyInfo, S7Function,
+    S7Role, SnmpDeviceInfo,
 };
 use gm_signatures::{PacketData, SignatureEngine};
 use gm_topology::TopologyBuilder;
-use gm_db::{OuiLookup, GeoIpLookup};
-use gm_analysis::{ConnectionStats, PatternAnomaly, PatternAnalyzer};
 
 use super::{
-    AssetInfo, AssetSignatureMatch, ConnectionInfo, PacketSummary, infer_device_type,
-    DeepParseInfo, ModbusDetail, Dnp3Detail, FunctionCodeStat, RegisterRangeInfo,
-    ModbusDeviceIdInfo, ModbusRelationship, Dnp3Relationship, PollingInterval,
-    EnipDetail, S7Detail, BacnetDetail, Iec104Detail, ProfinetDcpDetail, LldpDetail,
-    SnmpDetail,
+    infer_device_type, AssetInfo, AssetSignatureMatch, BacnetDetail, ConnectionInfo, DeepParseInfo,
+    Dnp3Detail, Dnp3Relationship, EnipDetail, FunctionCodeStat, Iec104Detail, LldpDetail,
+    ModbusDetail, ModbusDeviceIdInfo, ModbusRelationship, PacketSummary, PollingInterval,
+    ProfinetDcpDetail, RegisterRangeInfo, S7Detail, SnmpDetail,
 };
 
 /// Well-known OT/ICS service ports — if a device listens on one of these,
@@ -39,9 +32,25 @@ use super::{
 fn is_server_port(port: u16) -> bool {
     matches!(
         port,
-        102 | 502 | 1089 | 1090 | 1091 | 1883 | 2222 | 2404 | 4840
-            | 5007 | 5094 | 8883 | 18245 | 18246 | 20000 | 34962
-            | 34963 | 34964 | 44818 | 47808
+        102 | 502
+            | 1089
+            | 1090
+            | 1091
+            | 1883
+            | 2222
+            | 2404
+            | 4840
+            | 5007
+            | 5094
+            | 8883
+            | 18245
+            | 18246
+            | 20000
+            | 34962
+            | 34963
+            | 34964
+            | 44818
+            | 47808
     )
 }
 
@@ -222,25 +231,37 @@ impl PacketProcessor {
 
         // Track MACs
         if let Some(ref mac) = packet.src_mac {
-            self.asset_macs.entry(packet.src_ip.clone()).or_insert_with(|| mac.clone());
+            self.asset_macs
+                .entry(packet.src_ip.clone())
+                .or_insert_with(|| mac.clone());
         }
         if let Some(ref mac) = packet.dst_mac {
-            self.asset_macs.entry(packet.dst_ip.clone()).or_insert_with(|| mac.clone());
+            self.asset_macs
+                .entry(packet.dst_ip.clone())
+                .or_insert_with(|| mac.clone());
         }
 
         // Track packet counts
-        *self.asset_packet_counts.entry(packet.src_ip.clone()).or_insert(0) += 1;
-        *self.asset_packet_counts.entry(packet.dst_ip.clone()).or_insert(0) += 1;
+        *self
+            .asset_packet_counts
+            .entry(packet.src_ip.clone())
+            .or_insert(0) += 1;
+        *self
+            .asset_packet_counts
+            .entry(packet.dst_ip.clone())
+            .or_insert(0) += 1;
 
         // Track timestamps
         self.asset_first_seen
             .entry(packet.src_ip.clone())
             .or_insert_with(|| timestamp.clone());
-        self.asset_last_seen.insert(packet.src_ip.clone(), timestamp.clone());
+        self.asset_last_seen
+            .insert(packet.src_ip.clone(), timestamp.clone());
         self.asset_first_seen
             .entry(packet.dst_ip.clone())
             .or_insert_with(|| timestamp.clone());
-        self.asset_last_seen.insert(packet.dst_ip.clone(), timestamp.clone());
+        self.asset_last_seen
+            .insert(packet.dst_ip.clone(), timestamp.clone());
 
         // Detect servers using well-known OT service ports
         if is_server_port(packet.dst_port) {
@@ -256,8 +277,10 @@ impl PacketProcessor {
             packet.src_ip, packet.src_port, packet.dst_ip, packet.dst_port, proto_str
         );
 
-        let conn = self.connections.entry(conn_key.clone()).or_insert_with(|| {
-            ConnectionInfo {
+        let conn = self
+            .connections
+            .entry(conn_key.clone())
+            .or_insert_with(|| ConnectionInfo {
                 id: Uuid::new_v4().to_string(),
                 src_ip: packet.src_ip.clone(),
                 src_port: packet.src_port,
@@ -272,8 +295,7 @@ impl PacketProcessor {
                 first_seen: timestamp.clone(),
                 last_seen: timestamp.clone(),
                 origin_files: Vec::new(),
-            }
-        });
+            });
 
         conn.packet_count += 1;
         conn.byte_count += packet.length as u64;
@@ -336,7 +358,8 @@ impl PacketProcessor {
         // SNMP GET-Response: extract device identity from responses (src port 161)
         if packet.src_port == 161 && !packet.payload.is_empty() {
             if let Some(dev_info) = parse_snmp_response(&packet.payload) {
-                self.snmp_device_info.insert(packet.src_ip.clone(), dev_info);
+                self.snmp_device_info
+                    .insert(packet.src_ip.clone(), dev_info);
             }
         }
 
@@ -401,7 +424,8 @@ impl PacketProcessor {
             ModbusRole::Master | ModbusRole::Slave | ModbusRole::Unknown => &packet.src_ip,
         };
 
-        *self.modbus_fc_counts
+        *self
+            .modbus_fc_counts
             .entry(ip_for_fc.clone())
             .or_default()
             .entry(info.function_code)
@@ -424,7 +448,8 @@ impl PacketProcessor {
 
         if let Some(ref range) = info.register_range {
             let reg_type = format!("{:?}", range.register_type).to_lowercase();
-            *self.modbus_register_ranges
+            *self
+                .modbus_register_ranges
                 .entry(ip_for_fc.clone())
                 .or_default()
                 .entry((range.start, range.count, reg_type))
@@ -432,7 +457,8 @@ impl PacketProcessor {
         }
 
         if let Some(ref dev_id) = info.device_id {
-            self.modbus_device_ids.insert(packet.src_ip.clone(), dev_id.clone());
+            self.modbus_device_ids
+                .insert(packet.src_ip.clone(), dev_id.clone());
         }
 
         let (local_ip, remote_ip, remote_role) = match info.role {
@@ -440,7 +466,8 @@ impl PacketProcessor {
             ModbusRole::Slave => (&packet.src_ip, &packet.dst_ip, "master"),
             ModbusRole::Unknown => (&packet.src_ip, &packet.dst_ip, "unknown"),
         };
-        let rel = self.modbus_relationships
+        let rel = self
+            .modbus_relationships
             .entry(local_ip.clone())
             .or_default()
             .entry(remote_ip.clone())
@@ -463,15 +490,12 @@ impl PacketProcessor {
     }
 
     /// Process DNP3 deep parse result for a packet.
-    fn process_dnp3(
-        &mut self,
-        packet: &ParsedPacket,
-        info: &gm_parsers::Dnp3Info,
-    ) {
+    fn process_dnp3(&mut self, packet: &ParsedPacket, info: &gm_parsers::Dnp3Info) {
         let ip_for_fc = &packet.src_ip;
 
         if let Some(fc) = info.function_code {
-            *self.dnp3_fc_counts
+            *self
+                .dnp3_fc_counts
                 .entry(ip_for_fc.clone())
                 .or_default()
                 .entry(fc)
@@ -502,7 +526,8 @@ impl PacketProcessor {
             Dnp3Role::Outstation => "master",
             Dnp3Role::Unknown => "unknown",
         };
-        let rel = self.dnp3_relationships
+        let rel = self
+            .dnp3_relationships
             .entry(ip_for_fc.clone())
             .or_default()
             .entry(packet.dst_ip.clone())
@@ -631,11 +656,7 @@ impl PacketProcessor {
     }
 
     /// Process PROFINET DCP deep parse result for a packet.
-    fn process_profinet_dcp(
-        &mut self,
-        packet: &ParsedPacket,
-        info: &gm_parsers::ProfinetDcpInfo,
-    ) {
+    fn process_profinet_dcp(&mut self, packet: &ParsedPacket, info: &gm_parsers::ProfinetDcpInfo) {
         let ip = &packet.src_ip;
 
         let role_str = match info.role {
@@ -649,7 +670,9 @@ impl PacketProcessor {
             self.profinet_roles.insert(ip.clone(), role_str.to_string());
         } else {
             // Record the device even without a role so we know it speaks PROFINET
-            self.profinet_roles.entry(ip.clone()).or_insert_with(|| "unknown".to_string());
+            self.profinet_roles
+                .entry(ip.clone())
+                .or_insert_with(|| "unknown".to_string());
         }
 
         if let Some(ref name) = info.device_info.name_of_station {
@@ -664,58 +687,70 @@ impl PacketProcessor {
         let mut deep_parse_info: HashMap<String, DeepParseInfo> = HashMap::new();
 
         // Aggregate Modbus data
-        let all_modbus_ips: HashSet<String> = self.modbus_fc_counts
+        let all_modbus_ips: HashSet<String> = self
+            .modbus_fc_counts
             .keys()
             .chain(self.modbus_roles.keys())
             .cloned()
             .collect();
 
         for ip in &all_modbus_ips {
-            let role = self.modbus_roles.get(ip).map(|roles| {
-                if roles.contains("master") && roles.contains("slave") {
-                    "both".to_string()
-                } else if roles.contains("master") {
-                    "master".to_string()
-                } else if roles.contains("slave") {
-                    "slave".to_string()
-                } else {
-                    "unknown".to_string()
-                }
-            }).unwrap_or_else(|| "unknown".to_string());
+            let role = self
+                .modbus_roles
+                .get(ip)
+                .map(|roles| {
+                    if roles.contains("master") && roles.contains("slave") {
+                        "both".to_string()
+                    } else if roles.contains("master") {
+                        "master".to_string()
+                    } else if roles.contains("slave") {
+                        "slave".to_string()
+                    } else {
+                        "unknown".to_string()
+                    }
+                })
+                .unwrap_or_else(|| "unknown".to_string());
 
-            let mut unit_ids: Vec<u8> = self.modbus_unit_ids
+            let mut unit_ids: Vec<u8> = self
+                .modbus_unit_ids
                 .get(ip)
                 .map(|s| s.iter().copied().collect())
                 .unwrap_or_default();
             unit_ids.sort();
 
-            let function_codes: Vec<FunctionCodeStat> = self.modbus_fc_counts
+            let function_codes: Vec<FunctionCodeStat> = self
+                .modbus_fc_counts
                 .get(ip)
                 .map(|fc_map| {
-                    let mut fcs: Vec<FunctionCodeStat> = fc_map.iter().map(|(&code, &count)| {
-                        FunctionCodeStat {
+                    let mut fcs: Vec<FunctionCodeStat> = fc_map
+                        .iter()
+                        .map(|(&code, &count)| FunctionCodeStat {
                             code,
                             name: modbus_function_code_name(code).to_string(),
                             count,
                             is_write: matches!(code, 5 | 6 | 15 | 16 | 22 | 23),
-                        }
-                    }).collect();
+                        })
+                        .collect();
                     fcs.sort_by(|a, b| b.count.cmp(&a.count));
                     fcs
                 })
                 .unwrap_or_default();
 
-            let register_ranges: Vec<RegisterRangeInfo> = self.modbus_register_ranges
+            let register_ranges: Vec<RegisterRangeInfo> = self
+                .modbus_register_ranges
                 .get(ip)
                 .map(|range_map| {
-                    let mut ranges: Vec<RegisterRangeInfo> = range_map.iter().map(|((start, count, reg_type), &access_count)| {
-                        RegisterRangeInfo {
-                            start: *start,
-                            count: *count,
-                            register_type: reg_type.clone(),
-                            access_count,
-                        }
-                    }).collect();
+                    let mut ranges: Vec<RegisterRangeInfo> = range_map
+                        .iter()
+                        .map(
+                            |((start, count, reg_type), &access_count)| RegisterRangeInfo {
+                                start: *start,
+                                count: *count,
+                                register_type: reg_type.clone(),
+                                access_count,
+                            },
+                        )
+                        .collect();
                     ranges.sort_by(|a, b| a.start.cmp(&b.start));
                     ranges
                 })
@@ -730,19 +765,23 @@ impl PacketProcessor {
                 model_name: d.model_name.clone(),
             });
 
-            let relationships: Vec<ModbusRelationship> = self.modbus_relationships
+            let relationships: Vec<ModbusRelationship> = self
+                .modbus_relationships
                 .get(ip)
                 .map(|rel_map| {
-                    rel_map.iter().map(|(remote_ip, (remote_role, unit_id_set, pkt_count))| {
-                        let mut uids: Vec<u8> = unit_id_set.iter().copied().collect();
-                        uids.sort();
-                        ModbusRelationship {
-                            remote_ip: remote_ip.clone(),
-                            remote_role: remote_role.clone(),
-                            unit_ids: uids,
-                            packet_count: *pkt_count,
-                        }
-                    }).collect()
+                    rel_map
+                        .iter()
+                        .map(|(remote_ip, (remote_role, unit_id_set, pkt_count))| {
+                            let mut uids: Vec<u8> = unit_id_set.iter().copied().collect();
+                            uids.sort();
+                            ModbusRelationship {
+                                remote_ip: remote_ip.clone(),
+                                remote_role: remote_role.clone(),
+                                unit_ids: uids,
+                                packet_count: *pkt_count,
+                            }
+                        })
+                        .collect()
                 })
                 .unwrap_or_default();
 
@@ -753,7 +792,8 @@ impl PacketProcessor {
                     let mut sorted_ts = timestamps.clone();
                     sorted_ts.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
-                    let intervals: Vec<f64> = sorted_ts.windows(2)
+                    let intervals: Vec<f64> = sorted_ts
+                        .windows(2)
                         .map(|w| (w[1] - w[0]) * 1000.0)
                         .filter(|&i| i > 0.0 && i < 60_000.0)
                         .collect();
@@ -787,49 +827,54 @@ impl PacketProcessor {
                 polling_intervals,
             };
 
-            deep_parse_info
-                .entry(ip.clone())
-                .or_default()
-                .modbus = Some(modbus_detail);
+            deep_parse_info.entry(ip.clone()).or_default().modbus = Some(modbus_detail);
         }
 
         // Aggregate DNP3 data
-        let all_dnp3_ips: HashSet<String> = self.dnp3_fc_counts
+        let all_dnp3_ips: HashSet<String> = self
+            .dnp3_fc_counts
             .keys()
             .chain(self.dnp3_roles.keys())
             .cloned()
             .collect();
 
         for ip in &all_dnp3_ips {
-            let role = self.dnp3_roles.get(ip).map(|roles| {
-                if roles.contains("master") && roles.contains("outstation") {
-                    "both".to_string()
-                } else if roles.contains("master") {
-                    "master".to_string()
-                } else if roles.contains("outstation") {
-                    "outstation".to_string()
-                } else {
-                    "unknown".to_string()
-                }
-            }).unwrap_or_else(|| "unknown".to_string());
+            let role = self
+                .dnp3_roles
+                .get(ip)
+                .map(|roles| {
+                    if roles.contains("master") && roles.contains("outstation") {
+                        "both".to_string()
+                    } else if roles.contains("master") {
+                        "master".to_string()
+                    } else if roles.contains("outstation") {
+                        "outstation".to_string()
+                    } else {
+                        "unknown".to_string()
+                    }
+                })
+                .unwrap_or_else(|| "unknown".to_string());
 
-            let mut addresses: Vec<u16> = self.dnp3_addresses
+            let mut addresses: Vec<u16> = self
+                .dnp3_addresses
                 .get(ip)
                 .map(|s| s.iter().copied().collect())
                 .unwrap_or_default();
             addresses.sort();
 
-            let function_codes: Vec<FunctionCodeStat> = self.dnp3_fc_counts
+            let function_codes: Vec<FunctionCodeStat> = self
+                .dnp3_fc_counts
                 .get(ip)
                 .map(|fc_map| {
-                    let mut fcs: Vec<FunctionCodeStat> = fc_map.iter().map(|(&code, &count)| {
-                        FunctionCodeStat {
+                    let mut fcs: Vec<FunctionCodeStat> = fc_map
+                        .iter()
+                        .map(|(&code, &count)| FunctionCodeStat {
                             code,
                             name: dnp3_function_code_name(code).to_string(),
                             count,
                             is_write: matches!(code, 2..=6),
-                        }
-                    }).collect();
+                        })
+                        .collect();
                     fcs.sort_by(|a, b| b.count.cmp(&a.count));
                     fcs
                 })
@@ -837,16 +882,18 @@ impl PacketProcessor {
 
             let has_unsolicited = self.dnp3_unsolicited.get(ip).copied().unwrap_or(false);
 
-            let relationships: Vec<Dnp3Relationship> = self.dnp3_relationships
+            let relationships: Vec<Dnp3Relationship> = self
+                .dnp3_relationships
                 .get(ip)
                 .map(|rel_map| {
-                    rel_map.iter().map(|(remote_ip, (remote_role, pkt_count))| {
-                        Dnp3Relationship {
+                    rel_map
+                        .iter()
+                        .map(|(remote_ip, (remote_role, pkt_count))| Dnp3Relationship {
                             remote_ip: remote_ip.clone(),
                             remote_role: remote_role.clone(),
                             packet_count: *pkt_count,
-                        }
-                    }).collect()
+                        })
+                        .collect()
                 })
                 .unwrap_or_default();
 
@@ -858,15 +905,14 @@ impl PacketProcessor {
                 relationships,
             };
 
-            deep_parse_info
-                .entry(ip.clone())
-                .or_default()
-                .dnp3 = Some(dnp3_detail);
+            deep_parse_info.entry(ip.clone()).or_default().dnp3 = Some(dnp3_detail);
         }
 
         // Aggregate EtherNet/IP data
         for ip in self.enip_roles.keys() {
-            let role = self.enip_roles.get(ip)
+            let role = self
+                .enip_roles
+                .get(ip)
                 .cloned()
                 .unwrap_or_else(|| "unknown".to_string());
             let enip_detail = EnipDetail {
@@ -875,32 +921,34 @@ impl PacketProcessor {
                 cip_file_access: self.enip_cip_file_access.contains(ip),
                 list_identity_requests: self.enip_list_identity.contains(ip),
             };
-            deep_parse_info
-                .entry(ip.clone())
-                .or_default()
-                .enip = Some(enip_detail);
+            deep_parse_info.entry(ip.clone()).or_default().enip = Some(enip_detail);
         }
 
         // Aggregate S7comm data
         for ip in self.s7_roles.keys() {
-            let role = self.s7_roles.get(ip)
+            let role = self
+                .s7_roles
+                .get(ip)
                 .cloned()
                 .unwrap_or_else(|| "unknown".to_string());
-            let mut functions_seen: Vec<String> = self.s7_functions_seen
+            let mut functions_seen: Vec<String> = self
+                .s7_functions_seen
                 .get(ip)
                 .map(|s| s.iter().cloned().collect())
                 .unwrap_or_default();
             functions_seen.sort();
-            let s7_detail = S7Detail { role, functions_seen };
-            deep_parse_info
-                .entry(ip.clone())
-                .or_default()
-                .s7 = Some(s7_detail);
+            let s7_detail = S7Detail {
+                role,
+                functions_seen,
+            };
+            deep_parse_info.entry(ip.clone()).or_default().s7 = Some(s7_detail);
         }
 
         // Aggregate BACnet data
         for ip in self.bacnet_roles.keys() {
-            let role = self.bacnet_roles.get(ip)
+            let role = self
+                .bacnet_roles
+                .get(ip)
                 .cloned()
                 .unwrap_or_else(|| "unknown".to_string());
             let bacnet_detail = BacnetDetail {
@@ -910,30 +958,28 @@ impl PacketProcessor {
                 reinitialize_device: self.bacnet_reinitialize.contains(ip),
                 device_communication_control: self.bacnet_device_comm_ctrl.contains(ip),
             };
-            deep_parse_info
-                .entry(ip.clone())
-                .or_default()
-                .bacnet = Some(bacnet_detail);
+            deep_parse_info.entry(ip.clone()).or_default().bacnet = Some(bacnet_detail);
         }
 
         // Aggregate PROFINET DCP data
         for ip in self.profinet_roles.keys() {
-            let role = self.profinet_roles.get(ip)
+            let role = self
+                .profinet_roles
+                .get(ip)
                 .cloned()
                 .unwrap_or_else(|| "unknown".to_string());
             let profinet_detail = ProfinetDcpDetail {
                 role,
                 device_name: self.profinet_device_names.get(ip).cloned(),
             };
-            deep_parse_info
-                .entry(ip.clone())
-                .or_default()
-                .profinet_dcp = Some(profinet_detail);
+            deep_parse_info.entry(ip.clone()).or_default().profinet_dcp = Some(profinet_detail);
         }
 
         // Aggregate IEC 104 data
         for ip in self.iec104_roles.keys() {
-            let role = self.iec104_roles.get(ip)
+            let role = self
+                .iec104_roles
+                .get(ip)
                 .cloned()
                 .unwrap_or_else(|| "unknown".to_string());
             let iec104_detail = Iec104Detail {
@@ -942,10 +988,7 @@ impl PacketProcessor {
                 has_reset_process: self.iec104_reset_process.contains(ip),
                 has_interrogation: self.iec104_interrogation.contains(ip),
             };
-            deep_parse_info
-                .entry(ip.clone())
-                .or_default()
-                .iec104 = Some(iec104_detail);
+            deep_parse_info.entry(ip.clone()).or_default().iec104 = Some(iec104_detail);
         }
 
         // Aggregate LLDP data: match by MAC address
@@ -969,10 +1012,7 @@ impl PacketProcessor {
                     model: lldp_info.model.clone(),
                     firmware: lldp_info.firmware.clone(),
                 };
-                deep_parse_info
-                    .entry(ip.clone())
-                    .or_default()
-                    .lldp = Some(lldp_detail);
+                deep_parse_info.entry(ip.clone()).or_default().lldp = Some(lldp_detail);
             }
         }
 
@@ -987,10 +1027,7 @@ impl PacketProcessor {
                 sys_contact: snmp_info.sys_contact.clone(),
                 vendor: snmp_info.vendor.clone(),
             };
-            deep_parse_info
-                .entry(ip.clone())
-                .or_default()
-                .snmp = Some(snmp_detail);
+            deep_parse_info.entry(ip.clone()).or_default().snmp = Some(snmp_detail);
         }
 
         deep_parse_info
@@ -1040,7 +1077,8 @@ impl PacketProcessor {
         let mut assets: Vec<AssetInfo> = Vec::new();
 
         for ip in &all_ips {
-            let protocols: Vec<IcsProtocol> = self.asset_protocols
+            let protocols: Vec<IcsProtocol> = self
+                .asset_protocols
                 .get(ip)
                 .map(|s| s.iter().copied().collect())
                 .unwrap_or_default();
@@ -1052,7 +1090,11 @@ impl PacketProcessor {
             let best_match = sig_matches.first();
 
             let mut confidence = best_match.map(|m| m.confidence).unwrap_or(
-                if protocols.iter().any(|p| *p != IcsProtocol::Unknown) { 1 } else { 0 },
+                if protocols.iter().any(|p| *p != IcsProtocol::Unknown) {
+                    1
+                } else {
+                    0
+                },
             );
 
             let mut vendor = best_match.and_then(|m| m.vendor.clone());
@@ -1113,7 +1155,9 @@ impl PacketProcessor {
                     if vendor.is_none() {
                         if let Some(ref lv) = lldp.vendor {
                             vendor = Some(lv.clone());
-                            if confidence < 4 { confidence = 4; }
+                            if confidence < 4 {
+                                confidence = 4;
+                            }
                         }
                     }
                     if product_family.is_none() {
@@ -1148,7 +1192,10 @@ impl PacketProcessor {
                 hostname,
                 device_type,
                 vendor,
-                protocols: protocols.iter().map(|p| format!("{:?}", p).to_lowercase()).collect(),
+                protocols: protocols
+                    .iter()
+                    .map(|p| format!("{:?}", p).to_lowercase())
+                    .collect(),
                 first_seen: self.asset_first_seen.get(ip).cloned().unwrap_or_default(),
                 last_seen: self.asset_last_seen.get(ip).cloned().unwrap_or_default(),
                 notes: String::new(),
@@ -1204,5 +1251,4 @@ impl PacketProcessor {
         let anomalies = PatternAnalyzer::detect_anomalies(&stats);
         (stats, anomalies)
     }
-
 }

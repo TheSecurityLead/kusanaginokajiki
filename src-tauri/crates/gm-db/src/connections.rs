@@ -33,9 +33,20 @@ pub fn insert_connection(conn: &Connection, row: &ConnectionRow) -> Result<(), D
             protocol, transport, packet_count, byte_count, first_seen, last_seen, origin_files
         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
         params![
-            row.id, row.session_id, row.src_ip, row.src_port, row.src_mac,
-            row.dst_ip, row.dst_port, row.dst_mac, row.protocol, row.transport,
-            row.packet_count, row.byte_count, row.first_seen, row.last_seen,
+            row.id,
+            row.session_id,
+            row.src_ip,
+            row.src_port,
+            row.src_mac,
+            row.dst_ip,
+            row.dst_port,
+            row.dst_mac,
+            row.protocol,
+            row.transport,
+            row.packet_count,
+            row.byte_count,
+            row.first_seen,
+            row.last_seen,
             row.origin_files
         ],
     )?;
@@ -43,7 +54,10 @@ pub fn insert_connection(conn: &Connection, row: &ConnectionRow) -> Result<(), D
 }
 
 /// List all connections for a session.
-pub fn list_connections(conn: &Connection, session_id: &str) -> Result<Vec<ConnectionRow>, DbError> {
+pub fn list_connections(
+    conn: &Connection,
+    session_id: &str,
+) -> Result<Vec<ConnectionRow>, DbError> {
     let mut stmt = conn.prepare(
         "SELECT id, session_id, src_ip, src_port, src_mac, dst_ip, dst_port, dst_mac,
                 protocol, transport, packet_count, byte_count, first_seen, last_seen, origin_files

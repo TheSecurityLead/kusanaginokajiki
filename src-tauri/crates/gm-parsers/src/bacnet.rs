@@ -466,14 +466,23 @@ pub fn parse(payload: &[u8]) -> Option<BacnetInfo> {
             let svc = map_confirmed_service(service_byte);
 
             // Extract object/property for Read/WriteProperty requests
-            let (obj_type, obj_inst, prop_id) =
-                if matches!(svc, BacnetService::ReadProperty | BacnetService::WriteProperty) {
-                    parse_confirmed_object_property(payload, apdu_start + 4)
-                } else {
-                    (None, None, None)
-                };
+            let (obj_type, obj_inst, prop_id) = if matches!(
+                svc,
+                BacnetService::ReadProperty | BacnetService::WriteProperty
+            ) {
+                parse_confirmed_object_property(payload, apdu_start + 4)
+            } else {
+                (None, None, None)
+            };
 
-            (Some(svc), None, obj_type, obj_inst, prop_id, BacnetRole::Client)
+            (
+                Some(svc),
+                None,
+                obj_type,
+                obj_inst,
+                prop_id,
+                BacnetRole::Client,
+            )
         }
 
         // Responses (Ack, Error, Reject, Abort) originate from the server
@@ -510,18 +519,24 @@ mod tests {
         // Routing: broadcast DNET=0xFFFF, DLEN=0, Hop=255
         let payload: Vec<u8> = vec![
             0x81, 0x0B, 0x00, 0x0C, // BVLCI: BACnet, OriginalBroadcast, total=12
-            0x01, 0x20,             // NPDU: version=1, control=0x20 (has_dst)
-            0xFF, 0xFF,             // DNET = 65535 (global broadcast)
-            0x00,                   // DLEN = 0 (no DADR)
-            0xFF,                   // Hop Count = 255
-            0x10,                   // APDU: UnconfirmedRequest (type=1, flags=0)
-            0x08,                   // Service: WhoIs
+            0x01, 0x20, // NPDU: version=1, control=0x20 (has_dst)
+            0xFF, 0xFF, // DNET = 65535 (global broadcast)
+            0x00, // DLEN = 0 (no DADR)
+            0xFF, // Hop Count = 255
+            0x10, // APDU: UnconfirmedRequest (type=1, flags=0)
+            0x08, // Service: WhoIs
         ];
 
         let info = parse(&payload).unwrap();
-        assert!(matches!(info.bvlc_function, BvlcFunction::OriginalBroadcast));
+        assert!(matches!(
+            info.bvlc_function,
+            BvlcFunction::OriginalBroadcast
+        ));
         assert!(!info.is_network_message);
-        assert!(matches!(info.pdu_type, Some(BacnetPduType::UnconfirmedRequest)));
+        assert!(matches!(
+            info.pdu_type,
+            Some(BacnetPduType::UnconfirmedRequest)
+        ));
         assert!(matches!(info.service, Some(BacnetService::WhoIs)));
         assert!(matches!(info.role, BacnetRole::Client));
         assert!(info.iam.is_none());
@@ -533,25 +548,28 @@ mod tests {
         // Device #1001, Max APDU=480, Segmentation=0, Vendor=3
         let payload: Vec<u8> = vec![
             0x81, 0x0B, 0x00, 0x19, // BVLCI: BACnet, OriginalBroadcast
-            0x01, 0x20,             // NPDU: version=1, control=0x20 (has_dst)
-            0xFF, 0xFF,             // DNET
-            0x00,                   // DLEN = 0
-            0xFF,                   // Hop Count
-            0x10,                   // APDU: UnconfirmedRequest
-            0x00,                   // Service: IAm
+            0x01, 0x20, // NPDU: version=1, control=0x20 (has_dst)
+            0xFF, 0xFF, // DNET
+            0x00, // DLEN = 0
+            0xFF, // Hop Count
+            0x10, // APDU: UnconfirmedRequest
+            0x00, // Service: IAm
             // I-Am data:
-            0xC4,                   // App tag 12 (Object Identifier), length=4
+            0xC4, // App tag 12 (Object Identifier), length=4
             0x02, 0x00, 0x03, 0xE9, // Object ID: Device(8), instance=1001
-            0x22,                   // App tag 2 (Unsigned16), length=2
-            0x01, 0xE0,             // Max APDU Length = 480
-            0x91,                   // App tag 9 (Enumerated), length=1
-            0x00,                   // Segmentation supported = 0
-            0x21,                   // App tag 2 (Unsigned8), length=1
-            0x03,                   // Vendor ID = 3
+            0x22, // App tag 2 (Unsigned16), length=2
+            0x01, 0xE0, // Max APDU Length = 480
+            0x91, // App tag 9 (Enumerated), length=1
+            0x00, // Segmentation supported = 0
+            0x21, // App tag 2 (Unsigned8), length=1
+            0x03, // Vendor ID = 3
         ];
 
         let info = parse(&payload).unwrap();
-        assert!(matches!(info.pdu_type, Some(BacnetPduType::UnconfirmedRequest)));
+        assert!(matches!(
+            info.pdu_type,
+            Some(BacnetPduType::UnconfirmedRequest)
+        ));
         assert!(matches!(info.service, Some(BacnetService::IAm)));
         assert!(matches!(info.role, BacnetRole::Server));
 
@@ -571,20 +589,23 @@ mod tests {
         // Target: Device(8) instance 1001, Property: Present-Value (85)
         let payload: Vec<u8> = vec![
             0x81, 0x0A, 0x00, 0x11, // BVLCI: OriginalUnicast, total=17
-            0x01, 0x04,             // NPDU: version=1, control=0x04 (expect reply)
+            0x01, 0x04, // NPDU: version=1, control=0x04 (expect reply)
             // APDU ConfirmedRequest:
-            0x00,                   // PDU type=0 (ConfirmedRequest), no seg
-            0x04,                   // max-segs=0, max-APDU size=1024
-            0x01,                   // invoke_id = 1
-            0x0C,                   // Service: ReadProperty
+            0x00, // PDU type=0 (ConfirmedRequest), no seg
+            0x04, // max-segs=0, max-APDU size=1024
+            0x01, // invoke_id = 1
+            0x0C, // Service: ReadProperty
             // Context tag 0: Object Identifier (4 bytes)
             0x0C, 0x02, 0x00, 0x03, 0xE9, // Device(8), instance=1001
             // Context tag 1: Property Identifier (1 byte)
-            0x19, 0x55,             // Property 85 = Present-Value
+            0x19, 0x55, // Property 85 = Present-Value
         ];
 
         let info = parse(&payload).unwrap();
-        assert!(matches!(info.pdu_type, Some(BacnetPduType::ConfirmedRequest)));
+        assert!(matches!(
+            info.pdu_type,
+            Some(BacnetPduType::ConfirmedRequest)
+        ));
         assert!(matches!(info.service, Some(BacnetService::ReadProperty)));
         assert!(matches!(info.role, BacnetRole::Client));
         assert!(matches!(info.object_type, Some(BacnetObjectType::Device)));
@@ -598,23 +619,26 @@ mod tests {
         // Target: AnalogValue(2) instance 1, Property: Present-Value (85)
         let payload: Vec<u8> = vec![
             0x81, 0x0A, 0x00, 0x11, // BVLCI: OriginalUnicast, total=17
-            0x01, 0x04,             // NPDU: version=1, control=0x04 (expect reply)
+            0x01, 0x04, // NPDU: version=1, control=0x04 (expect reply)
             // APDU ConfirmedRequest:
-            0x00,                   // PDU type=0, no seg
-            0x04,                   // max-segs/max-APDU
-            0x02,                   // invoke_id = 2
-            0x0F,                   // Service: WriteProperty
+            0x00, // PDU type=0, no seg
+            0x04, // max-segs/max-APDU
+            0x02, // invoke_id = 2
+            0x0F, // Service: WriteProperty
             // Context tag 0: Object Identifier (4 bytes)
             // AnalogValue(2): (2 << 22) | 1 = 0x00800001
             0x0C, 0x00, 0x80, 0x00, 0x01, // AnalogValue(2), instance=1
             // Context tag 1: Property Identifier (1 byte)
-            0x19, 0x55,             // Property 85 = Present-Value
+            0x19, 0x55, // Property 85 = Present-Value
         ];
 
         let info = parse(&payload).unwrap();
         assert!(matches!(info.service, Some(BacnetService::WriteProperty)));
         assert!(matches!(info.role, BacnetRole::Client));
-        assert!(matches!(info.object_type, Some(BacnetObjectType::AnalogValue)));
+        assert!(matches!(
+            info.object_type,
+            Some(BacnetObjectType::AnalogValue)
+        ));
         assert_eq!(info.object_instance, Some(1));
         assert_eq!(info.property_id, Some(85));
     }
@@ -624,19 +648,25 @@ mod tests {
         // Confirmed ReinitializeDevice — ATT&CK T0816
         let payload: Vec<u8> = vec![
             0x81, 0x0A, 0x00, 0x0C, // BVLCI: OriginalUnicast, total=12
-            0x01, 0x04,             // NPDU: unicast, expect reply
+            0x01, 0x04, // NPDU: unicast, expect reply
             // APDU ConfirmedRequest:
-            0x00,                   // PDU type=0, no seg
-            0x04,                   // max-segs/max-APDU
-            0x03,                   // invoke_id = 3
-            0x14,                   // Service: ReinitializeDevice (0x14)
+            0x00, // PDU type=0, no seg
+            0x04, // max-segs/max-APDU
+            0x03, // invoke_id = 3
+            0x14, // Service: ReinitializeDevice (0x14)
             // Parameters (reinitialized-state-of-device):
-            0x09, 0x00,             // Context tag 0: cold-start
+            0x09, 0x00, // Context tag 0: cold-start
         ];
 
         let info = parse(&payload).unwrap();
-        assert!(matches!(info.pdu_type, Some(BacnetPduType::ConfirmedRequest)));
-        assert!(matches!(info.service, Some(BacnetService::ReinitializeDevice)));
+        assert!(matches!(
+            info.pdu_type,
+            Some(BacnetPduType::ConfirmedRequest)
+        ));
+        assert!(matches!(
+            info.service,
+            Some(BacnetService::ReinitializeDevice)
+        ));
         assert!(matches!(info.role, BacnetRole::Client));
     }
 
@@ -645,15 +675,18 @@ mod tests {
         // Confirmed DeviceCommunicationControl — ATT&CK T0811
         let payload: Vec<u8> = vec![
             0x81, 0x0A, 0x00, 0x0A, // BVLCI: OriginalUnicast, total=10
-            0x01, 0x04,             // NPDU: unicast, expect reply
-            0x00,                   // ConfirmedRequest, no seg
-            0x04,                   // max-segs/max-APDU
-            0x04,                   // invoke_id = 4
-            0x11,                   // Service: DeviceCommunicationControl
+            0x01, 0x04, // NPDU: unicast, expect reply
+            0x00, // ConfirmedRequest, no seg
+            0x04, // max-segs/max-APDU
+            0x04, // invoke_id = 4
+            0x11, // Service: DeviceCommunicationControl
         ];
 
         let info = parse(&payload).unwrap();
-        assert!(matches!(info.service, Some(BacnetService::DeviceCommunicationControl)));
+        assert!(matches!(
+            info.service,
+            Some(BacnetService::DeviceCommunicationControl)
+        ));
         assert!(matches!(info.role, BacnetRole::Client));
     }
 
@@ -668,9 +701,7 @@ mod tests {
     fn test_invalid_bvlci() {
         // First byte is not 0x81
         let payload: Vec<u8> = vec![
-            0x82, 0x0B, 0x00, 0x0C,
-            0x01, 0x20, 0xFF, 0xFF,
-            0x00, 0xFF, 0x10, 0x08,
+            0x82, 0x0B, 0x00, 0x0C, 0x01, 0x20, 0xFF, 0xFF, 0x00, 0xFF, 0x10, 0x08,
         ];
         assert!(parse(&payload).is_none());
     }

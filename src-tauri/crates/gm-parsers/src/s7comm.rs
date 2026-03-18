@@ -324,10 +324,8 @@ pub fn parse(payload: &[u8]) -> Option<S7Info> {
                 payload[s7_start + 4],
                 payload[s7_start + 5],
             ]));
-            let param_length = u16::from_be_bytes([
-                payload[s7_start + 6],
-                payload[s7_start + 7],
-            ]) as usize;
+            let param_length =
+                u16::from_be_bytes([payload[s7_start + 6], payload[s7_start + 7]]) as usize;
 
             let s7_pdu_type = Some(match rosctr {
                 0x01 => S7PduType::Job,
@@ -438,11 +436,11 @@ mod tests {
         // COTP CR (rack 0, slot 2) — from docs/PROTOCOL-DEEP-PARSE.md
         let payload: Vec<u8> = vec![
             0x03, 0x00, 0x00, 0x16, // TPKT: version=3, total=22
-            0x11, 0xE0,             // COTP: length=17, PDU type=CR (0xE0)
-            0x00, 0x00,             // dst_ref = 0
-            0x00, 0x01,             // src_ref = 1
-            0x00,                   // class/option
-            0xC0, 0x01, 0x0A,       // TPDU size: log2=10 → 1024 bytes max
+            0x11, 0xE0, // COTP: length=17, PDU type=CR (0xE0)
+            0x00, 0x00, // dst_ref = 0
+            0x00, 0x01, // src_ref = 1
+            0x00, // class/option
+            0xC0, 0x01, 0x0A, // TPDU size: log2=10 → 1024 bytes max
             0xC1, 0x02, 0x01, 0x00, // Src TSAP: [0x01, 0x00]
             0xC2, 0x02, 0x01, 0x02, // Dst TSAP: [0x01, 0x02] → rack=0, slot=2
         ];
@@ -465,23 +463,26 @@ mod tests {
         // S7 Setup Communication Job — from docs/PROTOCOL-DEEP-PARSE.md
         let payload: Vec<u8> = vec![
             0x03, 0x00, 0x00, 0x19, // TPKT: total=25
-            0x02, 0xF0, 0x80,       // COTP DT Data: length=2, PDU=0xF0, TPDU=0x80
-            0x32, 0x01,             // S7: protocol_id=0x32, ROSCTR=Job(0x01)
-            0x00, 0x00,             // reserved
-            0x00, 0x01,             // PDU reference = 1
-            0x00, 0x08,             // parameter length = 8
-            0x00, 0x00,             // data length = 0
+            0x02, 0xF0, 0x80, // COTP DT Data: length=2, PDU=0xF0, TPDU=0x80
+            0x32, 0x01, // S7: protocol_id=0x32, ROSCTR=Job(0x01)
+            0x00, 0x00, // reserved
+            0x00, 0x01, // PDU reference = 1
+            0x00, 0x08, // parameter length = 8
+            0x00, 0x00, // data length = 0
             // SetupCommunication params:
-            0xF0, 0x00,             // FC=0xF0, reserved=0
-            0x00, 0x01,             // max_amq_calling = 1
-            0x00, 0x01,             // max_amq_called = 1
-            0x01, 0xE0,             // pdu_length = 480
+            0xF0, 0x00, // FC=0xF0, reserved=0
+            0x00, 0x01, // max_amq_calling = 1
+            0x00, 0x01, // max_amq_called = 1
+            0x01, 0xE0, // pdu_length = 480
         ];
 
         let info = parse(&payload).unwrap();
         assert!(matches!(info.cotp_pdu_type, CotpPduType::DtData));
         assert!(matches!(info.s7_pdu_type, Some(S7PduType::Job)));
-        assert!(matches!(info.s7_function, Some(S7Function::SetupCommunication)));
+        assert!(matches!(
+            info.s7_function,
+            Some(S7Function::SetupCommunication)
+        ));
         assert_eq!(info.pdu_reference, Some(1));
         assert_eq!(info.max_amq_calling, Some(1));
         assert_eq!(info.max_amq_called, Some(1));
@@ -494,18 +495,16 @@ mod tests {
         // S7 Read Var Job (FC 0x04)
         let payload: Vec<u8> = vec![
             0x03, 0x00, 0x00, 0x1F, // TPKT: total=31
-            0x02, 0xF0, 0x80,       // COTP DT Data
-            0x32, 0x01,             // S7 Job
-            0x00, 0x00,             // reserved
-            0x00, 0x02,             // PDU ref = 2
-            0x00, 0x0E,             // param length = 14
-            0x00, 0x00,             // data length = 0
-            0x04,                   // FC = Read Var
-            0x01,                   // variable count = 1
+            0x02, 0xF0, 0x80, // COTP DT Data
+            0x32, 0x01, // S7 Job
+            0x00, 0x00, // reserved
+            0x00, 0x02, // PDU ref = 2
+            0x00, 0x0E, // param length = 14
+            0x00, 0x00, // data length = 0
+            0x04, // FC = Read Var
+            0x01, // variable count = 1
             // Variable specification (DB1.DBW0):
-            0x12, 0x0A, 0x10, 0x02,
-            0x00, 0x01, 0x00, 0x01,
-            0x84, 0x00, 0x00, 0x00,
+            0x12, 0x0A, 0x10, 0x02, 0x00, 0x01, 0x00, 0x01, 0x84, 0x00, 0x00, 0x00,
         ];
 
         let info = parse(&payload).unwrap();
@@ -519,18 +518,16 @@ mod tests {
         // S7 Write Var Job (FC 0x05 — ATT&CK T0855)
         let payload: Vec<u8> = vec![
             0x03, 0x00, 0x00, 0x1F, // TPKT: total=31
-            0x02, 0xF0, 0x80,       // COTP DT Data
-            0x32, 0x01,             // S7 Job
-            0x00, 0x00,             // reserved
-            0x00, 0x03,             // PDU ref = 3
-            0x00, 0x0E,             // param length = 14
-            0x00, 0x00,             // data length = 0
-            0x05,                   // FC = Write Var
-            0x01,                   // variable count = 1
+            0x02, 0xF0, 0x80, // COTP DT Data
+            0x32, 0x01, // S7 Job
+            0x00, 0x00, // reserved
+            0x00, 0x03, // PDU ref = 3
+            0x00, 0x0E, // param length = 14
+            0x00, 0x00, // data length = 0
+            0x05, // FC = Write Var
+            0x01, // variable count = 1
             // Variable address
-            0x12, 0x0A, 0x10, 0x02,
-            0x00, 0x01, 0x00, 0x01,
-            0x84, 0x00, 0x00, 0x00,
+            0x12, 0x0A, 0x10, 0x02, 0x00, 0x01, 0x00, 0x01, 0x84, 0x00, 0x00, 0x00,
         ];
 
         let info = parse(&payload).unwrap();
@@ -543,12 +540,12 @@ mod tests {
         // S7 PLC Stop Job — from docs/PROTOCOL-DEEP-PARSE.md (ATT&CK T0816)
         let payload: Vec<u8> = vec![
             0x03, 0x00, 0x00, 0x15, // TPKT: total=21
-            0x02, 0xF0, 0x80,       // COTP DT Data
-            0x32, 0x01,             // S7 Job
-            0x00, 0x00,             // reserved
-            0x00, 0x04,             // PDU ref = 4
-            0x00, 0x04,             // param length = 4
-            0x00, 0x00,             // data length = 0
+            0x02, 0xF0, 0x80, // COTP DT Data
+            0x32, 0x01, // S7 Job
+            0x00, 0x00, // reserved
+            0x00, 0x04, // PDU ref = 4
+            0x00, 0x04, // param length = 4
+            0x00, 0x00, // data length = 0
             0x29, 0x00, 0x00, 0x00, // FC = PLC Stop (0x29) + padding
         ];
 
@@ -563,13 +560,13 @@ mod tests {
         // S7 Download Start Job — from docs/PROTOCOL-DEEP-PARSE.md (ATT&CK T0843)
         let payload: Vec<u8> = vec![
             0x03, 0x00, 0x00, 0x13, // TPKT: total=19
-            0x02, 0xF0, 0x80,       // COTP DT Data
-            0x32, 0x01,             // S7 Job
-            0x00, 0x00,             // reserved
-            0x00, 0x03,             // PDU ref = 3
-            0x00, 0x02,             // param length = 2
-            0x00, 0x00,             // data length = 0
-            0x1D, 0x00,             // FC = Download Start (0x1D)
+            0x02, 0xF0, 0x80, // COTP DT Data
+            0x32, 0x01, // S7 Job
+            0x00, 0x00, // reserved
+            0x00, 0x03, // PDU ref = 3
+            0x00, 0x02, // param length = 2
+            0x00, 0x00, // data length = 0
+            0x1D, 0x00, // FC = Download Start (0x1D)
         ];
 
         let info = parse(&payload).unwrap();
@@ -582,18 +579,18 @@ mod tests {
         // S7 AckData SetupCommunication response (Server role, error fields present)
         let payload: Vec<u8> = vec![
             0x03, 0x00, 0x00, 0x1B, // TPKT: total=27
-            0x02, 0xF0, 0x80,       // COTP DT Data
-            0x32, 0x03,             // S7 AckData (ROSCTR=0x03)
-            0x00, 0x00,             // reserved
-            0x00, 0x01,             // PDU ref = 1
-            0x00, 0x08,             // param length = 8
-            0x00, 0x00,             // data length = 0
-            0x00, 0x00,             // error_class=0, error_code=0 (no error)
+            0x02, 0xF0, 0x80, // COTP DT Data
+            0x32, 0x03, // S7 AckData (ROSCTR=0x03)
+            0x00, 0x00, // reserved
+            0x00, 0x01, // PDU ref = 1
+            0x00, 0x08, // param length = 8
+            0x00, 0x00, // data length = 0
+            0x00, 0x00, // error_class=0, error_code=0 (no error)
             // SetupCommunication response params:
-            0xF0, 0x00,             // FC=0xF0, reserved
-            0x00, 0x01,             // max_amq_calling = 1
-            0x00, 0x01,             // max_amq_called = 1
-            0x01, 0xE0,             // pdu_length = 480
+            0xF0, 0x00, // FC=0xF0, reserved
+            0x00, 0x01, // max_amq_calling = 1
+            0x00, 0x01, // max_amq_called = 1
+            0x01, 0xE0, // pdu_length = 480
         ];
 
         let info = parse(&payload).unwrap();
@@ -601,7 +598,10 @@ mod tests {
         assert!(matches!(info.role, S7Role::Server));
         assert_eq!(info.error_class, Some(0x00));
         assert_eq!(info.error_code, Some(0x00));
-        assert!(matches!(info.s7_function, Some(S7Function::SetupCommunication)));
+        assert!(matches!(
+            info.s7_function,
+            Some(S7Function::SetupCommunication)
+        ));
         assert_eq!(info.pdu_length, Some(480));
     }
 
@@ -616,13 +616,8 @@ mod tests {
     fn test_invalid_tpkt_version() {
         // TPKT version byte is 0x04, not 0x03 → reject
         let payload: Vec<u8> = vec![
-            0x04, 0x00, 0x00, 0x19,
-            0x02, 0xF0, 0x80,
-            0x32, 0x01, 0x00, 0x00,
-            0x00, 0x01, 0x00, 0x08,
-            0x00, 0x00, 0xF0, 0x00,
-            0x00, 0x01, 0x00, 0x01,
-            0x01, 0xE0,
+            0x04, 0x00, 0x00, 0x19, 0x02, 0xF0, 0x80, 0x32, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00,
+            0x08, 0x00, 0x00, 0xF0, 0x00, 0x00, 0x01, 0x00, 0x01, 0x01, 0xE0,
         ];
         assert!(parse(&payload).is_none());
     }

@@ -7,8 +7,8 @@ use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{AssetSnapshot, ConnectionSnapshot};
 use crate::comm_patterns::ConnectionStats;
+use crate::{AssetSnapshot, ConnectionSnapshot};
 
 /// A single entry in the communication allowlist.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -64,17 +64,20 @@ pub fn generate_allowlist(
     comm_stats: &[ConnectionStats],
 ) -> Vec<AllowlistEntry> {
     // Build IP → asset lookup
-    let asset_map: HashMap<&str, &AssetSnapshot> = assets
-        .iter()
-        .map(|a| (a.ip_address.as_str(), a))
-        .collect();
+    let asset_map: HashMap<&str, &AssetSnapshot> =
+        assets.iter().map(|a| (a.ip_address.as_str(), a)).collect();
 
     // Build comm stats lookup: (src_ip, dst_ip, port, protocol) → stats
     let stats_map: HashMap<(&str, &str, u16, &str), &ConnectionStats> = comm_stats
         .iter()
         .map(|s| {
             (
-                (s.src_ip.as_str(), s.dst_ip.as_str(), s.port, s.protocol.as_str()),
+                (
+                    s.src_ip.as_str(),
+                    s.dst_ip.as_str(),
+                    s.port,
+                    s.protocol.as_str(),
+                ),
                 s,
             )
         })
@@ -84,7 +87,14 @@ pub fn generate_allowlist(
     // the reverse direction was also observed (for bidirectional detection).
     let reverse_set: HashSet<(&str, &str, u16, &str)> = connections
         .iter()
-        .map(|c| (c.src_ip.as_str(), c.dst_ip.as_str(), c.dst_port, c.protocol.as_str()))
+        .map(|c| {
+            (
+                c.src_ip.as_str(),
+                c.dst_ip.as_str(),
+                c.dst_port,
+                c.protocol.as_str(),
+            )
+        })
         .collect();
 
     let mut entries = Vec::new();
@@ -105,8 +115,12 @@ pub fn generate_allowlist(
         let src_asset = asset_map.get(conn.src_ip.as_str()).copied();
         let dst_asset = asset_map.get(conn.dst_ip.as_str()).copied();
 
-        let src_type = src_asset.map(|a| a.device_type.as_str()).unwrap_or("unknown");
-        let dst_type = dst_asset.map(|a| a.device_type.as_str()).unwrap_or("unknown");
+        let src_type = src_asset
+            .map(|a| a.device_type.as_str())
+            .unwrap_or("unknown");
+        let dst_type = dst_asset
+            .map(|a| a.device_type.as_str())
+            .unwrap_or("unknown");
 
         let src_level = src_asset.and_then(|a| a.purdue_level);
         let dst_level = dst_asset.and_then(|a| a.purdue_level);
@@ -116,15 +130,27 @@ pub fn generate_allowlist(
         let (frequency, avg_interval_ms) = classify_frequency(stats);
 
         // Direction: check if reverse flow was also seen
-        let has_reverse =
-            reverse_set.contains(&(conn.dst_ip.as_str(), conn.src_ip.as_str(), conn.dst_port, conn.protocol.as_str()))
-            || reverse_set.contains(&(conn.dst_ip.as_str(), conn.src_ip.as_str(), conn.src_port, conn.protocol.as_str()));
-        let direction = if has_reverse { "bidirectional" } else { "unidirectional" }.to_string();
+        let has_reverse = reverse_set.contains(&(
+            conn.dst_ip.as_str(),
+            conn.src_ip.as_str(),
+            conn.dst_port,
+            conn.protocol.as_str(),
+        )) || reverse_set.contains(&(
+            conn.dst_ip.as_str(),
+            conn.src_ip.as_str(),
+            conn.src_port,
+            conn.protocol.as_str(),
+        ));
+        let direction = if has_reverse {
+            "bidirectional"
+        } else {
+            "unidirectional"
+        }
+        .to_string();
 
         let classification =
             classify_connection(src_type, dst_type, src_level, dst_level, &conn.protocol);
-        let justification =
-            build_justification(src_type, dst_type, &conn.protocol, conn.dst_port);
+        let justification = build_justification(src_type, dst_type, &conn.protocol, conn.dst_port);
 
         entries.push(AllowlistEntry {
             src_ip: conn.src_ip.clone(),
@@ -191,7 +217,11 @@ pub fn format_firewall_rules(entries: &[AllowlistEntry]) -> String {
     ];
 
     for e in entries {
-        let transport = if UDP_PORTS.contains(&e.dst_port) { "udp" } else { "tcp" };
+        let transport = if UDP_PORTS.contains(&e.dst_port) {
+            "udp"
+        } else {
+            "tcp"
+        };
         lines.push(format!(
             "ALLOW {transport} {src} → {dst}:{port}  # {just}",
             transport = transport,
@@ -356,6 +386,8 @@ mod tests {
             is_public_ip: false,
             tags: vec![],
             vendor: None,
+            hostname: None,
+            product_family: None,
         }
     }
 
@@ -367,9 +399,7 @@ mod tests {
 
     #[test]
     fn test_generate_allowlist_basic() {
-        let connections = vec![
-            make_conn("10.0.2.10", "10.0.1.20", 502, "Modbus"),
-        ];
+        let connections = vec![make_conn("10.0.2.10", "10.0.1.20", 502, "Modbus")];
         let assets = vec![
             make_asset("10.0.2.10", "hmi", 2),
             make_asset("10.0.1.20", "plc", 1),
@@ -444,6 +474,10 @@ mod tests {
             make_conn("10.0.2.10", "10.0.1.20", 502, "Modbus"),
         ];
         let result = generate_allowlist(&connections, &[], &[]);
-        assert_eq!(result.len(), 1, "Duplicate connections should be deduplicated");
+        assert_eq!(
+            result.len(),
+            1,
+            "Duplicate connections should be deduplicated"
+        );
     }
 }

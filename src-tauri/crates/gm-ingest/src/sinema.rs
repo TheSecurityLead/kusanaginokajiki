@@ -11,7 +11,7 @@ use std::io::Read;
 use std::path::Path;
 
 use crate::error::IngestError;
-use crate::{IngestedAsset, IngestResult, IngestSource};
+use crate::{IngestResult, IngestSource, IngestedAsset};
 
 // ─── SINEMA CSV ────────────────────────────────────────────────────────────
 
@@ -47,7 +47,10 @@ pub(crate) fn parse_sinema_csv(content: &str) -> Result<IngestResult, IngestErro
     let col_name = find_col(&headers, &["device name", "devicename", "name"]);
     let col_mac = find_col(&headers, &["mac address", "macaddress", "mac addr", "mac"]);
     let col_type = find_col(&headers, &["type", "model", "hardware", "order number"]);
-    let col_fw = find_col(&headers, &["firmware", "fw version", "version", "firmware version"]);
+    let col_fw = find_col(
+        &headers,
+        &["firmware", "fw version", "version", "firmware version"],
+    );
     let col_loc = find_col(&headers, &["location", "site"]);
 
     for line in lines {
@@ -172,7 +175,10 @@ pub(crate) fn parse_tia_xml(content: &str) -> Result<IngestResult, IngestError> 
         };
 
         let name = xml_find_any(block, &["name", "devicename", "device_name"]);
-        let model = xml_find_any(block, &["typeidentifier", "type", "ordernumber", "articleno"]);
+        let model = xml_find_any(
+            block,
+            &["typeidentifier", "type", "ordernumber", "articleno"],
+        );
         let firmware = xml_find_any(block, &["firmwareversion", "firmware", "swversion"]);
 
         let vendor = model.as_deref().and_then(infer_vendor_from_model);
@@ -317,7 +323,10 @@ pub(crate) fn infer_vendor_from_model(model: &str) -> Option<String> {
 /// Infer device type string from a model/product string.
 fn infer_device_type_from_model(model: &str) -> String {
     let m = model.to_lowercase();
-    if m.contains("s7-") || m.contains("cpu") && (m.contains("1200") || m.contains("1500") || m.contains("300") || m.contains("400")) {
+    if m.contains("s7-")
+        || m.contains("cpu")
+            && (m.contains("1200") || m.contains("1500") || m.contains("300") || m.contains("400"))
+    {
         "plc".to_string()
     } else if m.contains("scalance")
         || m.contains("switch")
@@ -340,7 +349,8 @@ fn infer_device_type_from_model(model: &str) -> String {
 mod tests {
     use super::*;
 
-    const SINEMA_CSV: &str = "Device Name,IP Address,MAC Address,Type,Firmware,Serial Number,Location,Status\n\
+    const SINEMA_CSV: &str =
+        "Device Name,IP Address,MAC Address,Type,Firmware,Serial Number,Location,Status\n\
 SCALANCE-X308,10.0.1.1,00:0E:8C:AA:BB:CC,SCALANCE X-308-2M,V06.06.03,S12345,Plant Floor,Online\n\
 S7-1200,10.0.1.10,00:1B:1B:DD:EE:FF,CPU 1214C DC/DC/DC,V4.5,S67890,Rack 3,Online\n";
 
@@ -365,8 +375,14 @@ S7-1200,10.0.1.10,00:1B:1B:DD:EE:FF,CPU 1214C DC/DC/DC,V4.5,S67890,Rack 3,Online
     fn test_sinema_csv_firmware_in_os_info() {
         let result = parse_sinema_csv(SINEMA_CSV).unwrap();
         let os = result.assets[0].os_info.as_deref().unwrap_or("");
-        assert!(os.contains("V06.06.03"), "firmware should appear in os_info");
-        assert!(os.contains("Plant Floor"), "location should appear in os_info");
+        assert!(
+            os.contains("V06.06.03"),
+            "firmware should appear in os_info"
+        );
+        assert!(
+            os.contains("Plant Floor"),
+            "location should appear in os_info"
+        );
     }
 
     #[test]
@@ -391,7 +407,11 @@ S7-1200,10.0.1.10,00:1B:1B:DD:EE:FF,CPU 1214C DC/DC/DC,V4.5,S67890,Rack 3,Online
         assert_eq!(result.assets.len(), 2);
         assert_eq!(result.assets[0].ip_address, "10.0.2.1");
         assert_eq!(result.assets[0].hostname.as_deref(), Some("PLC-1"));
-        assert!(result.assets[0].os_info.as_deref().unwrap_or("").contains("V2.8"));
+        assert!(result.assets[0]
+            .os_info
+            .as_deref()
+            .unwrap_or("")
+            .contains("V2.8"));
     }
 
     #[test]

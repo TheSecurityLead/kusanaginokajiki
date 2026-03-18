@@ -9,22 +9,22 @@
 //! - IEEE OUI vendor lookup
 //! - GeoIP country identification
 
-pub mod error;
-pub mod schema;
-pub mod sessions;
 pub mod assets;
 pub mod connections;
-pub mod projects;
-pub mod oui;
+pub mod error;
 pub mod geoip;
+pub mod oui;
+pub mod projects;
+pub mod schema;
+pub mod sessions;
 
-pub use error::DbError;
-pub use sessions::SessionRow;
 pub use assets::{AssetRow, HistoryRow};
 pub use connections::ConnectionRow;
-pub use projects::{Project, ProjectInput, ProjectSummary};
-pub use oui::OuiLookup;
+pub use error::DbError;
 pub use geoip::GeoIpLookup;
+pub use oui::OuiLookup;
+pub use projects::{Project, ProjectInput, ProjectSummary};
+pub use sessions::SessionRow;
 
 use std::path::Path;
 
@@ -166,10 +166,7 @@ impl Database {
         projects::assign_session_to_project(&self.conn, session_id, project_id)
     }
 
-    pub fn list_sessions_for_project(
-        &self,
-        project_id: i64,
-    ) -> Result<Vec<SessionRow>, DbError> {
+    pub fn list_sessions_for_project(&self, project_id: i64) -> Result<Vec<SessionRow>, DbError> {
         projects::list_sessions_for_project(&self.conn, project_id)
     }
 }
@@ -183,7 +180,9 @@ mod tests {
         let db = Database::open_in_memory().unwrap();
 
         // Create session
-        let session = db.create_session("s1", "Test Session", "description", "{}").unwrap();
+        let session = db
+            .create_session("s1", "Test Session", "description", "{}")
+            .unwrap();
         assert_eq!(session.name, "Test Session");
 
         // List sessions

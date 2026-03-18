@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use gm_capture::ParsedPacket;
+use serde::{Deserialize, Serialize};
 
 /// ICS/SCADA and common IT protocols recognized by Kusanagi Kajiki.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -250,9 +250,15 @@ mod tests {
     #[test]
     fn test_new_ot_port_detection() {
         assert_eq!(identify_by_port(49152, 5094), IcsProtocol::HartIp);
-        assert_eq!(identify_by_port(49152, 1089), IcsProtocol::FoundationFieldbus);
+        assert_eq!(
+            identify_by_port(49152, 1089),
+            IcsProtocol::FoundationFieldbus
+        );
         assert_eq!(identify_by_port(49152, 18245), IcsProtocol::GeSrtp);
-        assert_eq!(identify_by_port(49152, 5007), IcsProtocol::WonderwareSuitelink);
+        assert_eq!(
+            identify_by_port(49152, 5007),
+            IcsProtocol::WonderwareSuitelink
+        );
         assert_eq!(identify_by_port(49152, 2404), IcsProtocol::Iec104);
         assert_eq!(identify_by_port(49152, 34962), IcsProtocol::Profinet);
     }

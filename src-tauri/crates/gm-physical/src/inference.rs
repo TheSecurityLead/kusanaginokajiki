@@ -6,7 +6,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use crate::{InferredTopology, InferredSubnet, InferredGateway, SwitchCandidate, BroadcastDomain};
+use crate::{BroadcastDomain, InferredGateway, InferredSubnet, InferredTopology, SwitchCandidate};
 
 /// Decoupled input for topology inference — no Tauri state dependency.
 #[derive(Debug, Clone, Default)]
@@ -40,9 +40,7 @@ pub struct ConnSnapshot {
 /// and broadcast domains derived purely from observed traffic patterns.
 pub fn infer_topology(input: &InferenceInput) -> InferredTopology {
     // Collect all IPs (from assets + connections)
-    let mut all_ips: HashSet<String> = input.assets.iter()
-        .map(|a| a.ip_address.clone())
-        .collect();
+    let mut all_ips: HashSet<String> = input.assets.iter().map(|a| a.ip_address.clone()).collect();
     for conn in &input.connections {
         all_ips.insert(conn.src_ip.clone());
         all_ips.insert(conn.dst_ip.clone());
@@ -79,18 +77,21 @@ fn infer_subnets(all_ips: &HashSet<String>, input: &InferenceInput) -> Vec<Infer
     // Build cross-subnet connection set to help identify gateways
     let cross_subnet_ips: HashSet<String> = detect_cross_subnet_ips(input);
 
-    let mut subnets: Vec<InferredSubnet> = subnet_map.into_iter().map(|(prefix, mut members)| {
-        members.sort();
+    let mut subnets: Vec<InferredSubnet> = subnet_map
+        .into_iter()
+        .map(|(prefix, mut members)| {
+            members.sort();
 
-        // Look for a gateway: .1 or .254 in this subnet that also talks across subnets
-        let gateway_ip = find_subnet_gateway(&members, &prefix, &cross_subnet_ips);
+            // Look for a gateway: .1 or .254 in this subnet that also talks across subnets
+            let gateway_ip = find_subnet_gateway(&members, &prefix, &cross_subnet_ips);
 
-        InferredSubnet {
-            network: format!("{}.0/24", prefix),
-            member_ips: members,
-            gateway_ip,
-        }
-    }).collect();
+            InferredSubnet {
+                network: format!("{}.0/24", prefix),
+                member_ips: members,
+                gateway_ip,
+            }
+        })
+        .collect();
 
     subnets.sort_by(|a, b| a.network.cmp(&b.network));
     subnets
@@ -116,12 +117,19 @@ fn detect_cross_subnet_ips(input: &InferenceInput) -> HashSet<String> {
 
         // If src and dst are in different /24s, both are cross-subnet communicators
         if src_prefix != dst_prefix {
-            ip_subnets.entry(conn.src_ip.clone()).or_default().insert(dst_prefix);
-            ip_subnets.entry(conn.dst_ip.clone()).or_default().insert(src_prefix);
+            ip_subnets
+                .entry(conn.src_ip.clone())
+                .or_default()
+                .insert(dst_prefix);
+            ip_subnets
+                .entry(conn.dst_ip.clone())
+                .or_default()
+                .insert(src_prefix);
         }
     }
 
-    ip_subnets.into_iter()
+    ip_subnets
+        .into_iter()
         .filter(|(_, subnets)| !subnets.is_empty())
         .map(|(ip, _)| ip)
         .collect()
@@ -191,8 +199,14 @@ fn detect_gateways(input: &InferenceInput, _subnets: &[InferredSubnet]) -> Vec<I
     }
 
     // Build MAC address lookup from assets
-    let mac_by_ip: HashMap<String, String> = input.assets.iter()
-        .filter_map(|a| a.mac_address.as_ref().map(|mac| (a.ip_address.clone(), mac.clone())))
+    let mac_by_ip: HashMap<String, String> = input
+        .assets
+        .iter()
+        .filter_map(|a| {
+            a.mac_address
+                .as_ref()
+                .map(|mac| (a.ip_address.clone(), mac.clone()))
+        })
         .collect();
 
     let mut gateways: Vec<InferredGateway> = Vec::new();
@@ -217,11 +231,12 @@ fn detect_gateways(input: &InferenceInput, _subnets: &[InferredSubnet]) -> Vec<I
         let confidence = match (is_gateway_heuristic, strong_cross_subnet) {
             (true, true) => 3,
             (false, true) => 2,
-            (true, false) => 2,   // .1/.254 with at least one cross-subnet connection
-            (false, false) => 1,  // plain cross-subnet, no heuristic
+            (true, false) => 2, // .1/.254 with at least one cross-subnet connection
+            (false, false) => 1, // plain cross-subnet, no heuristic
         };
 
-        let mut subnet_list: Vec<String> = connected_subnets.iter()
+        let mut subnet_list: Vec<String> = connected_subnets
+            .iter()
             .map(|prefix| format!("{}.0/24", prefix))
             .collect();
         subnet_list.sort();
@@ -234,7 +249,11 @@ fn detect_gateways(input: &InferenceInput, _subnets: &[InferredSubnet]) -> Vec<I
         });
     }
 
-    gateways.sort_by(|a, b| b.confidence.cmp(&a.confidence).then(a.ip_address.cmp(&b.ip_address)));
+    gateways.sort_by(|a, b| {
+        b.confidence
+            .cmp(&a.confidence)
+            .then(a.ip_address.cmp(&b.ip_address))
+    });
     gateways
 }
 
@@ -247,7 +266,10 @@ fn detect_gateways(input: &InferenceInput, _subnets: &[InferredSubnet]) -> Vec<I
 ///
 /// - confidence = 1: fan-out > 5 within subnet
 /// - confidence = 2: fan-out > 10 within subnet
-fn detect_switch_candidates(input: &InferenceInput, _subnets: &[InferredSubnet]) -> Vec<SwitchCandidate> {
+fn detect_switch_candidates(
+    input: &InferenceInput,
+    _subnets: &[InferredSubnet],
+) -> Vec<SwitchCandidate> {
     // Count connections within same /24 for each IP
     let mut intra_subnet_neighbors: HashMap<String, HashSet<String>> = HashMap::new();
 
@@ -268,8 +290,14 @@ fn detect_switch_candidates(input: &InferenceInput, _subnets: &[InferredSubnet])
     }
 
     // Build MAC address lookup from assets
-    let mac_by_ip: HashMap<String, String> = input.assets.iter()
-        .filter_map(|a| a.mac_address.as_ref().map(|mac| (a.ip_address.clone(), mac.clone())))
+    let mac_by_ip: HashMap<String, String> = input
+        .assets
+        .iter()
+        .filter_map(|a| {
+            a.mac_address
+                .as_ref()
+                .map(|mac| (a.ip_address.clone(), mac.clone()))
+        })
         .collect();
 
     let mut candidates: Vec<SwitchCandidate> = Vec::new();
@@ -294,7 +322,8 @@ fn detect_switch_candidates(input: &InferenceInput, _subnets: &[InferredSubnet])
     }
 
     candidates.sort_by(|a, b| {
-        b.confidence.cmp(&a.confidence)
+        b.confidence
+            .cmp(&a.confidence)
             .then(b.connected_ips.len().cmp(&a.connected_ips.len()))
     });
     candidates
@@ -315,26 +344,33 @@ fn detect_broadcast_domains(
     let mut gateway_subnets: HashMap<String, Vec<String>> = HashMap::new();
     for gw in gateways {
         for subnet in &gw.connected_subnets {
-            gateway_subnets.entry(gw.ip_address.clone()).or_default().push(subnet.clone());
+            gateway_subnets
+                .entry(gw.ip_address.clone())
+                .or_default()
+                .push(subnet.clone());
         }
     }
 
-    subnets.iter().enumerate().map(|(i, subnet)| {
-        // Check if this subnet has a gateway and what the inferred_from value is
-        let inferred_from = if subnet.gateway_ip.is_some() {
-            "gateway".to_string()
-        } else {
-            "subnet".to_string()
-        };
+    subnets
+        .iter()
+        .enumerate()
+        .map(|(i, subnet)| {
+            // Check if this subnet has a gateway and what the inferred_from value is
+            let inferred_from = if subnet.gateway_ip.is_some() {
+                "gateway".to_string()
+            } else {
+                "subnet".to_string()
+            };
 
-        BroadcastDomain {
-            id: format!("bd-{}", i),
-            network: subnet.network.clone(),
-            member_ips: subnet.member_ips.clone(),
-            gateway_ip: subnet.gateway_ip.clone(),
-            inferred_from,
-        }
-    }).collect()
+            BroadcastDomain {
+                id: format!("bd-{}", i),
+                network: subnet.network.clone(),
+                member_ips: subnet.member_ips.clone(),
+                gateway_ip: subnet.gateway_ip.clone(),
+                inferred_from,
+            }
+        })
+        .collect()
 }
 
 // ─── Tests ───────────────────────────────────────────────────────
@@ -346,22 +382,70 @@ mod tests {
     fn make_input() -> InferenceInput {
         InferenceInput {
             assets: vec![
-                AssetSnapshot { ip_address: "192.168.1.1".to_string(), mac_address: Some("00:11:22:33:44:01".to_string()) },
-                AssetSnapshot { ip_address: "192.168.1.10".to_string(), mac_address: Some("00:11:22:33:44:10".to_string()) },
-                AssetSnapshot { ip_address: "192.168.1.20".to_string(), mac_address: None },
-                AssetSnapshot { ip_address: "192.168.2.1".to_string(), mac_address: Some("00:11:22:33:44:02".to_string()) },
-                AssetSnapshot { ip_address: "192.168.2.10".to_string(), mac_address: None },
-                AssetSnapshot { ip_address: "10.0.0.1".to_string(), mac_address: None },
+                AssetSnapshot {
+                    ip_address: "192.168.1.1".to_string(),
+                    mac_address: Some("00:11:22:33:44:01".to_string()),
+                },
+                AssetSnapshot {
+                    ip_address: "192.168.1.10".to_string(),
+                    mac_address: Some("00:11:22:33:44:10".to_string()),
+                },
+                AssetSnapshot {
+                    ip_address: "192.168.1.20".to_string(),
+                    mac_address: None,
+                },
+                AssetSnapshot {
+                    ip_address: "192.168.2.1".to_string(),
+                    mac_address: Some("00:11:22:33:44:02".to_string()),
+                },
+                AssetSnapshot {
+                    ip_address: "192.168.2.10".to_string(),
+                    mac_address: None,
+                },
+                AssetSnapshot {
+                    ip_address: "10.0.0.1".to_string(),
+                    mac_address: None,
+                },
             ],
             connections: vec![
                 // Within 192.168.1.0/24
-                ConnSnapshot { src_ip: "192.168.1.10".to_string(), dst_ip: "192.168.1.1".to_string(), src_mac: None, dst_mac: None, packet_count: 100 },
-                ConnSnapshot { src_ip: "192.168.1.20".to_string(), dst_ip: "192.168.1.1".to_string(), src_mac: None, dst_mac: None, packet_count: 50 },
+                ConnSnapshot {
+                    src_ip: "192.168.1.10".to_string(),
+                    dst_ip: "192.168.1.1".to_string(),
+                    src_mac: None,
+                    dst_mac: None,
+                    packet_count: 100,
+                },
+                ConnSnapshot {
+                    src_ip: "192.168.1.20".to_string(),
+                    dst_ip: "192.168.1.1".to_string(),
+                    src_mac: None,
+                    dst_mac: None,
+                    packet_count: 50,
+                },
                 // Cross-subnet: 192.168.1.1 (gateway) → 192.168.2.0/24
-                ConnSnapshot { src_ip: "192.168.1.1".to_string(), dst_ip: "192.168.2.10".to_string(), src_mac: None, dst_mac: None, packet_count: 30 },
-                ConnSnapshot { src_ip: "192.168.1.1".to_string(), dst_ip: "192.168.2.1".to_string(), src_mac: None, dst_mac: None, packet_count: 20 },
+                ConnSnapshot {
+                    src_ip: "192.168.1.1".to_string(),
+                    dst_ip: "192.168.2.10".to_string(),
+                    src_mac: None,
+                    dst_mac: None,
+                    packet_count: 30,
+                },
+                ConnSnapshot {
+                    src_ip: "192.168.1.1".to_string(),
+                    dst_ip: "192.168.2.1".to_string(),
+                    src_mac: None,
+                    dst_mac: None,
+                    packet_count: 20,
+                },
                 // Cross-subnet: 192.168.2.1 (gateway) → 10.0.0.0/8
-                ConnSnapshot { src_ip: "192.168.2.1".to_string(), dst_ip: "10.0.0.1".to_string(), src_mac: None, dst_mac: None, packet_count: 10 },
+                ConnSnapshot {
+                    src_ip: "192.168.2.1".to_string(),
+                    dst_ip: "10.0.0.1".to_string(),
+                    src_mac: None,
+                    dst_mac: None,
+                    packet_count: 10,
+                },
             ],
         }
     }
@@ -369,24 +453,28 @@ mod tests {
     #[test]
     fn test_subnet_grouping() {
         let input = make_input();
-        let all_ips: std::collections::HashSet<String> = input.assets.iter()
-            .map(|a| a.ip_address.clone())
-            .collect();
+        let all_ips: std::collections::HashSet<String> =
+            input.assets.iter().map(|a| a.ip_address.clone()).collect();
         let subnets = infer_subnets(&all_ips, &input);
 
         assert!(subnets.len() >= 3);
 
-        let subnet_192_168_1 = subnets.iter().find(|s| s.network == "192.168.1.0/24").unwrap();
-        assert!(subnet_192_168_1.member_ips.contains(&"192.168.1.1".to_string()));
-        assert!(subnet_192_168_1.member_ips.contains(&"192.168.1.10".to_string()));
+        let subnet_192_168_1 = subnets
+            .iter()
+            .find(|s| s.network == "192.168.1.0/24")
+            .unwrap();
+        assert!(subnet_192_168_1
+            .member_ips
+            .contains(&"192.168.1.1".to_string()));
+        assert!(subnet_192_168_1
+            .member_ips
+            .contains(&"192.168.1.10".to_string()));
     }
 
     #[test]
     fn test_gateway_detection() {
         let input = make_input();
-        let all_ips: HashSet<String> = input.assets.iter()
-            .map(|a| a.ip_address.clone())
-            .collect();
+        let all_ips: HashSet<String> = input.assets.iter().map(|a| a.ip_address.clone()).collect();
         let subnets = infer_subnets(&all_ips, &input);
         let gateways = detect_gateways(&input, &subnets);
 
@@ -394,22 +482,28 @@ mod tests {
         let gw = gateways.iter().find(|g| g.ip_address == "192.168.1.1");
         assert!(gw.is_some());
         let gw = gw.unwrap();
-        assert!(gw.confidence >= 2, "Expected confidence >= 2, got {}", gw.confidence);
+        assert!(
+            gw.confidence >= 2,
+            "Expected confidence >= 2, got {}",
+            gw.confidence
+        );
         assert!(!gw.connected_subnets.is_empty());
     }
 
     #[test]
     fn test_gateway_confidence_heuristic() {
         let input = make_input();
-        let all_ips: HashSet<String> = input.assets.iter()
-            .map(|a| a.ip_address.clone())
-            .collect();
+        let all_ips: HashSet<String> = input.assets.iter().map(|a| a.ip_address.clone()).collect();
         let subnets = infer_subnets(&all_ips, &input);
         let gateways = detect_gateways(&input, &subnets);
 
         // 192.168.1.1 ends in .1 AND has cross-subnet traffic → confidence >= 2
         if let Some(gw) = gateways.iter().find(|g| g.ip_address == "192.168.1.1") {
-            assert!(gw.confidence >= 2, "192.168.1.1 should have confidence >= 2, got {}", gw.confidence);
+            assert!(
+                gw.confidence >= 2,
+                "192.168.1.1 should have confidence >= 2, got {}",
+                gw.confidence
+            );
         }
     }
 
@@ -418,24 +512,33 @@ mod tests {
         // Create an IP that connects to 6+ others in the same /24
         let input = InferenceInput {
             assets: Vec::new(),
-            connections: (1..=8).map(|i| ConnSnapshot {
-                src_ip: "10.0.0.100".to_string(),
-                dst_ip: format!("10.0.0.{}", i),
-                src_mac: None,
-                dst_mac: None,
-                packet_count: 10,
-            }).collect(),
+            connections: (1..=8)
+                .map(|i| ConnSnapshot {
+                    src_ip: "10.0.0.100".to_string(),
+                    dst_ip: format!("10.0.0.{}", i),
+                    src_mac: None,
+                    dst_mac: None,
+                    packet_count: 10,
+                })
+                .collect(),
         };
 
-        let all_ips: HashSet<String> = input.connections.iter()
+        let all_ips: HashSet<String> = input
+            .connections
+            .iter()
             .flat_map(|c| [c.src_ip.clone(), c.dst_ip.clone()])
             .collect();
         let subnets = infer_subnets(&all_ips, &input);
         let candidates = detect_switch_candidates(&input, &subnets);
 
         // 10.0.0.100 connects to 8 hosts in same /24 → switch candidate
-        let candidate = candidates.iter().find(|c| c.ip_address.as_deref() == Some("10.0.0.100"));
-        assert!(candidate.is_some(), "Expected 10.0.0.100 to be a switch candidate");
+        let candidate = candidates
+            .iter()
+            .find(|c| c.ip_address.as_deref() == Some("10.0.0.100"));
+        assert!(
+            candidate.is_some(),
+            "Expected 10.0.0.100 to be a switch candidate"
+        );
         assert_eq!(candidate.unwrap().confidence, 1);
     }
 
@@ -444,22 +547,28 @@ mod tests {
         // 11+ connections in same /24 → confidence 2
         let input = InferenceInput {
             assets: Vec::new(),
-            connections: (1..=12).map(|i| ConnSnapshot {
-                src_ip: "10.0.0.100".to_string(),
-                dst_ip: format!("10.0.0.{}", i),
-                src_mac: None,
-                dst_mac: None,
-                packet_count: 5,
-            }).collect(),
+            connections: (1..=12)
+                .map(|i| ConnSnapshot {
+                    src_ip: "10.0.0.100".to_string(),
+                    dst_ip: format!("10.0.0.{}", i),
+                    src_mac: None,
+                    dst_mac: None,
+                    packet_count: 5,
+                })
+                .collect(),
         };
 
-        let all_ips: HashSet<String> = input.connections.iter()
+        let all_ips: HashSet<String> = input
+            .connections
+            .iter()
             .flat_map(|c| [c.src_ip.clone(), c.dst_ip.clone()])
             .collect();
         let subnets = infer_subnets(&all_ips, &input);
         let candidates = detect_switch_candidates(&input, &subnets);
 
-        let candidate = candidates.iter().find(|c| c.ip_address.as_deref() == Some("10.0.0.100"));
+        let candidate = candidates
+            .iter()
+            .find(|c| c.ip_address.as_deref() == Some("10.0.0.100"));
         assert!(candidate.is_some());
         assert_eq!(candidate.unwrap().confidence, 2);
     }

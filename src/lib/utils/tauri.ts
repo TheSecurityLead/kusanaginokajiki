@@ -56,7 +56,9 @@ import type {
 	AllowlistEntry,
 	ComplianceMapping,
 	CveMatch,
-	DeviceZeekEvents
+	DeviceZeekEvents,
+	SegmentationReport,
+	EnforcementFormat
 } from '$lib/types';
 
 // ─── System Commands ──────────────────────────────────────────
@@ -661,4 +663,16 @@ export async function importTiaXml(path: string): Promise<import('$lib/types').I
 /** Get Zeek event statistics for a specific device */
 export async function getDeviceZeekEvents(deviceIp: string): Promise<DeviceZeekEvents> {
 	return invoke<DeviceZeekEvents>('get_device_zeek_events', { deviceIp });
+}
+
+// ─── Phase 15: Microsegmentation ──────────────────────────────
+
+/** Run the full segmentation analysis pipeline (Phases 15A–15E) */
+export async function runSegmentation(): Promise<SegmentationReport> {
+	return invoke<SegmentationReport>('run_segmentation');
+}
+
+/** Export one of the five enforcement config formats from the last segmentation run */
+export async function exportEnforcementConfig(format: EnforcementFormat): Promise<string> {
+	return invoke<string>('export_enforcement_config', { format });
 }

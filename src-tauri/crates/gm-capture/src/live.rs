@@ -8,7 +8,7 @@
 use std::collections::VecDeque;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, mpsc};
+use std::sync::{mpsc, Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
@@ -89,7 +89,9 @@ impl LiveCaptureHandle {
     /// - The interface is not found
     /// - Insufficient privileges (need CAP_NET_RAW on Linux, admin on Windows, BPF on macOS)
     /// - Invalid BPF filter expression
-    pub fn start(config: LiveCaptureConfig) -> Result<(Self, mpsc::Receiver<ParsedPacket>), CaptureError> {
+    pub fn start(
+        config: LiveCaptureConfig,
+    ) -> Result<(Self, mpsc::Receiver<ParsedPacket>), CaptureError> {
         let (tx, rx) = mpsc::channel();
 
         let stop_flag = Arc::new(AtomicBool::new(false));
@@ -117,10 +119,9 @@ impl LiveCaptureHandle {
 
         // Apply BPF filter if provided
         if let Some(ref filter) = config.bpf_filter {
-            cap.filter(filter, true)
-                .map_err(|e| CaptureError::Capture(
-                    format!("Invalid BPF filter '{}': {}", filter, e),
-                ))?;
+            cap.filter(filter, true).map_err(|e| {
+                CaptureError::Capture(format!("Invalid BPF filter '{}': {}", filter, e))
+            })?;
         }
 
         // Store linktype for PCAP save
@@ -175,9 +176,9 @@ impl LiveCaptureHandle {
                         // Parse with etherparse and send to processing channel
                         let timestamp = parsing::timestamp_from_pcap(header);
                         if let Ok(parsed) = etherparse::SlicedPacket::from_ethernet(&data) {
-                            if let Some(packet) = parsing::extract_packet_info(
-                                &parsed, &data, timestamp, &origin,
-                            ) {
+                            if let Some(packet) =
+                                parsing::extract_packet_info(&parsed, &data, timestamp, &origin)
+                            {
                                 // If channel is closed, stop capture
                                 if tx.send(packet).is_err() {
                                     log::warn!("Packet channel closed, stopping capture");
@@ -261,7 +262,9 @@ impl LiveCaptureHandle {
     /// Returns the number of packets written.
     pub fn save_to_pcap<P: AsRef<Path>>(&self, path: P) -> Result<usize, CaptureError> {
         let path = path.as_ref();
-        let ring = self.raw_packets.lock()
+        let ring = self
+            .raw_packets
+            .lock()
             .map_err(|e| CaptureError::Capture(format!("Ring buffer lock poisoned: {}", e)))?;
 
         if ring.is_empty() {
@@ -269,14 +272,15 @@ impl LiveCaptureHandle {
         }
 
         let dead = pcap::Capture::dead(self.datalink)
-            .map_err(|e| CaptureError::Capture(
-                format!("Failed to create dead capture: {}", e),
-            ))?;
+            .map_err(|e| CaptureError::Capture(format!("Failed to create dead capture: {}", e)))?;
 
-        let mut savefile = dead.savefile(path)
-            .map_err(|e| CaptureError::Capture(
-                format!("Failed to create savefile '{}': {}", path.display(), e),
-            ))?;
+        let mut savefile = dead.savefile(path).map_err(|e| {
+            CaptureError::Capture(format!(
+                "Failed to create savefile '{}': {}",
+                path.display(),
+                e
+            ))
+        })?;
 
         let count = ring.len();
         for raw in ring.iter() {
@@ -333,7 +337,10 @@ fn enhance_privilege_error(err: pcap::Error, interface: &str) -> CaptureError {
                 interface
             )
         } else {
-            format!("Insufficient privileges to capture on '{}': {}", interface, msg)
+            format!(
+                "Insufficient privileges to capture on '{}': {}",
+                interface, msg
+            )
         };
 
         CaptureError::Capture(guidance)

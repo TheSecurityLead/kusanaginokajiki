@@ -9,10 +9,7 @@ use std::path::Path;
 
 use regex::Regex;
 
-use crate::{
-    ArpEntry, CdpNeighbor, MacTableEntry, PhysicalPort, PhysicalSwitch,
-    PhysicalError,
-};
+use crate::{ArpEntry, CdpNeighbor, MacTableEntry, PhysicalError, PhysicalPort, PhysicalSwitch};
 
 // ─── Running Config Parser ──────────────────────────────────────
 
@@ -73,7 +70,8 @@ fn parse_vlan_definitions(content: &str) -> HashMap<u16, String> {
         if let Some(caps) = re_vlan.captures(line) {
             if let Ok(id) = caps[1].parse::<u16>() {
                 let name = if i + 1 < lines.len() {
-                    re_name.captures(lines[i + 1])
+                    re_name
+                        .captures(lines[i + 1])
                         .map(|c| c[1].trim().to_string())
                         .unwrap_or_else(|| format!("VLAN{}", id))
                 } else {
@@ -138,7 +136,9 @@ fn parse_interfaces(content: &str) -> Vec<PhysicalPort> {
                     for part in rest.split(',') {
                         let part = part.trim();
                         if let Some((start, end)) = part.split_once('-') {
-                            if let (Ok(s), Ok(e)) = (start.trim().parse::<u16>(), end.trim().parse::<u16>()) {
+                            if let (Ok(s), Ok(e)) =
+                                (start.trim().parse::<u16>(), end.trim().parse::<u16>())
+                            {
                                 for v in s..=e {
                                     if !vlans.contains(&v) {
                                         vlans.push(v);
@@ -288,7 +288,8 @@ pub fn parse_mac_table(content: &str) -> Result<Vec<MacTableEntry>, PhysicalErro
     ).map_err(|e| PhysicalError::Parse(format!("MAC table regex: {}", e)))?;
 
     for caps in re.captures_iter(content) {
-        let vlan = caps[1].parse::<u16>()
+        let vlan = caps[1]
+            .parse::<u16>()
             .map_err(|e| PhysicalError::Parse(format!("Invalid VLAN: {}", e)))?;
         let mac = crate::normalize_mac(&caps[2]);
         let entry_type = caps[3].to_lowercase();
@@ -338,9 +339,8 @@ pub fn parse_cdp_neighbors(content: &str) -> Result<Vec<(String, CdpNeighbor)>, 
     let re_ip = Regex::new(r"(?m)IP address:\s*(\S+)").map_err(&map_re)?;
     let re_platform = Regex::new(r"(?m)Platform:\s*([^,]+)").map_err(&map_re)?;
     let re_capabilities = Regex::new(r"(?m)Capabilities:\s*(.+)").map_err(&map_re)?;
-    let re_interface = Regex::new(
-        r"(?m)Interface:\s*(\S+),\s*Port ID \(outgoing port\):\s*(\S+)"
-    ).map_err(&map_re)?;
+    let re_interface = Regex::new(r"(?m)Interface:\s*(\S+),\s*Port ID \(outgoing port\):\s*(\S+)")
+        .map_err(&map_re)?;
 
     for entry in &entries {
         let device_id = match re_device_id.captures(entry) {
@@ -355,7 +355,8 @@ pub fn parse_cdp_neighbors(content: &str) -> Result<Vec<(String, CdpNeighbor)>, 
 
                 let ip_address = re_ip.captures(entry).map(|c| c[1].trim().to_string());
                 let platform = re_platform.captures(entry).map(|c| c[1].trim().to_string());
-                let capabilities = re_capabilities.captures(entry)
+                let capabilities = re_capabilities
+                    .captures(entry)
                     .map(|c| {
                         c[1].split_whitespace()
                             .map(|s| s.to_string())
@@ -413,7 +414,8 @@ pub fn parse_arp_table(content: &str) -> Result<Vec<ArpEntry>, PhysicalError> {
         let interface = caps[3].to_string();
 
         // Extract VLAN number from interface name (e.g., "Vlan100" → 100)
-        let vlan = interface.strip_prefix("Vlan")
+        let vlan = interface
+            .strip_prefix("Vlan")
             .or_else(|| interface.strip_prefix("Vl"))
             .and_then(|s| s.parse::<u16>().ok());
 
@@ -508,7 +510,10 @@ interface Vlan100
         assert!(ports.len() >= 5);
 
         // Check GigabitEthernet1/0/1
-        let gi1 = ports.iter().find(|p| p.name == "GigabitEthernet1/0/1").unwrap();
+        let gi1 = ports
+            .iter()
+            .find(|p| p.name == "GigabitEthernet1/0/1")
+            .unwrap();
         assert_eq!(gi1.short_name, "Gi1/0/1");
         assert_eq!(gi1.description.as_deref(), Some("PLC-Line1"));
         assert_eq!(gi1.vlans, vec![100]);
@@ -518,11 +523,17 @@ interface Vlan100
         assert_eq!(gi1.duplex.as_deref(), Some("full"));
 
         // Check shutdown port
-        let gi14 = ports.iter().find(|p| p.name == "GigabitEthernet1/0/14").unwrap();
+        let gi14 = ports
+            .iter()
+            .find(|p| p.name == "GigabitEthernet1/0/14")
+            .unwrap();
         assert!(gi14.shutdown);
 
         // Check trunk port
-        let gi24 = ports.iter().find(|p| p.name == "GigabitEthernet1/0/24").unwrap();
+        let gi24 = ports
+            .iter()
+            .find(|p| p.name == "GigabitEthernet1/0/24")
+            .unwrap();
         assert_eq!(gi24.mode, "trunk");
         assert!(gi24.vlans.contains(&100));
         assert!(gi24.vlans.contains(&200));

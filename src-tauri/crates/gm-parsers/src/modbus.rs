@@ -389,9 +389,7 @@ mod tests {
     #[test]
     fn test_parse_modbus_exception() {
         // Exception response: FC 0x83 (FC 3 + 0x80), exception code 2 (illegal data address)
-        let payload: Vec<u8> = vec![
-            0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x01, 0x83, 0x02,
-        ];
+        let payload: Vec<u8> = vec![0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x01, 0x83, 0x02];
 
         let info = parse_modbus(&payload, 502, 49152).unwrap();
         assert_eq!(info.function_code, 3);
@@ -439,8 +437,7 @@ mod tests {
             // Object 1: Product Code
             0x01, // Object ID
             0x04, // Length: 4
-            b'M', b'3', b'4', b'0',
-            // Object 2: Revision
+            b'M', b'3', b'4', b'0', // Object 2: Revision
             0x02, // Object ID
             0x03, // Length: 3
             b'2', b'.', b'1',

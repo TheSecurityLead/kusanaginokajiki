@@ -23,10 +23,7 @@
 
 use std::collections::HashMap;
 
-use crate::{
-    AnalysisInput, Finding, FindingType, Severity,
-    PurdueAssignment, PurdueMethod,
-};
+use crate::{AnalysisInput, Finding, FindingType, PurdueAssignment, PurdueMethod, Severity};
 
 /// OT server ports that indicate L1 devices (PLCs/RTUs).
 const L1_SERVER_PORTS: &[u16] = &[502, 44818, 2222, 102, 20000, 2404, 34962, 34963, 34964];
@@ -93,23 +90,44 @@ fn assign_level(
 
     // Device type-based assignment (most reliable)
     match dt {
-        "plc" | "rtu" => return (1, format!("Device type '{}' maps to L1 (Basic Control)", dt)),
-        "hmi" | "engineering_workstation" => return (2, format!("Device type '{}' maps to L2 (Supervisory Control)", dt)),
-        "historian" | "scada_server" => return (3, format!("Device type '{}' maps to L3 (Site Operations)", dt)),
+        "plc" | "rtu" => {
+            return (
+                1,
+                format!("Device type '{}' maps to L1 (Basic Control)", dt),
+            )
+        }
+        "hmi" | "engineering_workstation" => {
+            return (
+                2,
+                format!("Device type '{}' maps to L2 (Supervisory Control)", dt),
+            )
+        }
+        "historian" | "scada_server" => {
+            return (
+                3,
+                format!("Device type '{}' maps to L3 (Site Operations)", dt),
+            )
+        }
         _ => {}
     }
 
     // Check if this device responds on L1 server ports
-    let serves_ot = server_ports.get(ip)
+    let serves_ot = server_ports
+        .get(ip)
         .map(|ports| ports.iter().any(|p| L1_SERVER_PORTS.contains(p)))
         .unwrap_or(false);
 
     if serves_ot {
-        return (1, "Responds on OT server ports (502/44818/102/etc.)".to_string());
+        return (
+            1,
+            "Responds on OT server ports (502/44818/102/etc.)".to_string(),
+        );
     }
 
     // Check OT protocol usage as a client
-    let ot_protocols: Vec<&str> = asset.protocols.iter()
+    let ot_protocols: Vec<&str> = asset
+        .protocols
+        .iter()
         .map(|p| p.as_str())
         .filter(|p| is_ot_protocol_name(p))
         .collect();
@@ -117,30 +135,41 @@ fn assign_level(
     let has_opc_ua = ot_protocols.contains(&"opc_ua");
 
     // Count distinct OT targets this device polls
-    let ot_target_count = client_targets.get(ip)
+    let ot_target_count = client_targets
+        .get(ip)
         .map(|ports| ports.iter().filter(|p| L1_SERVER_PORTS.contains(p)).count())
         .unwrap_or(0);
 
     // High fan-out OT client or OPC UA → L3 (Historian/SCADA)
     if has_opc_ua || ot_target_count >= 10 {
-        return (3, if has_opc_ua {
-            "Uses OPC UA protocol (typical for historians/SCADA)".to_string()
-        } else {
-            format!("High fan-out OT client ({} OT targets)", ot_target_count)
-        });
+        return (
+            3,
+            if has_opc_ua {
+                "Uses OPC UA protocol (typical for historians/SCADA)".to_string()
+            } else {
+                format!("High fan-out OT client ({} OT targets)", ot_target_count)
+            },
+        );
     }
 
     // Multi-OT protocol client → L2 (HMI)
     if ot_protocols.len() >= 2 || ot_target_count >= 2 {
-        return (2, format!(
-            "Multi-OT client ({} protocols, {} OT targets)",
-            ot_protocols.len(), ot_target_count
-        ));
+        return (
+            2,
+            format!(
+                "Multi-OT client ({} protocols, {} OT targets)",
+                ot_protocols.len(),
+                ot_target_count
+            ),
+        );
     }
 
     // Single OT connection (client side) → L2
     if !ot_protocols.is_empty() {
-        return (2, format!("OT protocol client ({})", ot_protocols.join(", ")));
+        return (
+            2,
+            format!("OT protocol client ({})", ot_protocols.join(", ")),
+        );
     }
 
     // Check for deep parse data suggesting OT involvement
@@ -151,23 +180,38 @@ fn assign_level(
         // EtherNet/IP Adapter (I/O device/drive) → L1; Scanner (PLC/HMI controller) → L2
         if let Some(ref enip) = dp.enip {
             if enip.role == "adapter" {
-                return (1, "EtherNet/IP Adapter role (field device/remote I/O)".to_string());
+                return (
+                    1,
+                    "EtherNet/IP Adapter role (field device/remote I/O)".to_string(),
+                );
             }
-            return (2, "EtherNet/IP Scanner role (PLC/HMI controller)".to_string());
+            return (
+                2,
+                "EtherNet/IP Scanner role (PLC/HMI controller)".to_string(),
+            );
         }
         // S7comm Server (Siemens PLC) → L1; Client (engineering station/HMI) → L2
         if let Some(ref s7) = dp.s7 {
             if s7.role == "server" {
                 return (1, "S7comm Server role (Siemens PLC)".to_string());
             }
-            return (2, "S7comm Client role (engineering workstation/HMI)".to_string());
+            return (
+                2,
+                "S7comm Client role (engineering workstation/HMI)".to_string(),
+            );
         }
         // BACnet Server (field controller) → L1; Client (BAS workstation) → L2
         if let Some(ref bacnet) = dp.bacnet {
             if bacnet.role == "server" {
-                return (1, "BACnet Server role (building automation controller)".to_string());
+                return (
+                    1,
+                    "BACnet Server role (building automation controller)".to_string(),
+                );
             }
-            return (2, "BACnet Client role (BAS workstation/supervisor)".to_string());
+            return (
+                2,
+                "BACnet Client role (BAS workstation/supervisor)".to_string(),
+            );
         }
         // IEC 104 Outstation (RTU/field device) → L1; Master (control centre) → L2
         if let Some(ref iec104) = dp.iec104 {
@@ -179,7 +223,10 @@ fn assign_level(
         // PROFINET IO-Device (field device) → L1; Controller/Supervisor → L2
         if let Some(ref profinet) = dp.profinet_dcp {
             if profinet.role == "io_device" {
-                return (1, "PROFINET IO-Device role (field device/remote I/O)".to_string());
+                return (
+                    1,
+                    "PROFINET IO-Device role (field device/remote I/O)".to_string(),
+                );
             }
             if profinet.role == "io_controller" || profinet.role == "io_supervisor" {
                 return (2, format!("PROFINET {} role", profinet.role));
@@ -193,7 +240,10 @@ fn assign_level(
     }
 
     // Default: unknown → L4 (conservative — treat unknown as IT until proven OT)
-    (4, "Unknown device type, defaulting to L4 (Enterprise IT)".to_string())
+    (
+        4,
+        "Unknown device type, defaulting to L4 (Enterprise IT)".to_string(),
+    )
 }
 
 /// Detect cross-Purdue-level violations.
@@ -207,7 +257,8 @@ pub fn detect_purdue_violations(
     let mut findings = Vec::new();
 
     // Build IP → Purdue level map
-    let level_map: HashMap<&str, u8> = assignments.iter()
+    let level_map: HashMap<&str, u8> = assignments
+        .iter()
         .map(|a| (a.ip_address.as_str(), a.level))
         .collect();
 
@@ -223,8 +274,7 @@ pub fn detect_purdue_violations(
         };
 
         // Flag L1 <-> L4+ direct communication
-        let is_violation = (src_level <= 1 && dst_level >= 4)
-            || (src_level >= 4 && dst_level <= 1);
+        let is_violation = (src_level <= 1 && dst_level >= 4) || (src_level >= 4 && dst_level <= 1);
 
         if is_violation {
             findings.push(Finding::new(
@@ -245,16 +295,20 @@ pub fn detect_purdue_violations(
                 vec![conn.src_ip.clone(), conn.dst_ip.clone()],
                 format!(
                     "{} (L{}) communicating with {} (L{}) on port {} ({} packets)",
-                    conn.src_ip, src_level, conn.dst_ip, dst_level,
-                    conn.dst_port, conn.packet_count
+                    conn.src_ip,
+                    src_level,
+                    conn.dst_ip,
+                    dst_level,
+                    conn.dst_port,
+                    conn.packet_count
                 ),
                 Some("T0886".to_string()),
             ));
         }
 
         // Also flag L2 <-> L4+ (skip DMZ)
-        let is_l2_l4_violation = (src_level == 2 && dst_level >= 4)
-            || (src_level >= 4 && dst_level == 2);
+        let is_l2_l4_violation =
+            (src_level == 2 && dst_level >= 4) || (src_level >= 4 && dst_level == 2);
 
         if is_l2_l4_violation {
             findings.push(Finding::new(
@@ -265,12 +319,17 @@ pub fn detect_purdue_violations(
                     conn.src_ip, conn.dst_ip
                 ),
                 "HMI/supervisory (L2) communicating directly with enterprise IT (L4+). \
-                     Best practice requires routing through a DMZ (L3.5).".to_string(),
+                     Best practice requires routing through a DMZ (L3.5)."
+                    .to_string(),
                 vec![conn.src_ip.clone(), conn.dst_ip.clone()],
                 format!(
                     "{} (L{}) <-> {} (L{}) on port {}, {} packets",
-                    conn.src_ip, src_level, conn.dst_ip, dst_level,
-                    conn.dst_port, conn.packet_count
+                    conn.src_ip,
+                    src_level,
+                    conn.dst_ip,
+                    dst_level,
+                    conn.dst_port,
+                    conn.packet_count
                 ),
                 Some("T0886".to_string()),
             ));
@@ -311,9 +370,19 @@ pub fn detect_purdue_violations(
 fn is_ot_protocol_name(name: &str) -> bool {
     matches!(
         name,
-        "modbus" | "dnp3" | "ethernet_ip" | "bacnet" | "s7comm"
-            | "opc_ua" | "profinet" | "iec104" | "mqtt" | "hart_ip"
-            | "foundation_fieldbus" | "ge_srtp" | "wonderware_suitelink"
+        "modbus"
+            | "dnp3"
+            | "ethernet_ip"
+            | "bacnet"
+            | "s7comm"
+            | "opc_ua"
+            | "profinet"
+            | "iec104"
+            | "mqtt"
+            | "hart_ip"
+            | "foundation_fieldbus"
+            | "ge_srtp"
+            | "wonderware_suitelink"
     )
 }
 
@@ -333,6 +402,8 @@ mod tests {
             is_public_ip: false,
             tags: vec![],
             vendor: None,
+            hostname: None,
+            product_family: None,
         });
 
         let assignments = auto_assign_purdue_levels(&input);
@@ -352,6 +423,8 @@ mod tests {
             is_public_ip: false,
             tags: vec![],
             vendor: None,
+            hostname: None,
+            product_family: None,
         });
 
         let assignments = auto_assign_purdue_levels(&input);
@@ -369,6 +442,8 @@ mod tests {
             is_public_ip: false,
             tags: vec![],
             vendor: None,
+            hostname: None,
+            product_family: None,
         });
 
         let assignments = auto_assign_purdue_levels(&input);
@@ -386,6 +461,8 @@ mod tests {
             is_public_ip: false,
             tags: vec![],
             vendor: None,
+            hostname: None,
+            product_family: None,
         });
 
         let assignments = auto_assign_purdue_levels(&input);
@@ -403,6 +480,8 @@ mod tests {
             is_public_ip: false,
             tags: vec![],
             vendor: None,
+            hostname: None,
+            product_family: None,
         });
 
         let assignments = auto_assign_purdue_levels(&input);
@@ -421,6 +500,8 @@ mod tests {
             is_public_ip: false,
             tags: vec![],
             vendor: None,
+            hostname: None,
+            product_family: None,
         });
         input.connections.push(ConnectionSnapshot {
             src_ip: "10.0.0.100".to_string(),
@@ -432,7 +513,10 @@ mod tests {
         });
 
         let assignments = auto_assign_purdue_levels(&input);
-        let a = assignments.iter().find(|a| a.ip_address == "10.0.0.5").unwrap();
+        let a = assignments
+            .iter()
+            .find(|a| a.ip_address == "10.0.0.5")
+            .unwrap();
         assert_eq!(a.level, 1);
     }
 
@@ -468,8 +552,12 @@ mod tests {
 
         let findings = detect_purdue_violations(&input, &assignments);
         assert!(!findings.is_empty());
-        assert!(findings.iter().any(|f| f.finding_type == FindingType::PurdueViolation));
-        assert!(findings.iter().any(|f| f.technique_id == Some("T0886".to_string())));
+        assert!(findings
+            .iter()
+            .any(|f| f.finding_type == FindingType::PurdueViolation));
+        assert!(findings
+            .iter()
+            .any(|f| f.technique_id == Some("T0886".to_string())));
     }
 
     #[test]
@@ -503,6 +591,9 @@ mod tests {
         ];
 
         let findings = detect_purdue_violations(&input, &assignments);
-        assert!(findings.is_empty(), "Same-level communication should not be flagged");
+        assert!(
+            findings.is_empty(),
+            "Same-level communication should not be flagged"
+        );
     }
 }

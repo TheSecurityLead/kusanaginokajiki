@@ -5,19 +5,21 @@
 //! ProCurve, and generic CSV/JSON import. Includes traffic-inference
 //! to derive topology structure from observed packet flows.
 
-pub mod error;
-pub mod cisco;
-pub mod juniper;
 pub mod aruba;
+pub mod cisco;
+pub mod error;
 pub mod generic;
 pub mod inference;
+pub mod juniper;
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 pub use error::PhysicalError;
 pub use generic::GenericDevice;
-pub use inference::{InferenceInput, AssetSnapshot as InferenceAssetSnapshot, ConnSnapshot, infer_topology};
+pub use inference::{
+    infer_topology, AssetSnapshot as InferenceAssetSnapshot, ConnSnapshot, InferenceInput,
+};
 
 /// A physical network switch with its ports and metadata.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -222,13 +224,16 @@ impl PhysicalTopology {
                         // Find the MAC for this IP from the port's MAC list
                         let mac = port.mac_addresses.first().cloned();
                         let vlan = port.vlans.first().copied();
-                        self.device_locations.insert(ip.clone(), DeviceLocation {
-                            ip_address: ip.clone(),
-                            mac_address: mac,
-                            switch_hostname: sw.hostname.clone(),
-                            port_name: port.name.clone(),
-                            vlan,
-                        });
+                        self.device_locations.insert(
+                            ip.clone(),
+                            DeviceLocation {
+                                ip_address: ip.clone(),
+                                mac_address: mac,
+                                switch_hostname: sw.hostname.clone(),
+                                port_name: port.name.clone(),
+                                vlan,
+                            },
+                        );
                     }
                 }
             }
@@ -273,7 +278,9 @@ impl PhysicalTopology {
                 for sw in &mut self.switches {
                     if sw.hostname == *switch_hostname {
                         for port in &mut sw.ports {
-                            if port.name == *port_name && !port.ip_addresses.contains(&entry.ip_address) {
+                            if port.name == *port_name
+                                && !port.ip_addresses.contains(&entry.ip_address)
+                            {
                                 port.ip_addresses.push(entry.ip_address.clone());
                             }
                         }
@@ -281,15 +288,15 @@ impl PhysicalTopology {
                 }
 
                 // Add to device_locations
-                self.device_locations.entry(entry.ip_address.clone()).or_insert_with(|| {
-                    DeviceLocation {
+                self.device_locations
+                    .entry(entry.ip_address.clone())
+                    .or_insert_with(|| DeviceLocation {
                         ip_address: entry.ip_address.clone(),
                         mac_address: Some(entry.mac_address.clone()),
                         switch_hostname: switch_hostname.clone(),
                         port_name: port_name.clone(),
                         vlan: Some(*vlan),
-                    }
-                });
+                    });
             }
         }
     }
@@ -321,7 +328,11 @@ impl PhysicalTopology {
     }
 
     /// Merge CDP neighbors into switches.
-    pub fn apply_cdp_neighbors(&mut self, switch_hostname: &str, neighbors: &[(String, CdpNeighbor)]) {
+    pub fn apply_cdp_neighbors(
+        &mut self,
+        switch_hostname: &str,
+        neighbors: &[(String, CdpNeighbor)],
+    ) {
         for sw in &mut self.switches {
             if sw.hostname == switch_hostname {
                 for (port_name, neighbor) in neighbors {
@@ -343,7 +354,8 @@ impl PhysicalTopology {
 /// "00-00-11-11-22-22", etc.
 pub fn normalize_mac(mac: &str) -> String {
     // Strip all separators, lowercase
-    let hex: String = mac.chars()
+    let hex: String = mac
+        .chars()
         .filter(|c| c.is_ascii_hexdigit())
         .collect::<String>()
         .to_lowercase();
@@ -354,8 +366,12 @@ pub fn normalize_mac(mac: &str) -> String {
 
     format!(
         "{}:{}:{}:{}:{}:{}",
-        &hex[0..2], &hex[2..4], &hex[4..6],
-        &hex[6..8], &hex[8..10], &hex[10..12]
+        &hex[0..2],
+        &hex[2..4],
+        &hex[4..6],
+        &hex[6..8],
+        &hex[8..10],
+        &hex[10..12]
     )
 }
 

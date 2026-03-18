@@ -36,8 +36,9 @@ pub fn filter_export_pcap(
     let dead = pcap::Capture::dead(pcap::Linktype(1))
         .map_err(|e| CaptureError::Capture(format!("Cannot create dead capture: {}", e)))?;
 
-    let mut savefile = dead.savefile(output_path)
-        .map_err(|e| CaptureError::FileOpen(format!("Cannot create output '{}': {}", output_path, e)))?;
+    let mut savefile = dead.savefile(output_path).map_err(|e| {
+        CaptureError::FileOpen(format!("Cannot create output '{}': {}", output_path, e))
+    })?;
 
     let mut written = 0u64;
 
@@ -69,7 +70,11 @@ pub fn filter_export_pcap(
         }
     }
 
-    log::info!("filter_export_pcap: wrote {} packets to '{}'", written, output_path);
+    log::info!(
+        "filter_export_pcap: wrote {} packets to '{}'",
+        written,
+        output_path
+    );
     Ok(written)
 }
 
@@ -106,19 +111,21 @@ fn packet_matches_filter(data: &[u8], ip_set: &HashSet<&str>, port_set: &HashSet
     // Format src/dst IP as dotted decimal strings for Set lookup
     let src_ip = format!(
         "{}.{}.{}.{}",
-        data[ip_start + 12], data[ip_start + 13],
-        data[ip_start + 14], data[ip_start + 15]
+        data[ip_start + 12],
+        data[ip_start + 13],
+        data[ip_start + 14],
+        data[ip_start + 15]
     );
     let dst_ip = format!(
         "{}.{}.{}.{}",
-        data[ip_start + 16], data[ip_start + 17],
-        data[ip_start + 18], data[ip_start + 19]
+        data[ip_start + 16],
+        data[ip_start + 17],
+        data[ip_start + 18],
+        data[ip_start + 19]
     );
 
     // Extract TCP/UDP ports if present
-    let (src_port, dst_port) = if (proto == 6 || proto == 17)
-        && data.len() >= ip_start + ihl + 4
-    {
+    let (src_port, dst_port) = if (proto == 6 || proto == 17) && data.len() >= ip_start + ihl + 4 {
         let port_start = ip_start + ihl;
         let sp = u16::from_be_bytes([data[port_start], data[port_start + 1]]);
         let dp = u16::from_be_bytes([data[port_start + 2], data[port_start + 3]]);
@@ -130,11 +137,11 @@ fn packet_matches_filter(data: &[u8], ip_set: &HashSet<&str>, port_set: &HashSet
     let ip_match = !ip_set.is_empty()
         && (ip_set.contains(src_ip.as_str()) || ip_set.contains(dst_ip.as_str()));
 
-    let port_match = !port_set.is_empty()
-        && (port_set.contains(&src_port) || port_set.contains(&dst_port));
+    let port_match =
+        !port_set.is_empty() && (port_set.contains(&src_port) || port_set.contains(&dst_port));
 
     match (!ip_set.is_empty(), !port_set.is_empty()) {
-        (true, true) => ip_match || port_match,   // either filter matches
+        (true, true) => ip_match || port_match, // either filter matches
         (true, false) => ip_match,
         (false, true) => port_match,
         (false, false) => true, // unreachable; handled at top
@@ -149,7 +156,11 @@ mod tests {
     fn test_packet_matches_no_filters() {
         // Empty filter → always true
         let data = vec![0u8; 34]; // minimal Ethernet+IPv4
-        assert!(packet_matches_filter(&data, &HashSet::new(), &HashSet::new()));
+        assert!(packet_matches_filter(
+            &data,
+            &HashSet::new(),
+            &HashSet::new()
+        ));
     }
 
     #[test]
@@ -166,7 +177,7 @@ mod tests {
     fn test_packet_matches_ipv4_by_ip() {
         // Build a minimal IPv4/TCP packet
         let mut data = vec![0u8; 54]; // 14 Ethernet + 20 IP + 20 TCP
-        // Ethertype = 0x0800 (IPv4)
+                                      // Ethertype = 0x0800 (IPv4)
         data[12] = 0x08;
         data[13] = 0x00;
         // IP: version/IHL = 0x45 (IPv4, 20 bytes)
@@ -174,9 +185,15 @@ mod tests {
         // Protocol = 6 (TCP)
         data[23] = 6;
         // src IP = 10.0.0.5
-        data[26] = 10; data[27] = 0; data[28] = 0; data[29] = 5;
+        data[26] = 10;
+        data[27] = 0;
+        data[28] = 0;
+        data[29] = 5;
         // dst IP = 192.168.1.100
-        data[30] = 192; data[31] = 168; data[32] = 1; data[33] = 100;
+        data[30] = 192;
+        data[31] = 168;
+        data[32] = 1;
+        data[33] = 100;
 
         let ip_set: HashSet<&str> = ["10.0.0.5"].iter().copied().collect();
         assert!(packet_matches_filter(&data, &ip_set, &HashSet::new()));

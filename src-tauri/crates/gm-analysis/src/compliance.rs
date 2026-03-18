@@ -221,7 +221,11 @@ fn check_purdue_violations(inputs: &CheckInputs<'_>) -> (ComplianceStatus, Strin
             "{} cross-Purdue-zone violation(s) found. Affected assets include: {}{}",
             violations.len(),
             affected.join(", "),
-            if violations.len() > 5 { " (and more)" } else { "" }
+            if violations.len() > 5 {
+                " (and more)"
+            } else {
+                ""
+            }
         ),
     )
 }
@@ -521,7 +525,8 @@ fn check_redundancy(inputs: &CheckInputs<'_>) -> (ComplianceStatus, String) {
     // If a switch security finding mentions no redundancy
     let no_redundancy = inputs.findings.iter().find(|f| {
         f.title.to_lowercase().contains("no redundancy")
-            || (f.title.to_lowercase().contains("redundanc") && f.description.to_lowercase().contains("not detected"))
+            || (f.title.to_lowercase().contains("redundanc")
+                && f.description.to_lowercase().contains("not detected"))
     });
 
     if no_redundancy.is_some() {
@@ -637,7 +642,12 @@ mod tests {
     use super::*;
     use crate::{Finding, FindingType, Severity};
 
-    fn make_finding(title: &str, finding_type: FindingType, severity: Severity, technique_id: Option<&str>) -> Finding {
+    fn make_finding(
+        title: &str,
+        finding_type: FindingType,
+        severity: Severity,
+        technique_id: Option<&str>,
+    ) -> Finding {
         Finding::new(
             finding_type,
             severity,
@@ -658,6 +668,8 @@ mod tests {
             is_public_ip: false,
             tags: vec![],
             vendor: None,
+            hostname: None,
+            product_family: None,
         }
     }
 
@@ -705,7 +717,10 @@ mod tests {
         let assets = vec![make_asset("10.0.1.1", "plc", Some(1))];
 
         let result = generate_compliance_report(&findings, &assets, &[], "iec62443");
-        let attack_row = result.iter().find(|m| m.requirement_id == "SR 3.3").unwrap();
+        let attack_row = result
+            .iter()
+            .find(|m| m.requirement_id == "SR 3.3")
+            .unwrap();
         assert_eq!(attack_row.status, ComplianceStatus::Gap);
     }
 
@@ -720,7 +735,10 @@ mod tests {
         let assets = vec![make_asset("10.0.1.1", "plc", Some(1))];
 
         let result = generate_compliance_report(&findings, &assets, &[], "iec62443");
-        let sr51 = result.iter().find(|m| m.requirement_id == "SR 5.1").unwrap();
+        let sr51 = result
+            .iter()
+            .find(|m| m.requirement_id == "SR 5.1")
+            .unwrap();
         // Purdue violations may trigger partial on SR 5.1
         assert!(
             sr51.status == ComplianceStatus::Gap || sr51.status == ComplianceStatus::Partial,

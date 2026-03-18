@@ -1,32 +1,34 @@
-pub mod system;
-pub mod capture;
-pub mod data;
-pub mod processor;
-pub mod signatures;
-pub mod session;
-pub mod projects;
-pub mod physical;
-pub mod ingest;
-pub mod wireshark;
-pub mod export;
 pub mod analysis;
 pub mod baseline;
-pub mod patterns;
+pub mod capture;
 pub mod correlation;
+pub mod data;
+pub mod export;
+pub mod ingest;
+pub mod patterns;
+pub mod physical;
+pub mod processor;
+pub mod projects;
+pub mod segmentation;
+pub mod session;
+pub mod signatures;
+pub mod system;
+pub mod wireshark;
 
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-use std::sync::atomic::AtomicBool;
-use std::thread::JoinHandle;
+use gm_analysis::{AnomalyScore, ConnectionStats, Finding, PatternAnomaly, PurdueAssignment};
 use gm_capture::LiveCaptureHandle;
-use gm_topology::TopologyGraph;
+use gm_db::{Database, GeoIpLookup, OuiLookup};
 use gm_parsers::IcsProtocol;
-use gm_signatures::SignatureEngine;
-use gm_db::{Database, OuiLookup, GeoIpLookup};
-use gm_physical::{PhysicalTopology, InferredTopology};
-use gm_analysis::{Finding, PurdueAssignment, AnomalyScore, ConnectionStats, PatternAnomaly};
 use gm_parsers::RedundancyInfo;
-use serde::{Serialize, Deserialize};
+use gm_physical::{InferredTopology, PhysicalTopology};
+use gm_segmentation::SegmentationReport;
+use gm_signatures::SignatureEngine;
+use gm_topology::TopologyGraph;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::sync::atomic::AtomicBool;
+use std::sync::{Arc, Mutex};
+use std::thread::JoinHandle;
 
 /// Shared application state, managed by Tauri.
 ///
@@ -92,6 +94,8 @@ pub struct AppStateInner {
     pub imported_alerts: Vec<StoredAlert>,
     /// Per-device Zeek event summaries (rebuilt on each Zeek import)
     pub zeek_device_events: HashMap<String, DeviceZeekEvents>,
+    /// Cached result of the last segmentation analysis run (Phase 15)
+    pub segmentation_report: Option<SegmentationReport>,
 }
 
 /// An alert imported from an external IDS/SIEM and stored in AppState.
@@ -583,6 +587,7 @@ impl AppState {
                 redundancy_protocols: Vec::new(),
                 imported_alerts: Vec::new(),
                 zeek_device_events: HashMap::new(),
+                segmentation_report: None,
             }),
         }
     }

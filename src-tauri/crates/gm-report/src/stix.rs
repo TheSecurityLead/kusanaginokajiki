@@ -130,7 +130,10 @@ pub fn generate_stix_bundle(
         let dst_ref = format!("ipv4-addr--{}", deterministic_id(&conn.dst_ip));
         let traffic_id = format!(
             "network-traffic--{}",
-            deterministic_id(&format!("{}:{}-{}:{}", conn.src_ip, conn.src_port, conn.dst_ip, conn.dst_port))
+            deterministic_id(&format!(
+                "{}:{}-{}:{}",
+                conn.src_ip, conn.src_port, conn.dst_ip, conn.dst_port
+            ))
         );
 
         let traffic = serde_json::json!({
@@ -178,7 +181,10 @@ pub fn generate_stix_bundle(
 
     let bundle = StixBundle {
         stix_type: "bundle".to_string(),
-        id: format!("bundle--{}", deterministic_id(&format!("kusanagi-{}", chrono::Utc::now().timestamp()))),
+        id: format!(
+            "bundle--{}",
+            deterministic_id(&format!("kusanagi-{}", chrono::Utc::now().timestamp()))
+        ),
         objects,
     };
 

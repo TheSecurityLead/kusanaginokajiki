@@ -16,10 +16,10 @@ pub struct AssetRow {
     pub device_type: String,
     pub vendor: Option<String>,
     pub product_family: Option<String>,
-    pub protocols: String,      // JSON array
+    pub protocols: String, // JSON array
     pub confidence: i64,
     pub purdue_level: Option<i64>,
-    pub tags: String,           // JSON array
+    pub tags: String, // JSON array
     pub notes: String,
     pub packet_count: i64,
     pub signature_matches: String, // JSON array
@@ -120,7 +120,9 @@ pub fn update_field(
             |row| row.get(0),
         )
         .map_err(|e| match e {
-            rusqlite::Error::QueryReturnedNoRows => DbError::NotFound(format!("Asset {}", asset_id)),
+            rusqlite::Error::QueryReturnedNoRows => {
+                DbError::NotFound(format!("Asset {}", asset_id))
+            }
             other => DbError::Sqlite(other),
         })?;
 

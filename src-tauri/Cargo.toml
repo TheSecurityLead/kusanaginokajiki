@@ -19,6 +19,7 @@ members = [
     "crates/gm-ingest",
     "crates/gm-report",
     "crates/gm-analysis",
+    "crates/gm-segmentation",
 ]
 
 [dependencies]
@@ -37,6 +38,7 @@ gm-physical = { path = "crates/gm-physical" }
 gm-ingest = { path = "crates/gm-ingest" }
 gm-report = { path = "crates/gm-report" }
 gm-analysis = { path = "crates/gm-analysis" }
+gm-segmentation = { path = "crates/gm-segmentation" }
 
 # Serialization
 serde = { version = "1", features = ["derive"] }

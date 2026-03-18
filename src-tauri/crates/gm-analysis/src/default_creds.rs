@@ -75,7 +75,9 @@ impl CredentialChecker {
 impl Default for CredentialChecker {
     fn default() -> Self {
         // If JSON parse fails, return empty checker — don't panic
-        Self::new().unwrap_or(Self { entries: Vec::new() })
+        Self::new().unwrap_or(Self {
+            entries: Vec::new(),
+        })
     }
 }
 

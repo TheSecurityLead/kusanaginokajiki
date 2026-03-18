@@ -8,8 +8,8 @@
 //! `compute_stats()` is O(n_connections) and returns at most 500 entries
 //! (top by packet count) to prevent serialisation from overwhelming the webview.
 
-use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// Maximum number of `ConnectionStats` entries returned by `compute_stats()`.
 const MAX_STATS_RETURNED: usize = 500;
@@ -215,9 +215,21 @@ impl PatternAnalyzer {
                         0.0
                     };
                     let std_dev = variance.sqrt();
-                    let min = if entry.min_ms.is_finite() { entry.min_ms } else { 0.0 };
-                    let max = if entry.max_ms.is_finite() { entry.max_ms } else { 0.0 };
-                    let cv = if mean > 0.0 { std_dev / mean } else { f64::INFINITY };
+                    let min = if entry.min_ms.is_finite() {
+                        entry.min_ms
+                    } else {
+                        0.0
+                    };
+                    let max = if entry.max_ms.is_finite() {
+                        entry.max_ms
+                    } else {
+                        0.0
+                    };
+                    let cv = if mean > 0.0 {
+                        std_dev / mean
+                    } else {
+                        f64::INFINITY
+                    };
                     let periodic = cv < 0.3 && entry.interval_count >= 5;
                     (mean, std_dev, min, max, periodic)
                 };
@@ -329,8 +341,12 @@ impl PatternAnalyzer {
                     protocol: s.protocol.clone(),
                     description: format!(
                         "Burst traffic on {} from {} to {}:{}: max gap {:.1}ms vs avg {:.1}ms",
-                        s.protocol, s.src_ip, s.dst_ip, s.port,
-                        s.max_interval_ms, s.avg_interval_ms
+                        s.protocol,
+                        s.src_ip,
+                        s.dst_ip,
+                        s.port,
+                        s.max_interval_ms,
+                        s.avg_interval_ms
                     ),
                     severity: "medium".to_string(),
                 });
@@ -396,8 +412,14 @@ mod tests {
         let stats = analyzer.compute_stats();
         assert_eq!(stats.len(), 1);
         let s = &stats[0];
-        assert!(s.is_periodic, "Expected is_periodic=true for regular intervals");
-        assert!((s.avg_interval_ms - 100.0).abs() < 1.0, "Expected ~100ms avg interval");
+        assert!(
+            s.is_periodic,
+            "Expected is_periodic=true for regular intervals"
+        );
+        assert!(
+            (s.avg_interval_ms - 100.0).abs() < 1.0,
+            "Expected ~100ms avg interval"
+        );
     }
 
     #[test]
@@ -409,7 +431,10 @@ mod tests {
         let anomalies = PatternAnalyzer::detect_anomalies(&stats);
         assert_eq!(anomalies.len(), 1);
         assert!(
-            matches!(anomalies[0].anomaly_type, PatternAnomalyType::OneOffConnection),
+            matches!(
+                anomalies[0].anomaly_type,
+                PatternAnomalyType::OneOffConnection
+            ),
             "Expected OneOffConnection anomaly"
         );
     }
@@ -433,7 +458,10 @@ mod tests {
         let has_hf = anomalies
             .iter()
             .any(|a| matches!(a.anomaly_type, PatternAnomalyType::HighFrequency));
-        assert!(has_hf, "Expected HighFrequency anomaly at 200 pps on OT protocol");
+        assert!(
+            has_hf,
+            "Expected HighFrequency anomaly at 200 pps on OT protocol"
+        );
     }
 
     #[test]
@@ -482,14 +510,24 @@ mod tests {
             10.0, 10.01, 10.02, 10.03, // burst 3
         ];
         for (i, &ts) in timestamps.iter().enumerate() {
-            analyzer.record_packet("10.0.0.1", "10.0.0.2", 502, "Modbus", ts, (i as u64 + 1) * 10);
+            analyzer.record_packet(
+                "10.0.0.1",
+                "10.0.0.2",
+                502,
+                "Modbus",
+                ts,
+                (i as u64 + 1) * 10,
+            );
         }
         let stats = analyzer.compute_stats();
         let anomalies = PatternAnalyzer::detect_anomalies(&stats);
         let has_irregular = anomalies
             .iter()
             .any(|a| matches!(a.anomaly_type, PatternAnomalyType::IrregularPolling));
-        assert!(has_irregular, "Expected IrregularPolling anomaly for bursty traffic");
+        assert!(
+            has_irregular,
+            "Expected IrregularPolling anomaly for bursty traffic"
+        );
     }
 
     #[test]
@@ -497,14 +535,7 @@ mod tests {
         // Simulate 1M packets on a single connection — should not exhaust memory.
         let mut analyzer = PatternAnalyzer::new();
         for i in 0..1_000_000_u64 {
-            analyzer.record_packet(
-                "10.0.0.1",
-                "10.0.0.2",
-                502,
-                "Modbus",
-                i as f64 * 0.001,
-                60,
-            );
+            analyzer.record_packet("10.0.0.1", "10.0.0.2", 502, "Modbus", i as f64 * 0.001, 60);
         }
         let stats = analyzer.compute_stats();
         assert_eq!(stats.len(), 1);
@@ -525,7 +556,11 @@ mod tests {
             }
         }
         let stats = analyzer.compute_stats();
-        assert_eq!(stats.len(), 500, "compute_stats must cap at MAX_STATS_RETURNED");
+        assert_eq!(
+            stats.len(),
+            500,
+            "compute_stats must cap at MAX_STATS_RETURNED"
+        );
         // Top entry should have the most packets (connection i=599 → 600 packets).
         assert_eq!(stats[0].packet_count, 600);
     }

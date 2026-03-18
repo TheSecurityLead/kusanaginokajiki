@@ -12,10 +12,7 @@ use std::path::Path;
 
 use serde::Deserialize;
 
-use crate::{
-    IngestError, IngestResult, IngestSource,
-    IngestedAsset, PortService,
-};
+use crate::{IngestError, IngestResult, IngestSource, IngestedAsset, PortService};
 
 /// Parse a Masscan JSON output file (-oJ format).
 pub fn parse_masscan_json(path: &Path) -> Result<IngestResult, IngestError> {
@@ -184,12 +181,20 @@ mod tests {
         assert_eq!(result.assets.len(), 2);
 
         // Find the asset with modbus
-        let plc = result.assets.iter().find(|a| a.ip_address == "192.168.1.100").unwrap();
+        let plc = result
+            .assets
+            .iter()
+            .find(|a| a.ip_address == "192.168.1.100")
+            .unwrap();
         assert_eq!(plc.open_ports.len(), 2);
         assert!(plc.protocols.contains(&"modbus".to_string()));
         assert!(plc.is_active);
 
-        let ab = result.assets.iter().find(|a| a.ip_address == "192.168.1.200").unwrap();
+        let ab = result
+            .assets
+            .iter()
+            .find(|a| a.ip_address == "192.168.1.200")
+            .unwrap();
         assert!(ab.protocols.contains(&"ethernet_ip".to_string()));
     }
 

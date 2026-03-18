@@ -1,0 +1,13 @@
+name: "siemens_scalance"
+description: "Siemens SCALANCE industrial network infrastructure device identified by Siemens OUI MAC prefixes combined with PROFINET communication ports (34962-34964). SCALANCE product lines include X/XC/XR/XB/XF/XP (managed switches), W (wireless APs), M (routers), and S/SC (security appliances). These devices are found in nearly every Siemens-heavy OT environment."
+vendor: "Siemens"
+product_family: "SCALANCE"
+protocol: profinet
+filters:
+  - field: mac.src_oui
+    value: "00:0e:8c"
+  - field: dst_port
+    value: 34962
+confidence: 3
+device_type: switch
+payloads: []

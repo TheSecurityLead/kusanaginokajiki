@@ -8,8 +8,8 @@
 //! This module uses the Tauri shell plugin to launch Wireshark as a subprocess.
 //! It NEVER performs active network operations — only opens captured data.
 
-use std::path::PathBuf;
 use serde::Serialize;
+use std::path::PathBuf;
 use tauri::State;
 
 use super::AppState;
@@ -67,13 +67,16 @@ pub async fn open_in_wireshark(
     connection_id: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let wireshark_path = find_wireshark_binary()
-        .ok_or_else(|| "Wireshark not found. Install Wireshark and ensure it's in your PATH.".to_string())?;
+    let wireshark_path = find_wireshark_binary().ok_or_else(|| {
+        "Wireshark not found. Install Wireshark and ensure it's in your PATH.".to_string()
+    })?;
 
     // Get connection info and build display filter
     let (filter, pcap_files) = {
         let inner = state.inner.lock().map_err(|e| e.to_string())?;
-        let conn = inner.connections.iter()
+        let conn = inner
+            .connections
+            .iter()
             .find(|c| c.id == connection_id)
             .ok_or_else(|| format!("Connection {} not found", connection_id))?;
 
@@ -104,17 +107,20 @@ pub async fn open_in_wireshark(
         .spawn()
         .map_err(|e| format!("Failed to launch Wireshark: {}", e))?;
 
-    log::info!("Launched Wireshark (PID: {:?}) with filter for connection {}", status.id(), connection_id);
+    log::info!(
+        "Launched Wireshark (PID: {:?}) with filter for connection {}",
+        status.id(),
+        connection_id
+    );
     Ok(())
 }
 
 /// Open Wireshark focused on a specific IP (node).
 #[tauri::command]
-pub async fn open_wireshark_for_node(
-    ip_address: String,
-) -> Result<(), String> {
-    let wireshark_path = find_wireshark_binary()
-        .ok_or_else(|| "Wireshark not found. Install Wireshark and ensure it's in your PATH.".to_string())?;
+pub async fn open_wireshark_for_node(ip_address: String) -> Result<(), String> {
+    let wireshark_path = find_wireshark_binary().ok_or_else(|| {
+        "Wireshark not found. Install Wireshark and ensure it's in your PATH.".to_string()
+    })?;
 
     let filter = format!("ip.addr == {}", ip_address);
 
@@ -125,7 +131,11 @@ pub async fn open_wireshark_for_node(
         .spawn()
         .map_err(|e| format!("Failed to launch Wireshark: {}", e))?;
 
-    log::info!("Launched Wireshark (PID: {:?}) for node {}", status.id(), ip_address);
+    log::info!(
+        "Launched Wireshark (PID: {:?}) for node {}",
+        status.id(),
+        ip_address
+    );
     Ok(())
 }
 
@@ -137,12 +147,16 @@ pub async fn get_connection_frames(
 ) -> Result<Vec<FrameRow>, String> {
     let inner = state.inner.lock().map_err(|e| e.to_string())?;
 
-    let packets = inner.packet_summaries.get(&connection_id)
+    let packets = inner
+        .packet_summaries
+        .get(&connection_id)
         .cloned()
         .unwrap_or_default();
 
-    let frames: Vec<FrameRow> = packets.iter().enumerate().map(|(i, pkt)| {
-        FrameRow {
+    let frames: Vec<FrameRow> = packets
+        .iter()
+        .enumerate()
+        .map(|(i, pkt)| FrameRow {
             number: i + 1,
             timestamp: pkt.timestamp.clone(),
             src_ip: pkt.src_ip.clone(),
@@ -152,8 +166,8 @@ pub async fn get_connection_frames(
             protocol: pkt.protocol.clone(),
             length: pkt.length,
             origin_file: pkt.origin_file.clone(),
-        }
-    }).collect();
+        })
+        .collect();
 
     Ok(frames)
 }
@@ -166,11 +180,14 @@ pub async fn export_frames_csv(
 ) -> Result<String, String> {
     let inner = state.inner.lock().map_err(|e| e.to_string())?;
 
-    let packets = inner.packet_summaries.get(&connection_id)
+    let packets = inner
+        .packet_summaries
+        .get(&connection_id)
         .cloned()
         .unwrap_or_default();
 
-    let mut csv = String::from("No,Timestamp,Source,SrcPort,Destination,DstPort,Protocol,Length,File\n");
+    let mut csv =
+        String::from("No,Timestamp,Source,SrcPort,Destination,DstPort,Protocol,Length,File\n");
 
     for (i, pkt) in packets.iter().enumerate() {
         csv.push_str(&format!(
@@ -198,8 +215,7 @@ pub async fn save_frames_csv(
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let csv = export_frames_csv(connection_id, state).await?;
-    std::fs::write(&output_path, csv)
-        .map_err(|e| format!("Failed to write CSV: {}", e))?;
+    std::fs::write(&output_path, csv).map_err(|e| format!("Failed to write CSV: {}", e))?;
     Ok(())
 }
 
@@ -217,7 +233,11 @@ fn build_display_filter(conn: &super::ConnectionInfo) -> String {
 
     // Ports (if non-zero)
     if conn.src_port > 0 && conn.dst_port > 0 {
-        let transport = if conn.transport == "udp" { "udp" } else { "tcp" };
+        let transport = if conn.transport == "udp" {
+            "udp"
+        } else {
+            "tcp"
+        };
         parts.push(format!(
             "({}.port == {} && {}.port == {})",
             transport, conn.src_port, transport, conn.dst_port
@@ -238,10 +258,7 @@ fn find_wireshark_binary() -> Option<PathBuf> {
         ("which", "wireshark")
     };
 
-    if let Ok(output) = std::process::Command::new(cmd)
-        .arg(arg)
-        .output()
-    {
+    if let Ok(output) = std::process::Command::new(cmd).arg(arg).output() {
         if output.status.success() {
             // `where.exe` may return multiple lines; take the first one
             let path = String::from_utf8_lossy(&output.stdout)

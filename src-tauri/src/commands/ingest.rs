@@ -3,17 +3,20 @@
 //! Imports Zeek logs, Suricata eve.json, Nmap XML, and Masscan JSON.
 //! Ingested data is merged into the existing pipeline alongside PCAP data.
 
+use serde::Serialize;
 use std::path::Path;
 use std::time::Instant;
-use serde::Serialize;
 use tauri::State;
 
 use std::collections::HashMap;
 
-use gm_ingest::{IngestResult, IngestedAlert, IngestedAsset, IngestSource};
+use gm_ingest::{IngestResult, IngestSource, IngestedAlert, IngestedAsset};
 use gm_parsers::IcsProtocol;
 
-use super::{AppState, AppStateInner, AssetInfo, ConnectionInfo, DeviceZeekEvents, StoredAlert, ZeekEventSummary};
+use super::{
+    AppState, AppStateInner, AssetInfo, ConnectionInfo, DeviceZeekEvents, StoredAlert,
+    ZeekEventSummary,
+};
 
 /// Result returned to the frontend from an ingest operation.
 #[derive(Serialize)]
@@ -38,15 +41,16 @@ pub async fn import_zeek_logs(
     let start = Instant::now();
 
     let path_refs: Vec<&Path> = paths.iter().map(|p| Path::new(p.as_str())).collect();
-    let ingest_result = gm_ingest::zeek::parse_zeek_logs(&path_refs)
-        .map_err(|e| e.to_string())?;
+    let ingest_result = gm_ingest::zeek::parse_zeek_logs(&path_refs).map_err(|e| e.to_string())?;
 
     let import_result = merge_ingest_result(ingest_result, &state, start)?;
 
     log::info!(
         "Zeek import: {} files → {} assets ({} new), {} connections, {}ms",
-        import_result.files_processed, import_result.asset_count,
-        import_result.new_assets, import_result.connection_count,
+        import_result.files_processed,
+        import_result.asset_count,
+        import_result.new_assets,
+        import_result.connection_count,
         import_result.duration_ms
     );
 
@@ -61,15 +65,17 @@ pub async fn import_suricata_eve(
 ) -> Result<IngestImportResult, String> {
     let start = Instant::now();
 
-    let ingest_result = gm_ingest::suricata::parse_eve_json(Path::new(&path))
-        .map_err(|e| e.to_string())?;
+    let ingest_result =
+        gm_ingest::suricata::parse_eve_json(Path::new(&path)).map_err(|e| e.to_string())?;
 
     let import_result = merge_ingest_result(ingest_result, &state, start)?;
 
     log::info!(
         "Suricata import: {} assets ({} new), {} connections, {} alerts, {}ms",
-        import_result.asset_count, import_result.new_assets,
-        import_result.connection_count, import_result.alert_count,
+        import_result.asset_count,
+        import_result.new_assets,
+        import_result.connection_count,
+        import_result.alert_count,
         import_result.duration_ms
     );
 
@@ -87,14 +93,15 @@ pub async fn import_nmap_xml(
 ) -> Result<IngestImportResult, String> {
     let start = Instant::now();
 
-    let ingest_result = gm_ingest::nmap::parse_nmap_xml(Path::new(&path))
-        .map_err(|e| e.to_string())?;
+    let ingest_result =
+        gm_ingest::nmap::parse_nmap_xml(Path::new(&path)).map_err(|e| e.to_string())?;
 
     let import_result = merge_ingest_result(ingest_result, &state, start)?;
 
     log::info!(
         "Nmap import: {} assets ({} new), {}ms [ACTIVE SCAN DATA]",
-        import_result.asset_count, import_result.new_assets,
+        import_result.asset_count,
+        import_result.new_assets,
         import_result.duration_ms
     );
 
@@ -112,14 +119,15 @@ pub async fn import_wazuh_alerts(
 ) -> Result<IngestImportResult, String> {
     let start = Instant::now();
 
-    let ingest_result = gm_ingest::wazuh::parse_wazuh_alerts(Path::new(&path))
-        .map_err(|e| e.to_string())?;
+    let ingest_result =
+        gm_ingest::wazuh::parse_wazuh_alerts(Path::new(&path)).map_err(|e| e.to_string())?;
 
     let import_result = merge_ingest_result(ingest_result, &state, start)?;
 
     log::info!(
         "Wazuh import: {} alerts, {}ms",
-        import_result.alert_count, import_result.duration_ms
+        import_result.alert_count,
+        import_result.duration_ms
     );
 
     Ok(import_result)
@@ -136,14 +144,15 @@ pub async fn import_masscan_json(
 ) -> Result<IngestImportResult, String> {
     let start = Instant::now();
 
-    let ingest_result = gm_ingest::masscan::parse_masscan_json(Path::new(&path))
-        .map_err(|e| e.to_string())?;
+    let ingest_result =
+        gm_ingest::masscan::parse_masscan_json(Path::new(&path)).map_err(|e| e.to_string())?;
 
     let import_result = merge_ingest_result(ingest_result, &state, start)?;
 
     log::info!(
         "Masscan import: {} assets ({} new), {}ms [ACTIVE SCAN DATA]",
-        import_result.asset_count, import_result.new_assets,
+        import_result.asset_count,
+        import_result.new_assets,
         import_result.duration_ms
     );
 
@@ -163,7 +172,8 @@ fn merge_ingest_result(
 ) -> Result<IngestImportResult, String> {
     let mut inner = state.inner.lock().map_err(|e| e.to_string())?;
 
-    let source_name = ingest.source
+    let source_name = ingest
+        .source
         .map(|s| s.display_name().to_string())
         .unwrap_or_else(|| "unknown".to_string());
 
@@ -179,7 +189,11 @@ fn merge_ingest_result(
     let mut updated_count = 0;
 
     for ingested_asset in &ingest.assets {
-        if let Some(existing) = inner.assets.iter_mut().find(|a| a.ip_address == ingested_asset.ip_address) {
+        if let Some(existing) = inner
+            .assets
+            .iter_mut()
+            .find(|a| a.ip_address == ingested_asset.ip_address)
+        {
             // Enrich existing asset
             enrich_asset(existing, ingested_asset, is_active);
             updated_count += 1;
@@ -222,10 +236,12 @@ fn merge_ingest_result(
                 transport: ingested_conn.transport.clone(),
                 packet_count: ingested_conn.packet_count,
                 byte_count: ingested_conn.byte_count,
-                first_seen: ingested_conn.first_seen
+                first_seen: ingested_conn
+                    .first_seen
                     .map(|t| t.to_rfc3339())
                     .unwrap_or_default(),
-                last_seen: ingested_conn.last_seen
+                last_seen: ingested_conn
+                    .last_seen
                     .map(|t| t.to_rfc3339())
                     .unwrap_or_default(),
                 origin_files: vec![origin],
@@ -270,8 +286,15 @@ fn merge_ingest_result(
 
     // Enrich topology nodes with asset data
     // Collect asset lookup first to avoid borrow conflict
-    let asset_lookup: std::collections::HashMap<String, (Option<String>, String, u8)> = inner.assets.iter()
-        .map(|a| (a.ip_address.clone(), (a.vendor.clone(), a.device_type.clone(), a.confidence)))
+    let asset_lookup: std::collections::HashMap<String, (Option<String>, String, u8)> = inner
+        .assets
+        .iter()
+        .map(|a| {
+            (
+                a.ip_address.clone(),
+                (a.vendor.clone(), a.device_type.clone(), a.confidence),
+            )
+        })
         .collect();
 
     for node in &mut inner.topology.nodes {
@@ -321,7 +344,11 @@ fn enrich_asset(existing: &mut AssetInfo, ingested: &IngestedAsset, is_active: b
 
     // OS info goes in notes if available and not already noted
     if let Some(ref os) = ingested.os_info {
-        let os_note = format!("[{}] OS: {}", if is_active { "scan" } else { "passive" }, os);
+        let os_note = format!(
+            "[{}] OS: {}",
+            if is_active { "scan" } else { "passive" },
+            os
+        );
         if !existing.notes.contains(&os_note) {
             if !existing.notes.is_empty() {
                 existing.notes.push_str("; ");
@@ -367,18 +394,26 @@ fn create_asset_from_ingested(ingested: &IngestedAsset, is_active: bool) -> Asse
 
     let mut notes = String::new();
     if let Some(ref os) = ingested.os_info {
-        notes = format!("[{}] OS: {}", if is_active { "scan" } else { "passive" }, os);
+        notes = format!(
+            "[{}] OS: {}",
+            if is_active { "scan" } else { "passive" },
+            os
+        );
     }
 
     // Prefer explicit device type from ingest source; fall back to protocol inference
-    let protocols_as_ics: Vec<IcsProtocol> = ingested.protocols.iter()
+    let protocols_as_ics: Vec<IcsProtocol> = ingested
+        .protocols
+        .iter()
         .map(|p| IcsProtocol::from_name(p))
         .collect();
     let has_server_ports = ingested.open_ports.iter().any(|p| {
         matches!(p.port, 102 | 502 | 1089..=1091 | 1883 | 2222 | 2404 | 4840
             | 5007 | 5094 | 8883 | 18245 | 18246 | 20000 | 34962..=34964 | 44818 | 47808)
     });
-    let device_type = ingested.device_type.clone()
+    let device_type = ingested
+        .device_type
+        .clone()
         .unwrap_or_else(|| super::infer_device_type(&protocols_as_ics, has_server_ports));
 
     AssetInfo {
@@ -455,8 +490,10 @@ fn rebuild_zeek_device_events(inner: &mut AppStateInner) {
                     summary: format!(
                         "{} {}:{} → {}:{} ({} pkts)",
                         conn.transport.to_uppercase(),
-                        conn.src_ip, conn.src_port,
-                        conn.dst_ip, conn.dst_port,
+                        conn.src_ip,
+                        conn.src_port,
+                        conn.dst_ip,
+                        conn.dst_port,
                         conn.packet_count
                     ),
                 });
@@ -526,8 +563,8 @@ pub async fn import_sinema_csv(
 ) -> Result<IngestImportResult, String> {
     let start = Instant::now();
 
-    let ingest_result = gm_ingest::sinema::import_sinema_csv(Path::new(&path))
-        .map_err(|e| e.to_string())?;
+    let ingest_result =
+        gm_ingest::sinema::import_sinema_csv(Path::new(&path)).map_err(|e| e.to_string())?;
 
     let import_result = merge_ingest_result(ingest_result, &state, start)?;
 
@@ -552,8 +589,8 @@ pub async fn import_tia_xml(
 ) -> Result<IngestImportResult, String> {
     let start = Instant::now();
 
-    let ingest_result = gm_ingest::sinema::import_tia_xml(Path::new(&path))
-        .map_err(|e| e.to_string())?;
+    let ingest_result =
+        gm_ingest::sinema::import_tia_xml(Path::new(&path)).map_err(|e| e.to_string())?;
 
     let import_result = merge_ingest_result(ingest_result, &state, start)?;
 

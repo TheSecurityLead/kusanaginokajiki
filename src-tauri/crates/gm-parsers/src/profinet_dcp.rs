@@ -176,13 +176,15 @@ pub fn parse(payload: &[u8]) -> Option<ProfinetDcpInfo> {
     while offset + 4 <= data_end && offset + 4 <= payload.len() {
         let option = *payload.get(offset)?;
         let suboption = *payload.get(offset + 1)?;
-        let block_length = u16::from_be_bytes([
-            *payload.get(offset + 2)?,
-            *payload.get(offset + 3)?,
-        ]) as usize;
+        let block_length =
+            u16::from_be_bytes([*payload.get(offset + 2)?, *payload.get(offset + 3)?]) as usize;
 
         // Skip past the 4-byte block header; for responses also skip BlockInfo (2 bytes)
-        let data_start = if has_block_info { offset + 6 } else { offset + 4 };
+        let data_start = if has_block_info {
+            offset + 6
+        } else {
+            offset + 4
+        };
         let data_len = if has_block_info {
             block_length.saturating_sub(2)
         } else {
@@ -216,10 +218,8 @@ pub fn parse(payload: &[u8]) -> Option<ProfinetDcpInfo> {
             (0x02, 0x03) => {
                 if let Some(data) = block_data {
                     if data.len() >= 4 {
-                        device_info.vendor_id =
-                            Some(u16::from_be_bytes([data[0], data[1]]));
-                        device_info.device_id =
-                            Some(u16::from_be_bytes([data[2], data[3]]));
+                        device_info.vendor_id = Some(u16::from_be_bytes([data[0], data[1]]));
+                        device_info.device_id = Some(u16::from_be_bytes([data[2], data[3]]));
                     }
                 }
             }
@@ -312,8 +312,9 @@ mod tests {
             0x05, // Service: Identify
             0x01, // Type: Response Success
             0x00, 0x00, 0x12, 0x34, // XID = 0x00001234
-            0x00, 0x00, // Response delay (skipped)
-            // DCP data length placeholder — filled in below
+            0x00,
+            0x00, // Response delay (skipped)
+                  // DCP data length placeholder — filled in below
         ];
 
         let mut blocks: Vec<u8> = Vec::new();
@@ -348,7 +349,7 @@ mod tests {
         blocks.extend_from_slice(&4u16.to_be_bytes()); // 2 data bytes + 2 BlockInfo
         blocks.extend_from_slice(&[0x00, 0x00]); // BlockInfo
         blocks.extend_from_slice(&[0x00, 0x01]); // role = 1 (IO-Device)
-        // Total block = 4 + 4 = 8 (even) → no pad
+                                                 // Total block = 4 + 4 = 8 (even) → no pad
 
         // IP Suite: 192.168.1.100, 255.255.255.0, 192.168.1.1
         blocks.extend_from_slice(&[0x01, 0x02]);
@@ -371,9 +372,15 @@ mod tests {
         let data = build_identify_response();
         let result = parse(&data).expect("should parse identify response");
         assert!(matches!(result.service_id, DcpServiceId::Identify));
-        assert!(matches!(result.service_type, DcpServiceType::ResponseSuccess));
+        assert!(matches!(
+            result.service_type,
+            DcpServiceType::ResponseSuccess
+        ));
         assert_eq!(result.xid, 0x0000_1234);
-        assert_eq!(result.device_info.name_of_station.as_deref(), Some("plc-001"));
+        assert_eq!(
+            result.device_info.name_of_station.as_deref(),
+            Some("plc-001")
+        );
         assert_eq!(result.device_info.vendor_name.as_deref(), Some("Siemens"));
         assert_eq!(result.device_info.vendor_id, Some(0x002A));
         assert_eq!(result.device_info.device_id, Some(0x0001));

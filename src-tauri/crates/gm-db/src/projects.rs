@@ -57,8 +57,15 @@ pub fn create_project(conn: &Connection, input: &ProjectInput) -> Result<Project
              engagement_start, engagement_end, notes, created_at, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         params![
-            input.name, input.client_name, input.site_name, input.assessor_name,
-            input.engagement_start, input.engagement_end, input.notes, now, now
+            input.name,
+            input.client_name,
+            input.site_name,
+            input.assessor_name,
+            input.engagement_start,
+            input.engagement_end,
+            input.notes,
+            now,
+            now
         ],
     )?;
     get_project(conn, conn.last_insert_rowid())
@@ -123,7 +130,11 @@ pub fn list_projects(conn: &Connection) -> Result<Vec<ProjectSummary>, DbError> 
 }
 
 /// Update a project's metadata fields.
-pub fn update_project(conn: &Connection, id: i64, input: &ProjectInput) -> Result<Project, DbError> {
+pub fn update_project(
+    conn: &Connection,
+    id: i64,
+    input: &ProjectInput,
+) -> Result<Project, DbError> {
     let now = chrono::Utc::now().to_rfc3339();
     let affected = conn.execute(
         "UPDATE projects SET name = ?1, client_name = ?2, site_name = ?3,
@@ -131,8 +142,15 @@ pub fn update_project(conn: &Connection, id: i64, input: &ProjectInput) -> Resul
              notes = ?7, updated_at = ?8
          WHERE id = ?9",
         params![
-            input.name, input.client_name, input.site_name, input.assessor_name,
-            input.engagement_start, input.engagement_end, input.notes, now, id
+            input.name,
+            input.client_name,
+            input.site_name,
+            input.assessor_name,
+            input.engagement_start,
+            input.engagement_end,
+            input.notes,
+            now,
+            id
         ],
     )?;
     if affected == 0 {

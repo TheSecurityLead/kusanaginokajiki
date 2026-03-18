@@ -231,21 +231,26 @@ pub fn parse_snmp_response(data: &[u8]) -> Option<SnmpDeviceInfo> {
             let val_end = val_start + val_len;
             if val_end <= data.len() {
                 match sub_id {
-                    1 => { // sysDescr — OCTET STRING
+                    1 => {
+                        // sysDescr — OCTET STRING
                         if val_tag == 0x04 {
                             result.sys_descr = Some(
-                                String::from_utf8_lossy(&data[val_start..val_end]).trim().to_string()
+                                String::from_utf8_lossy(&data[val_start..val_end])
+                                    .trim()
+                                    .to_string(),
                             );
                         }
                     }
-                    2 => { // sysObjectID — OID
+                    2 => {
+                        // sysObjectID — OID
                         if val_tag == 0x06 {
                             let oid_str = decode_oid(&data[val_start..val_end]);
                             result.vendor = Some(enterprise_vendor(&oid_str).to_string());
                             result.sys_object_id = Some(oid_str);
                         }
                     }
-                    3 => { // sysUpTime — TimeTicks (APPLICATION 3 = 0x43)
+                    3 => {
+                        // sysUpTime — TimeTicks (APPLICATION 3 = 0x43)
                         if val_tag == 0x43 && val_len <= 4 {
                             let mut ticks = 0u32;
                             for b in &data[val_start..val_end] {
@@ -254,24 +259,33 @@ pub fn parse_snmp_response(data: &[u8]) -> Option<SnmpDeviceInfo> {
                             result.sys_uptime_cs = Some(ticks);
                         }
                     }
-                    4 => { // sysContact — OCTET STRING
+                    4 => {
+                        // sysContact — OCTET STRING
                         if val_tag == 0x04 {
                             result.sys_contact = Some(
-                                String::from_utf8_lossy(&data[val_start..val_end]).trim().to_string()
+                                String::from_utf8_lossy(&data[val_start..val_end])
+                                    .trim()
+                                    .to_string(),
                             );
                         }
                     }
-                    5 => { // sysName — OCTET STRING
+                    5 => {
+                        // sysName — OCTET STRING
                         if val_tag == 0x04 {
                             result.sys_name = Some(
-                                String::from_utf8_lossy(&data[val_start..val_end]).trim().to_string()
+                                String::from_utf8_lossy(&data[val_start..val_end])
+                                    .trim()
+                                    .to_string(),
                             );
                         }
                     }
-                    6 => { // sysLocation — OCTET STRING
+                    6 => {
+                        // sysLocation — OCTET STRING
                         if val_tag == 0x04 {
                             result.sys_location = Some(
-                                String::from_utf8_lossy(&data[val_start..val_end]).trim().to_string()
+                                String::from_utf8_lossy(&data[val_start..val_end])
+                                    .trim()
+                                    .to_string(),
                             );
                         }
                     }
@@ -284,10 +298,7 @@ pub fn parse_snmp_response(data: &[u8]) -> Option<SnmpDeviceInfo> {
     }
 
     // Only return a result if we extracted at least one useful field
-    if result.sys_descr.is_some()
-        || result.sys_name.is_some()
-        || result.sys_object_id.is_some()
-    {
+    if result.sys_descr.is_some() || result.sys_name.is_some() || result.sys_object_id.is_some() {
         Some(result)
     } else {
         None
@@ -318,7 +329,10 @@ fn decode_oid(bytes: &[u8]) -> String {
         arcs.push(value);
     }
 
-    arcs.iter().map(|a| a.to_string()).collect::<Vec<_>>().join(".")
+    arcs.iter()
+        .map(|a| a.to_string())
+        .collect::<Vec<_>>()
+        .join(".")
 }
 
 /// Map an enterprise OID arc to a vendor name.
@@ -332,26 +346,26 @@ pub fn enterprise_vendor(oid: &str) -> &'static str {
         .and_then(|s| s.parse::<u32>().ok())
         .unwrap_or(0);
     match arc {
-        9     => "Cisco",
-        11    => "HP / HPE",
+        9 => "Cisco",
+        11 => "HP / HPE",
         25506 => "H3C",
-        43    => "3Com",
-        2636  => "Juniper",
-        674   => "Dell",
-        318   => "APC / Schneider Electric UPS",
-        2     => "IBM",
-        311   => "Microsoft",
-        3     => "Siemens",
-        4329  => "Moxa",
+        43 => "3Com",
+        2636 => "Juniper",
+        674 => "Dell",
+        318 => "APC / Schneider Electric UPS",
+        2 => "IBM",
+        311 => "Microsoft",
+        3 => "Siemens",
+        4329 => "Moxa",
         10734 => "Hirschmann / Belden",
-        4515  => "Westermo",
-        4005  => "Rockwell Automation",
-        6890  => "Phoenix Contact",
-        6527  => "Alcatel-Lucent",
+        4515 => "Westermo",
+        4005 => "Rockwell Automation",
+        6890 => "Phoenix Contact",
+        6527 => "Alcatel-Lucent",
         18763 => "Belden",
         26866 => "Perle Systems",
-        8072  => "Net-SNMP (Linux / generic)",
-        _     => "Unknown",
+        8072 => "Net-SNMP (Linux / generic)",
+        _ => "Unknown",
     }
 }
 
@@ -439,7 +453,9 @@ mod tests {
     #[test]
     fn test_wrong_tag_returns_none() {
         // Does not start with 0x30
-        let data = vec![0x31, 0x10, 0x02, 0x01, 0x00, 0x04, 0x06, b'p', b'u', b'b', b'l', b'i', b'c'];
+        let data = vec![
+            0x31, 0x10, 0x02, 0x01, 0x00, 0x04, 0x06, b'p', b'u', b'b', b'l', b'i', b'c',
+        ];
         assert!(parse_snmp_community(&data).is_none());
     }
 
@@ -449,7 +465,12 @@ mod tests {
     ///
     /// `oid_bytes` = the encoded OID bytes (tag+len already included elsewhere).
     /// `value_tag` + `value_bytes` = the value field.
-    fn build_get_response(community: &[u8], oid_bytes: &[u8], value_tag: u8, value_bytes: &[u8]) -> Vec<u8> {
+    fn build_get_response(
+        community: &[u8],
+        oid_bytes: &[u8],
+        value_tag: u8,
+        value_bytes: &[u8],
+    ) -> Vec<u8> {
         // VarBind SEQUENCE: OID + value
         let oid_field = {
             let mut v = vec![0x06, oid_bytes.len() as u8];
@@ -483,7 +504,7 @@ mod tests {
 
         // Version INTEGER
         let version = vec![0x02, 0x01, 0x01u8]; // SNMPv2c
-        // Community OCTET STRING
+                                                // Community OCTET STRING
         let mut comm = vec![0x04, community.len() as u8];
         comm.extend_from_slice(community);
 
@@ -506,8 +527,8 @@ mod tests {
     fn test_parse_get_response_sys_descr() {
         let pkt = build_get_response(
             b"public",
-            &sys_oid(1),       // sysDescr OID
-            0x04,              // OCTET STRING
+            &sys_oid(1), // sysDescr OID
+            0x04,        // OCTET STRING
             b"Hirschmann MACH104 Release 09.0.00",
         );
         let info = parse_snmp_response(&pkt).expect("should parse GET-Response");
@@ -522,7 +543,7 @@ mod tests {
     fn test_parse_get_response_sys_name() {
         let pkt = build_get_response(
             b"public",
-            &sys_oid(5),       // sysName
+            &sys_oid(5), // sysName
             0x04,
             b"PLC-Cabinet-01",
         );

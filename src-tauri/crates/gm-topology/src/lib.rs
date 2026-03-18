@@ -7,9 +7,9 @@
 //!
 //! Uses `petgraph` for the underlying graph data structure.
 
-use std::collections::HashMap;
-use serde::Serialize;
 use gm_parsers::IcsProtocol;
+use serde::Serialize;
+use std::collections::HashMap;
 
 /// A node in the network topology graph (represents a device).
 #[derive(Debug, Clone, Serialize)]
@@ -128,8 +128,10 @@ impl TopologyBuilder {
     }
 
     fn ensure_node(&mut self, ip: &str, mac: Option<&str>, protocol: &IcsProtocol) {
-        let node = self.nodes.entry(ip.to_string()).or_insert_with(|| {
-            TopoNode {
+        let node = self
+            .nodes
+            .entry(ip.to_string())
+            .or_insert_with(|| TopoNode {
                 id: ip.to_string(),
                 ip_address: ip.to_string(),
                 mac_address: mac.map(String::from),
@@ -138,8 +140,7 @@ impl TopologyBuilder {
                 protocols: Vec::new(),
                 subnet: extract_subnet(ip),
                 packet_count: 0,
-            }
-        });
+            });
 
         node.packet_count += 1;
 
@@ -181,19 +182,28 @@ mod tests {
         let mut builder = TopologyBuilder::new();
 
         builder.add_connection(
-            "192.168.1.10", "192.168.1.100",
-            Some("aa:bb:cc:dd:ee:01"), Some("aa:bb:cc:dd:ee:02"),
-            IcsProtocol::Modbus, 128,
+            "192.168.1.10",
+            "192.168.1.100",
+            Some("aa:bb:cc:dd:ee:01"),
+            Some("aa:bb:cc:dd:ee:02"),
+            IcsProtocol::Modbus,
+            128,
         );
         builder.add_connection(
-            "192.168.1.10", "192.168.1.100",
-            None, None,
-            IcsProtocol::Modbus, 64,
+            "192.168.1.10",
+            "192.168.1.100",
+            None,
+            None,
+            IcsProtocol::Modbus,
+            64,
         );
         builder.add_connection(
-            "192.168.1.100", "192.168.1.10",
-            None, None,
-            IcsProtocol::Modbus, 256,
+            "192.168.1.100",
+            "192.168.1.10",
+            None,
+            None,
+            IcsProtocol::Modbus,
+            256,
         );
 
         let graph = builder.build();

@@ -4,7 +4,7 @@
 //! to extract structured packet information from raw Ethernet frames.
 
 use chrono::{DateTime, Utc};
-use etherparse::{SlicedPacket, NetSlice, TransportSlice};
+use etherparse::{NetSlice, SlicedPacket, TransportSlice};
 
 use crate::packet::{ParsedPacket, TransportProtocol};
 
@@ -50,12 +50,16 @@ pub(crate) fn extract_packet_info(
 
     // Extract transport layer info (ports + protocol)
     let (transport, src_port, dst_port) = match &parsed.transport {
-        Some(TransportSlice::Tcp(tcp)) => {
-            (TransportProtocol::Tcp, tcp.source_port(), tcp.destination_port())
-        }
-        Some(TransportSlice::Udp(udp)) => {
-            (TransportProtocol::Udp, udp.source_port(), udp.destination_port())
-        }
+        Some(TransportSlice::Tcp(tcp)) => (
+            TransportProtocol::Tcp,
+            tcp.source_port(),
+            tcp.destination_port(),
+        ),
+        Some(TransportSlice::Udp(udp)) => (
+            TransportProtocol::Udp,
+            udp.source_port(),
+            udp.destination_port(),
+        ),
         _ => (TransportProtocol::Other, 0, 0),
     };
 
@@ -100,11 +104,12 @@ pub(crate) fn try_extract_lldp_packet(
         return None;
     }
     // Check Ethertype at bytes 12-13 (skip VLAN tag 0x8100 if present)
-    let (ethertype_offset, payload_start) = if raw_data[12] == 0x81 && raw_data[13] == 0x00 && raw_data.len() >= 18 {
-        (14, 18) // 802.1Q VLAN tag
-    } else {
-        (12, 14)
-    };
+    let (ethertype_offset, payload_start) =
+        if raw_data[12] == 0x81 && raw_data[13] == 0x00 && raw_data.len() >= 18 {
+            (14, 18) // 802.1Q VLAN tag
+        } else {
+            (12, 14)
+        };
     if raw_data[ethertype_offset] != 0x88 || raw_data[ethertype_offset + 1] != 0xCC {
         return None;
     }

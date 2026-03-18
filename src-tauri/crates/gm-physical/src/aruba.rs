@@ -9,7 +9,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use crate::{ArpEntry, CdpNeighbor, MacTableEntry, PhysicalPort, PhysicalSwitch, PhysicalError};
+use crate::{ArpEntry, CdpNeighbor, MacTableEntry, PhysicalError, PhysicalPort, PhysicalSwitch};
 
 // ─── Running Config Parser ────────────────────────────────────────
 
@@ -72,7 +72,8 @@ fn parse_aruba_vlans(content: &str) -> HashMap<u16, String> {
                     while j < lines.len() {
                         // Block ends when we hit a non-indented non-empty line
                         let next_raw = lines[j];
-                        let is_next_indented = next_raw.starts_with(' ') || next_raw.starts_with('\t');
+                        let is_next_indented =
+                            next_raw.starts_with(' ') || next_raw.starts_with('\t');
                         if !is_next_indented && !next_raw.trim().is_empty() {
                             break;
                         }
@@ -285,7 +286,10 @@ pub fn parse_aruba_lldp_neighbors(content: &str) -> Vec<(String, CdpNeighbor)> {
         }
 
         // Detect header row
-        if line.starts_with("Local Port") || line.starts_with("LocalPort") || line.contains("ChassisId") {
+        if line.starts_with("Local Port")
+            || line.starts_with("LocalPort")
+            || line.contains("ChassisId")
+        {
             in_table = true;
             continue;
         }
@@ -308,15 +312,22 @@ pub fn parse_aruba_lldp_neighbors(content: &str) -> Vec<(String, CdpNeighbor)> {
             let chassis_id = parts[1].to_string();
             let remote_port = parts[2].to_string();
             let system_name = parts[3].to_string();
-            let caps: Vec<String> = if parts.len() > 4 { parts[4..].iter().map(|s| s.to_string()).collect() } else { Vec::new() };
+            let caps: Vec<String> = if parts.len() > 4 {
+                parts[4..].iter().map(|s| s.to_string()).collect()
+            } else {
+                Vec::new()
+            };
 
-            neighbors.push((local_port, CdpNeighbor {
-                device_id: system_name,
-                remote_port,
-                platform: None,
-                ip_address: Some(chassis_id),
-                capabilities: caps,
-            }));
+            neighbors.push((
+                local_port,
+                CdpNeighbor {
+                    device_id: system_name,
+                    remote_port,
+                    platform: None,
+                    ip_address: Some(chassis_id),
+                    capabilities: caps,
+                },
+            ));
             continue;
         }
 
@@ -325,7 +336,11 @@ pub fn parse_aruba_lldp_neighbors(content: &str) -> Vec<(String, CdpNeighbor)> {
         let remote_port = fields[2].to_string();
         let system_name = fields[3].to_string();
         let caps: Vec<String> = if fields.len() > 4 {
-            fields[4].split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()
+            fields[4]
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
         } else {
             Vec::new()
         };
@@ -334,13 +349,16 @@ pub fn parse_aruba_lldp_neighbors(content: &str) -> Vec<(String, CdpNeighbor)> {
             continue;
         }
 
-        neighbors.push((local_port, CdpNeighbor {
-            device_id: system_name,
-            remote_port,
-            platform: None,
-            ip_address: Some(chassis_id),
-            capabilities: caps,
-        }));
+        neighbors.push((
+            local_port,
+            CdpNeighbor {
+                device_id: system_name,
+                remote_port,
+                platform: None,
+                ip_address: Some(chassis_id),
+                capabilities: caps,
+            },
+        ));
     }
 
     log::info!("Parsed {} HP/Aruba LLDP neighbors", neighbors.len());

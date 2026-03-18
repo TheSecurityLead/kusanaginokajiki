@@ -50,7 +50,11 @@ pub async fn get_correlated_alerts(
         .map(|a| correlate_alert(a, &inner))
         .collect();
     // Sort by severity (1=high first), then timestamp descending
-    alerts.sort_by(|a, b| a.severity.cmp(&b.severity).then(b.timestamp.cmp(&a.timestamp)));
+    alerts.sort_by(|a, b| {
+        a.severity
+            .cmp(&b.severity)
+            .then(b.timestamp.cmp(&a.timestamp))
+    });
     Ok(alerts)
 }
 
@@ -67,7 +71,11 @@ pub async fn get_alerts_for_ip(
         .filter(|a| a.src_ip == ip || a.dst_ip == ip)
         .map(|a| correlate_alert(a, &inner))
         .collect();
-    alerts.sort_by(|a, b| a.severity.cmp(&b.severity).then(b.timestamp.cmp(&a.timestamp)));
+    alerts.sort_by(|a, b| {
+        a.severity
+            .cmp(&b.severity)
+            .then(b.timestamp.cmp(&a.timestamp))
+    });
     Ok(alerts)
 }
 
@@ -84,10 +92,8 @@ pub async fn clear_alerts(state: State<'_, AppState>) -> Result<(), String> {
 
 /// Enrich a StoredAlert with device inventory info from AppStateInner.
 fn correlate_alert(alert: &StoredAlert, inner: &AppStateInner) -> CorrelatedAlert {
-    let (src_hostname, src_device_type, src_purdue_level) =
-        lookup_device(&alert.src_ip, inner);
-    let (dst_hostname, dst_device_type, dst_purdue_level) =
-        lookup_device(&alert.dst_ip, inner);
+    let (src_hostname, src_device_type, src_purdue_level) = lookup_device(&alert.src_ip, inner);
+    let (dst_hostname, dst_device_type, dst_purdue_level) = lookup_device(&alert.dst_ip, inner);
 
     CorrelatedAlert {
         timestamp: alert.timestamp.clone(),
@@ -111,10 +117,7 @@ fn correlate_alert(alert: &StoredAlert, inner: &AppStateInner) -> CorrelatedAler
 
 /// Look up a device by IP in the asset inventory.
 /// Returns (hostname, device_type, purdue_level).
-fn lookup_device(
-    ip: &str,
-    inner: &AppStateInner,
-) -> (Option<String>, Option<String>, Option<u8>) {
+fn lookup_device(ip: &str, inner: &AppStateInner) -> (Option<String>, Option<String>, Option<u8>) {
     if ip.is_empty() {
         return (None, None, None);
     }

@@ -141,7 +141,10 @@ mod tests {
 
     #[test]
     fn test_protocol_fallback_modbus() {
-        assert_eq!(suggest_name("10.0.1.20", "unknown", "modbus"), "MOD-001-020");
+        assert_eq!(
+            suggest_name("10.0.1.20", "unknown", "modbus"),
+            "MOD-001-020"
+        );
     }
 
     #[test]
@@ -156,7 +159,10 @@ mod tests {
 
     #[test]
     fn test_safety_prefix() {
-        assert_eq!(suggest_name("10.0.0.10", "safety controller", ""), "SIS-000-010");
+        assert_eq!(
+            suggest_name("10.0.0.10", "safety controller", ""),
+            "SIS-000-010"
+        );
     }
 
     #[test]

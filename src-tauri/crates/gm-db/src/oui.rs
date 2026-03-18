@@ -20,8 +20,9 @@ impl OuiLookup {
     /// Each line should be: `AA:BB:CC\tVendor Name`
     /// Lines starting with `#` or empty lines are skipped.
     pub fn load_from_file(path: &Path) -> Result<Self, DbError> {
-        let content = std::fs::read_to_string(path)
-            .map_err(|e| DbError::Oui(format!("Failed to read OUI file {}: {}", path.display(), e)))?;
+        let content = std::fs::read_to_string(path).map_err(|e| {
+            DbError::Oui(format!("Failed to read OUI file {}: {}", path.display(), e))
+        })?;
 
         let mut table = HashMap::new();
         for line in content.lines() {
@@ -93,8 +94,14 @@ mod tests {
         assert_eq!(lookup.len(), 4);
 
         assert_eq!(lookup.lookup("00:0e:8c:01:02:03"), Some("Siemens AG"));
-        assert_eq!(lookup.lookup("00:00:BC:11:22:33"), Some("Rockwell Automation"));
-        assert_eq!(lookup.lookup("00:80:f4:aa:bb:cc"), Some("Schneider Electric"));
+        assert_eq!(
+            lookup.lookup("00:00:BC:11:22:33"),
+            Some("Rockwell Automation")
+        );
+        assert_eq!(
+            lookup.lookup("00:80:f4:aa:bb:cc"),
+            Some("Schneider Electric")
+        );
     }
 
     #[test]

@@ -35,13 +35,13 @@ use serde::{Deserialize, Serialize};
 /// LLDP System Capabilities bitmask (IEEE 802.1AB-2009 Table 8-4).
 /// Each bit indicates a capability the device supports or has enabled.
 pub mod caps {
-    pub const OTHER:   u16 = 1 << 0;
+    pub const OTHER: u16 = 1 << 0;
     pub const REPEATER: u16 = 1 << 1;
-    pub const BRIDGE:  u16 = 1 << 2;
+    pub const BRIDGE: u16 = 1 << 2;
     pub const WLAN_AP: u16 = 1 << 3;
-    pub const ROUTER:  u16 = 1 << 4;
+    pub const ROUTER: u16 = 1 << 4;
     pub const TELEPHONE: u16 = 1 << 5;
-    pub const DOCSIS:  u16 = 1 << 6;
+    pub const DOCSIS: u16 = 1 << 6;
     pub const STATION: u16 = 1 << 7;
 }
 
@@ -85,7 +85,6 @@ pub struct LldpInfo {
     pub vlan_ids: Vec<u16>,
 
     // ── Derived / enriched fields ──────────────────────────────────────────
-
     /// Vendor name inferred from system description or org-specific OUI
     pub vendor: Option<String>,
     /// Device model inferred from system description
@@ -164,7 +163,7 @@ pub fn parse(payload: &[u8]) -> Option<LldpInfo> {
             // System Capabilities: capabilities(2 BE) + enabled(2 BE)
             7 if value.len() >= 4 => {
                 let cap = u16::from_be_bytes([value[0], value[1]]);
-                let en  = u16::from_be_bytes([value[2], value[3]]);
+                let en = u16::from_be_bytes([value[2], value[3]]);
                 info.capabilities = Some(cap);
                 info.enabled_capabilities = Some(en);
                 info.capability_summary = Some(capability_summary(cap, en));
@@ -177,7 +176,8 @@ pub fn parse(payload: &[u8]) -> Option<LldpInfo> {
                     let subtype = value[1];
                     let addr_bytes = &value[2..1 + addr_str_len];
                     let (addr_type, address) = decode_management_address(subtype, addr_bytes);
-                    info.management_addresses.push(LldpMgmtAddress { addr_type, address });
+                    info.management_addresses
+                        .push(LldpMgmtAddress { addr_type, address });
                 }
             }
             // Org-Specific (type 127): OUI (3) + subtype (1) + data
@@ -324,12 +324,26 @@ fn enrich_from_description(info: &mut LldpInfo, desc: &str) {
     // Model detection — look for known product family names
     if info.model.is_none() {
         for keyword in &[
-            "MACH", "OCTOPUS", "SPIDER", "MICE", "EAGLE",           // Hirschmann
-            "SCALANCE", "S7-", "S7 ",                                 // Siemens
-            "EDS-", "ICS-", "PT-", "AWK-", "TAP-",                  // Moxa
-            "IE-", "IE ",                                             // Cisco Industrial
-            "FL SWITCH", "FL COMSERVER",                              // Phoenix Contact
-            "PowerConnect", "OpEdge", "WS-C",                        // Dell/Cisco
+            "MACH",
+            "OCTOPUS",
+            "SPIDER",
+            "MICE",
+            "EAGLE", // Hirschmann
+            "SCALANCE",
+            "S7-",
+            "S7 ", // Siemens
+            "EDS-",
+            "ICS-",
+            "PT-",
+            "AWK-",
+            "TAP-", // Moxa
+            "IE-",
+            "IE ", // Cisco Industrial
+            "FL SWITCH",
+            "FL COMSERVER", // Phoenix Contact
+            "PowerConnect",
+            "OpEdge",
+            "WS-C", // Dell/Cisco
         ] {
             if let Some(idx) = desc.to_uppercase().find(&keyword.to_uppercase()) {
                 // Grab up to ~30 chars after the keyword as the model string
@@ -354,7 +368,9 @@ fn enrich_from_description(info: &mut LldpInfo, desc: &str) {
     // Common patterns: "SW: 09.3.00", "FW: 4.2", "Version 12.1(4)",
     //                  "IOS Software", "Rel 05.3.00", "Version 6.0"
     if info.firmware.is_none() {
-        for prefix in &["SW:", "FW:", "Fw:", "fw:", "sw:", "Version", "version", "Rel ", "Release"] {
+        for prefix in &[
+            "SW:", "FW:", "Fw:", "fw:", "sw:", "Version", "version", "Rel ", "Release",
+        ] {
             if let Some(idx) = desc.find(prefix) {
                 let after = desc[idx + prefix.len()..].trim_start();
                 // Take up to end of version token (space, comma, newline)
@@ -381,14 +397,30 @@ fn enrich_from_description(info: &mut LldpInfo, desc: &str) {
 fn capability_summary(capabilities: u16, enabled: u16) -> String {
     let mask = if enabled != 0 { enabled } else { capabilities };
     let mut parts = Vec::new();
-    if mask & caps::REPEATER != 0  { parts.push("Repeater"); }
-    if mask & caps::BRIDGE != 0    { parts.push("Bridge"); }
-    if mask & caps::WLAN_AP != 0   { parts.push("WLAN AP"); }
-    if mask & caps::ROUTER != 0    { parts.push("Router"); }
-    if mask & caps::TELEPHONE != 0 { parts.push("Telephone"); }
-    if mask & caps::DOCSIS != 0    { parts.push("DOCSIS"); }
-    if mask & caps::STATION != 0   { parts.push("Station"); }
-    if mask & caps::OTHER != 0     { parts.push("Other"); }
+    if mask & caps::REPEATER != 0 {
+        parts.push("Repeater");
+    }
+    if mask & caps::BRIDGE != 0 {
+        parts.push("Bridge");
+    }
+    if mask & caps::WLAN_AP != 0 {
+        parts.push("WLAN AP");
+    }
+    if mask & caps::ROUTER != 0 {
+        parts.push("Router");
+    }
+    if mask & caps::TELEPHONE != 0 {
+        parts.push("Telephone");
+    }
+    if mask & caps::DOCSIS != 0 {
+        parts.push("DOCSIS");
+    }
+    if mask & caps::STATION != 0 {
+        parts.push("Station");
+    }
+    if mask & caps::OTHER != 0 {
+        parts.push("Other");
+    }
     if parts.is_empty() {
         "Unknown".to_string()
     } else {
@@ -455,7 +487,11 @@ mod tests {
         let info = parse(&pdu).expect("should parse system name PDU");
         assert_eq!(info.system_name.as_deref(), Some("switch-01"));
         assert_eq!(info.vendor.as_deref(), Some("Hirschmann"));
-        assert!(info.model.as_deref().map(|m| m.contains("MACH 4002")).unwrap_or(false));
+        assert!(info
+            .model
+            .as_deref()
+            .map(|m| m.contains("MACH 4002"))
+            .unwrap_or(false));
         assert_eq!(info.firmware.as_deref(), Some("09.3.00"));
     }
 
@@ -473,7 +509,11 @@ mod tests {
         assert_eq!(info.capabilities, Some(0x0014));
         assert_eq!(info.enabled_capabilities, Some(0x0004));
         // capability_summary should mention Bridge (enabled)
-        assert!(info.capability_summary.as_deref().unwrap_or("").contains("Bridge"));
+        assert!(info
+            .capability_summary
+            .as_deref()
+            .unwrap_or("")
+            .contains("Bridge"));
     }
 
     #[test]
@@ -519,7 +559,11 @@ mod tests {
 
         let info = parse(&pdu).expect("should parse Siemens description");
         assert_eq!(info.vendor.as_deref(), Some("Siemens"));
-        assert!(info.model.as_deref().map(|m| m.contains("SCALANCE")).unwrap_or(false));
+        assert!(info
+            .model
+            .as_deref()
+            .map(|m| m.contains("SCALANCE"))
+            .unwrap_or(false));
         assert_eq!(info.firmware.as_deref(), Some("6.4.1"));
     }
 
@@ -534,7 +578,11 @@ mod tests {
 
         let info = parse(&pdu).expect("should parse Moxa description");
         assert_eq!(info.vendor.as_deref(), Some("Moxa"));
-        assert!(info.model.as_deref().map(|m| m.contains("EDS-")).unwrap_or(false));
+        assert!(info
+            .model
+            .as_deref()
+            .map(|m| m.contains("EDS-"))
+            .unwrap_or(false));
         assert_eq!(info.firmware.as_deref(), Some("4.2 Build 16042218"));
     }
 

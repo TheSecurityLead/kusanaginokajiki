@@ -49,6 +49,7 @@
 		{ id: 'comm_patterns', label: 'Comm Patterns', icon: '\u2306' },
 		{ id: 'capture', label: 'Capture', icon: '\u25C9' },
 		{ id: 'analysis', label: 'Analysis', icon: '\u2691' },
+		{ id: 'segmentation', label: 'Segmentation', icon: '\u25FB' },
 		{ id: 'export', label: 'Export', icon: '\u2913' },
 		{ id: 'signatures', label: 'Signatures', icon: '\u2318' },
 		{ id: 'settings', label: 'Settings', icon: '\u2699' }

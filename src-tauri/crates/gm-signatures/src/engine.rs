@@ -116,9 +116,8 @@ impl SignatureEngine {
 
     /// Parse and register a signature from a YAML string.
     pub fn load_yaml(&mut self, yaml: &str) -> Result<(), SignatureError> {
-        let sig: Signature = serde_yaml::from_str(yaml).map_err(|e| {
-            SignatureError::ParseError(format!("Invalid YAML: {}", e))
-        })?;
+        let sig: Signature = serde_yaml::from_str(yaml)
+            .map_err(|e| SignatureError::ParseError(format!("Invalid YAML: {}", e)))?;
 
         // Validate confidence range
         if sig.confidence < 1 || sig.confidence > 5 {
@@ -194,7 +193,10 @@ impl SignatureEngine {
         for packet in packets {
             for m in self.match_packet(packet) {
                 // Keep the highest-confidence match for each signature
-                if best_matches.get(&m.signature_name).is_none_or(|e| e.confidence < m.confidence) {
+                if best_matches
+                    .get(&m.signature_name)
+                    .is_none_or(|e| e.confidence < m.confidence)
+                {
                     best_matches.insert(m.signature_name.clone(), m);
                 }
             }
@@ -212,9 +214,8 @@ impl SignatureEngine {
         yaml: &str,
         packets: &[PacketData],
     ) -> Result<Vec<TestResult>, SignatureError> {
-        let sig: Signature = serde_yaml::from_str(yaml).map_err(|e| {
-            SignatureError::ParseError(format!("Invalid YAML: {}", e))
-        })?;
+        let sig: Signature = serde_yaml::from_str(yaml)
+            .map_err(|e| SignatureError::ParseError(format!("Invalid YAML: {}", e)))?;
 
         let compiled = compile_filters(&sig.filters)?;
         let mut results = Vec::new();
@@ -338,12 +339,8 @@ fn all_filters_match(filters: &[CompiledFilter], packet: &PacketData) -> bool {
 fn filter_matches(filter: &CompiledFilter, packet: &PacketData) -> bool {
     match filter {
         CompiledFilter::Port(field, port) => match field.as_str() {
-            "tcp.dst_port" | "dst_port" => {
-                packet.transport == "tcp" && packet.dst_port == *port
-            }
-            "tcp.src_port" | "src_port" => {
-                packet.transport == "tcp" && packet.src_port == *port
-            }
+            "tcp.dst_port" | "dst_port" => packet.transport == "tcp" && packet.dst_port == *port,
+            "tcp.src_port" | "src_port" => packet.transport == "tcp" && packet.src_port == *port,
             "udp.dst_port" => packet.transport == "udp" && packet.dst_port == *port,
             "udp.src_port" => packet.transport == "udp" && packet.src_port == *port,
             _ => false,
@@ -434,9 +431,11 @@ fn extract_payload_values(extractors: &[PayloadExtractor], payload: &[u8]) -> Ve
                 }
                 ascii
             }
-            "hex" => {
-                slice.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(" ")
-            }
+            "hex" => slice
+                .iter()
+                .map(|b| format!("{:02x}", b))
+                .collect::<Vec<_>>()
+                .join(" "),
             "uint16_be" => {
                 if slice.len() >= 2 {
                     let val = u16::from_be_bytes([slice[0], slice[1]]);
@@ -487,7 +486,10 @@ fn parse_hex_pattern(pattern: &str) -> Result<Vec<u8>, SignatureError> {
                 trimmed
             };
             let byte = u8::from_str_radix(hex, 16).map_err(|_| {
-                SignatureError::ParseError(format!("Invalid hex byte: '{}' in pattern '{}'", hex, pattern))
+                SignatureError::ParseError(format!(
+                    "Invalid hex byte: '{}' in pattern '{}'",
+                    hex, pattern
+                ))
             })?;
             bytes.push(byte);
         }

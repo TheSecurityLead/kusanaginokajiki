@@ -11,10 +11,7 @@ use std::path::Path;
 
 use serde::Deserialize;
 
-use crate::{
-    IngestError, IngestResult, IngestSource,
-    IngestedAsset, PortService,
-};
+use crate::{IngestError, IngestResult, IngestSource, IngestedAsset, PortService};
 
 /// Parse an Nmap XML file (-oX output).
 pub fn parse_nmap_xml(path: &Path) -> Result<IngestResult, IngestError> {
@@ -39,20 +36,28 @@ pub fn parse_nmap_xml(path: &Path) -> Result<IngestResult, IngestError> {
 /// Convert an Nmap host element to an IngestedAsset.
 fn parse_host(host: &NmapHost) -> Option<IngestedAsset> {
     // Get the IP address from <address> elements
-    let ip = host.addresses.iter()
+    let ip = host
+        .addresses
+        .iter()
         .find(|a| a.addrtype == "ipv4" || a.addrtype == "ipv6")
         .map(|a| a.addr.clone())?;
 
-    let mac = host.addresses.iter()
+    let mac = host
+        .addresses
+        .iter()
         .find(|a| a.addrtype == "mac")
         .map(|a| a.addr.clone());
 
-    let mac_vendor = host.addresses.iter()
+    let mac_vendor = host
+        .addresses
+        .iter()
         .find(|a| a.addrtype == "mac")
         .and_then(|a| a.vendor.clone());
 
     // Get hostname from <hostnames>
-    let hostname = host.hostnames.as_ref()
+    let hostname = host
+        .hostnames
+        .as_ref()
         .and_then(|hn| hn.hostnames.first())
         .map(|h| h.name.clone());
 
@@ -95,7 +100,9 @@ fn parse_host(host: &NmapHost) -> Option<IngestedAsset> {
     }
 
     // Get OS detection
-    let os_info = host.os.as_ref()
+    let os_info = host
+        .os
+        .as_ref()
         .and_then(|os| os.osmatches.first())
         .map(|m| {
             if let Some(ref accuracy) = m.accuracy {
