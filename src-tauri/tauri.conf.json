@@ -47,12 +47,7 @@
       "certificateThumbprint": null,
       "timestampUrl": null,
       "wix": {
-        "language": "en-US",
-        "template": null,
-        "bannerPath": null,
-        "dialogImagePath": null,
-        "createDesktopShortcut": true,
-        "createStartMenuShortcut": true
+        "language": "en-US"
       }
     }
   },
