@@ -48,7 +48,10 @@ PROMPT-*.md
 generate_guide.py
 Kusanagi-Kajiki-Guide.pdf
 
-# Claude local config
+# Claude context files
+CLAUDE.md
+CLAUDE.local.md
+CLAUDE_local.md
 CLAUDE.local
 .claude/
 

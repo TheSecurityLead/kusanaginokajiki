@@ -1,8 +1,8 @@
 {
   "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-cli/config.schema.json",
-  "productName": "Kusanagi Kajiki",
-  "version": "0.1.0",
-  "identifier": "com.kusanaginokajiki.app",
+  "productName": "Kusanagi-no-Kajiki",
+  "version": "1.5.0",
+  "identifier": "com.thesecuritylead.kusanaginokajiki",
   "build": {
     "frontendDist": "../build",
     "devUrl": "http://localhost:1420",
@@ -27,6 +27,8 @@
     }
   },
   "bundle": {
+    "active": true,
+    "targets": ["msi"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -36,7 +38,22 @@
       "icons/icon.icns",
       "icons/icon.ico",
       "icons/icon.png"
-    ]
+    ],
+    "resources": [],
+    "copyright": "Copyright 2026 David - The Security Lead",
+    "shortDescription": "ICS/SCADA Passive Network Discovery & Security Analysis",
+    "longDescription": "Kusanagi-no-Kajiki is a passive ICS/SCADA network discovery and topology visualization tool for OT security assessments. A modern rewrite of NSA's GRASSMARLIN with MITRE ATT&CK detection, IEC 62443 microsegmentation, and deep protocol analysis for 10 industrial protocols.",
+    "windows": {
+      "certificateThumbprint": null,
+      "timestampUrl": null,
+      "wix": {
+        "language": "en-US",
+        "template": null,
+        "bannerPath": null,
+        "dialogImagePath": null
+      },
+      "nsis": null
+    }
   },
   "plugins": {
     "dialog": null,
