@@ -106,6 +106,7 @@ fn main() {
             commands::data::get_topology,
             commands::data::get_assets,
             commands::data::get_connections,
+            commands::data::get_data_counts,
             commands::data::get_protocol_stats,
             commands::data::get_connection_packets,
             commands::data::get_deep_parse_info,

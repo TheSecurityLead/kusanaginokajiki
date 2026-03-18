@@ -10,6 +10,7 @@
 		MalwareFinding, ComplianceMapping, ComplianceStatus
 	} from '$lib/types';
 	import { runAnalysis, getFindings, getPurdueAssignments, getAnomalies, getAssets, getSwitchSecurityFindings, getCorrelatedAlerts, clearAlerts, getMalwareFindings, getComplianceReport } from '$lib/utils/tauri';
+	import { assetCount } from '$lib/stores';
 	import type { CorrelatedAlert } from '$lib/types';
 	import BaselineDriftView from './BaselineDriftView.svelte';
 
@@ -169,8 +170,9 @@
 			lastRunTime = new Date().toLocaleTimeString();
 
 			// Refresh assets (Purdue levels may have been auto-assigned)
-			const updatedAssets = await getAssets();
-			assets.set(updatedAssets);
+			const assetPage = await getAssets(0, 200);
+			assets.set(assetPage.assets);
+			assetCount.set(assetPage.total);
 		} catch (e) {
 			error = String(e);
 		} finally {

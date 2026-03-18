@@ -44,7 +44,12 @@ pub fn generate_enforcement_configs(
 
     vec![
         gen_cisco_ios(&matrix.zone_pairs, &zone_names, &zone_vendors),
-        gen_cisco_asa(&matrix.zone_pairs, &zone_names, &zone_model.zones, &zone_vendors),
+        gen_cisco_asa(
+            &matrix.zone_pairs,
+            &zone_names,
+            &zone_model.zones,
+            &zone_vendors,
+        ),
         gen_generic_table(&matrix.zone_pairs, &zone_names, &zone_vendors),
         gen_suricata(&matrix.zone_pairs, &zone_names, &zone_vendors),
         gen_json_policy(matrix, zone_model, &zone_vendors),
@@ -1096,14 +1101,8 @@ mod tests {
             vendor_port_context("Schneider Electric", 502),
             Some("Modbus TCP")
         );
-        assert_eq!(
-            vendor_port_context("ABB Ltd", 502),
-            Some("Modbus TCP")
-        );
-        assert_eq!(
-            vendor_port_context("Honeywell", 502),
-            Some("Modbus TCP")
-        );
+        assert_eq!(vendor_port_context("ABB Ltd", 502), Some("Modbus TCP"));
+        assert_eq!(vendor_port_context("Honeywell", 502), Some("Modbus TCP"));
         // Unknown combination.
         assert_eq!(vendor_port_context("Siemens", 80), None);
         assert_eq!(vendor_port_context("UnknownVendor", 502), None);

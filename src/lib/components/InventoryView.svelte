@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { filteredAssets, assetFilter, selectedAssetId, selectedAsset, protocolFilter, assets } from '$lib/stores';
-	import { getDeepParseInfo, getAssets, updateAsset, bulkUpdateAssets, getCredentialWarnings, getAlertsForIp, getCveWarnings, getDeviceZeekEvents } from '$lib/utils/tauri';
+	import { filteredAssets, assetFilter, selectedAssetId, selectedAsset, protocolFilter, assets, assetCount } from '$lib/stores';
+	import { getDeepParseInfo, getAssets, getDataCounts, updateAsset, bulkUpdateAssets, getCredentialWarnings, getAlertsForIp, getCveWarnings, getDeviceZeekEvents } from '$lib/utils/tauri';
 	import type { DeviceType, IcsProtocol, DeepParseInfo, AssetUpdate, Asset, EnipDetail, S7Detail, BacnetDetail, Iec104Detail, ProfinetDcpDetail, LldpDetail, DefaultCredential, CorrelatedAlert, CveMatch, DeviceZeekEvents } from '$lib/types';
 
 	const deviceTypeLabels: Record<DeviceType, string> = {
@@ -264,8 +264,9 @@
 		try {
 			await updateAsset(asset.id, updates);
 			// Refresh assets
-			const refreshed = await getAssets();
-			assets.set(refreshed);
+			const page = await getAssets(0, 200);
+			assets.set(page.assets);
+			assetCount.set(page.total);
 			editMessage = 'Saved';
 			isEditing = false;
 		} catch (err) {
@@ -310,8 +311,9 @@
 		}
 		try {
 			await bulkUpdateAssets(Array.from(selectedIds), updates);
-			const refreshed = await getAssets();
-			assets.set(refreshed);
+			const page = await getAssets(0, 200);
+			assets.set(page.assets);
+			assetCount.set(page.total);
 			selectedIds = new Set();
 			showBulkPanel = false;
 			bulkDeviceType = '';

@@ -13,7 +13,10 @@ import type {
 	ImportResult,
 	TopologyGraph,
 	Asset,
+	AssetPage,
 	Connection,
+	ConnectionPage,
+	DataCounts,
 	ProtocolStats,
 	PacketSummary,
 	PacketEvent,
@@ -115,9 +118,13 @@ export async function getTopology(): Promise<TopologyGraph> {
 
 // ─── Assets ───────────────────────────────────────────────────
 
-/** Get all discovered assets */
-export async function getAssets(): Promise<Asset[]> {
-	return invoke<Asset[]>('get_assets');
+/** Get discovered assets, paginated */
+export async function getAssets(page = 0, pageSize = 200, sortBy?: string): Promise<AssetPage> {
+	return invoke<AssetPage>('get_assets', {
+		page,
+		pageSize,
+		sortBy: sortBy ?? null
+	});
 }
 
 /** Update an asset's editable fields (device type, hostname, notes, Purdue level, tags) */
@@ -132,9 +139,18 @@ export async function bulkUpdateAssets(assetIds: string[], updates: AssetUpdate)
 
 // ─── Connections ──────────────────────────────────────────────
 
-/** Get all observed connections */
-export async function getConnections(): Promise<Connection[]> {
-	return invoke<Connection[]>('get_connections');
+/** Get observed connections, paginated */
+export async function getConnections(page = 0, pageSize = 500, sortBy?: string): Promise<ConnectionPage> {
+	return invoke<ConnectionPage>('get_connections', {
+		page,
+		pageSize,
+		sortBy: sortBy ?? null
+	});
+}
+
+/** Get lightweight asset/connection counts (no data payload) */
+export async function getDataCounts(): Promise<DataCounts> {
+	return invoke<DataCounts>('get_data_counts');
 }
 
 /** Get packet summaries for a specific connection (for connection tree detail) */

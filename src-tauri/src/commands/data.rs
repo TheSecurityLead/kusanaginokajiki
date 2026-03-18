@@ -50,24 +50,150 @@ pub fn get_topology(state: State<'_, AppState>) -> Result<TopologyGraph, String>
     Ok(TopologyGraph { nodes, edges })
 }
 
-/// Get all discovered assets.
-///
-/// Returns the full asset list without truncation so that sidebar counts and
-/// other consumers reflect the true dataset size.
-#[tauri::command]
-pub fn get_assets(state: State<'_, AppState>) -> Result<Vec<AssetInfo>, String> {
-    let state_inner = state.inner.lock().map_err(|e| e.to_string())?;
-    Ok(state_inner.assets.clone())
+// ─── Paginated data responses ──────────────────────────────────
+
+/// A page of assets returned by `get_assets`.
+#[derive(Serialize, Clone)]
+pub struct AssetPage {
+    pub assets: Vec<AssetInfo>,
+    pub total: usize,
+    pub page: usize,
+    pub page_size: usize,
+    pub has_more: bool,
 }
 
-/// Get all observed connections.
+/// A page of connections returned by `get_connections`.
+#[derive(Serialize, Clone)]
+pub struct ConnectionPage {
+    pub connections: Vec<ConnectionInfo>,
+    pub total: usize,
+    pub page: usize,
+    pub page_size: usize,
+    pub has_more: bool,
+}
+
+/// Lightweight counts for the sidebar (no payload).
+#[derive(Serialize, Clone)]
+pub struct DataCounts {
+    pub asset_count: usize,
+    pub connection_count: usize,
+}
+
+/// Get discovered assets, paginated.
 ///
-/// Returns the full connection list without truncation so that sidebar counts
-/// and other consumers reflect the true dataset size.
+/// Parameters:
+/// - `page`: zero-based page index (default 0)
+/// - `page_size`: items per page (default 200)
+/// - `sort_by`: optional sort key — "ip", "packets", "protocol", "connections"
 #[tauri::command]
-pub fn get_connections(state: State<'_, AppState>) -> Result<Vec<ConnectionInfo>, String> {
+pub fn get_assets(
+    state: State<'_, AppState>,
+    page: Option<usize>,
+    page_size: Option<usize>,
+    sort_by: Option<String>,
+) -> Result<AssetPage, String> {
     let state_inner = state.inner.lock().map_err(|e| e.to_string())?;
-    Ok(state_inner.connections.clone())
+
+    let page = page.unwrap_or(0);
+    let page_size = page_size.unwrap_or(200);
+
+    let mut all_assets = state_inner.assets.clone();
+    let total = all_assets.len();
+
+    // Sort
+    match sort_by.as_deref() {
+        Some("ip") => all_assets.sort_by(|a, b| a.ip_address.cmp(&b.ip_address)),
+        Some("packets") => all_assets.sort_by(|a, b| b.packet_count.cmp(&a.packet_count)),
+        Some("protocol") => {
+            all_assets.sort_by(|a, b| {
+                let ap = a.protocols.first().map(|s| s.as_str()).unwrap_or("");
+                let bp = b.protocols.first().map(|s| s.as_str()).unwrap_or("");
+                ap.cmp(bp)
+            });
+        }
+        _ => {} // default insertion order
+    }
+
+    // Paginate
+    let start = page * page_size;
+    let assets = if start < total {
+        all_assets.into_iter().skip(start).take(page_size).collect()
+    } else {
+        Vec::new()
+    };
+    let has_more = start + page_size < total;
+
+    Ok(AssetPage {
+        assets,
+        total,
+        page,
+        page_size,
+        has_more,
+    })
+}
+
+/// Get observed connections, paginated.
+///
+/// Parameters:
+/// - `page`: zero-based page index (default 0)
+/// - `page_size`: items per page (default 500)
+/// - `sort_by`: optional sort key — "packets", "bytes"
+#[tauri::command]
+pub fn get_connections(
+    state: State<'_, AppState>,
+    page: Option<usize>,
+    page_size: Option<usize>,
+    sort_by: Option<String>,
+) -> Result<ConnectionPage, String> {
+    let state_inner = state.inner.lock().map_err(|e| e.to_string())?;
+
+    let page = page.unwrap_or(0);
+    let page_size = page_size.unwrap_or(500);
+
+    let mut all_connections = state_inner.connections.clone();
+    let total = all_connections.len();
+
+    match sort_by.as_deref() {
+        Some("packets") => {
+            all_connections.sort_by(|a, b| b.packet_count.cmp(&a.packet_count));
+        }
+        Some("bytes") => {
+            all_connections.sort_by(|a, b| b.byte_count.cmp(&a.byte_count));
+        }
+        _ => {}
+    }
+
+    let start = page * page_size;
+    let connections = if start < total {
+        all_connections
+            .into_iter()
+            .skip(start)
+            .take(page_size)
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let has_more = start + page_size < total;
+
+    Ok(ConnectionPage {
+        connections,
+        total,
+        page,
+        page_size,
+        has_more,
+    })
+}
+
+/// Get lightweight asset/connection counts for the sidebar.
+///
+/// This avoids serializing the full dataset just to show totals.
+#[tauri::command]
+pub fn get_data_counts(state: State<'_, AppState>) -> Result<DataCounts, String> {
+    let state_inner = state.inner.lock().map_err(|e| e.to_string())?;
+    Ok(DataCounts {
+        asset_count: state_inner.assets.len(),
+        connection_count: state_inner.connections.len(),
+    })
 }
 
 /// Compute protocol breakdown statistics from current connections.

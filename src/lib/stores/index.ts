@@ -228,11 +228,11 @@ export function toggleNodeInFilter(tabId: string, nodeId: string) {
 
 // ─── Derived Stores ───────────────────────────────────────────
 
-/** Total count of discovered assets */
-export const assetCount = derived(assets, ($assets) => $assets.length);
+/** Total count of discovered assets — fed by getDataCounts() or manual set */
+export const assetCount = writable<number>(0);
 
-/** Total count of connections */
-export const connectionCount = derived(connections, ($connections) => $connections.length);
+/** Total count of connections — fed by getDataCounts() or manual set */
+export const connectionCount = writable<number>(0);
 
 /** Currently selected asset object */
 export const selectedAsset = derived(

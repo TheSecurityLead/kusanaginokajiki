@@ -67,8 +67,11 @@ pub fn run_segmentation_analysis(input: &SegmentationInput) -> SegmentationRepor
     };
 
     // 15D — Enforcement configs (all 5 formats, vendor-aware remarks).
-    let enforcement_configs =
-        enforcement::generate_enforcement_configs(&communication_matrix, &zone_model, &policy_groups);
+    let enforcement_configs = enforcement::generate_enforcement_configs(
+        &communication_matrix,
+        &zone_model,
+        &policy_groups,
+    );
 
     // 15E — Policy simulation.
     let simulation = run_simulation(&zone_model, &communication_matrix, input);

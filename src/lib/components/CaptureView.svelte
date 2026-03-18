@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { interfaces, captureStatus, captureStats, assets, connections, topology, sessions, currentSession } from '$lib/stores';
+	import { interfaces, captureStatus, captureStats, assets, connections, topology, sessions, currentSession, assetCount, connectionCount } from '$lib/stores';
 	import {
 		importPcap, cancelImport, onImportProgress,
-		getAssets, getConnections, getTopology, getProtocolStats,
+		getAssets, getConnections, getDataCounts, getTopology, getProtocolStats,
 		startCapture, stopCapture, pauseCapture, resumeCapture,
 		onCaptureStats, onCaptureError,
 		saveSession, loadSession, listSessions, deleteSession,
@@ -158,16 +158,19 @@
 		cleanupRefreshInterval();
 		refreshInterval = setInterval(async () => {
 			try {
-				const [newAssets, newConnections, newTopology, newStats] = await Promise.all([
-					getAssets(),
-					getConnections(),
+				const [assetPage, connPage, newTopology, newStats, counts] = await Promise.all([
+					getAssets(0, 200),
+					getConnections(0, 500),
 					getTopology(),
-					getProtocolStats()
+					getProtocolStats(),
+					getDataCounts()
 				]);
-				assets.set(newAssets);
-				connections.set(newConnections);
+				assets.set(assetPage.assets);
+				connections.set(connPage.connections);
 				topology.set(newTopology);
 				protocolStats.set(newStats);
+				assetCount.set(counts.asset_count);
+				connectionCount.set(counts.connection_count);
 			} catch (err) {
 				console.error('Data refresh error:', err);
 			}
@@ -212,17 +215,20 @@
 			};
 			importMessage = `Imported ${result.packet_count.toLocaleString()} packets from ${result.file_count} file${result.file_count > 1 ? 's' : ''} → ${result.asset_count} assets, ${result.connection_count} connections (${result.duration_ms}ms)`;
 
-			const [newAssets, newConnections, newTopology, newStats] = await Promise.all([
-				getAssets(),
-				getConnections(),
+			const [assetPage, connPage, newTopology, newStats, counts] = await Promise.all([
+				getAssets(0, 200),
+				getConnections(0, 500),
 				getTopology(),
-				getProtocolStats()
+				getProtocolStats(),
+				getDataCounts()
 			]);
 
-			assets.set(newAssets);
-			connections.set(newConnections);
+			assets.set(assetPage.assets);
+			connections.set(connPage.connections);
 			topology.set(newTopology);
 			protocolStats.set(newStats);
+			assetCount.set(counts.asset_count);
+			connectionCount.set(counts.connection_count);
 			await buildCaptureSummary();
 		} catch (err) {
 			importProgress = null;
@@ -282,16 +288,19 @@
 			};
 
 			// Do one final data refresh
-			const [newAssets, newConnections, newTopology, newStats] = await Promise.all([
-				getAssets(),
-				getConnections(),
+			const [assetPage, connPage, newTopology, newStats, counts] = await Promise.all([
+				getAssets(0, 200),
+				getConnections(0, 500),
 				getTopology(),
-				getProtocolStats()
+				getProtocolStats(),
+				getDataCounts()
 			]);
-			assets.set(newAssets);
-			connections.set(newConnections);
+			assets.set(assetPage.assets);
+			connections.set(connPage.connections);
 			topology.set(newTopology);
 			protocolStats.set(newStats);
+			assetCount.set(counts.asset_count);
+			connectionCount.set(counts.connection_count);
 		} catch (err) {
 			captureError = `Stop failed: ${err}`;
 		}
@@ -361,13 +370,15 @@
 			const info = await loadSession(id);
 			currentSession.set(info);
 			// Refresh all data stores
-			const [newAssets, newConnections, newTopology, newStats] = await Promise.all([
-				getAssets(), getConnections(), getTopology(), getProtocolStats()
+			const [assetPage, connPage, newTopology, newStats, counts] = await Promise.all([
+				getAssets(0, 200), getConnections(0, 500), getTopology(), getProtocolStats(), getDataCounts()
 			]);
-			assets.set(newAssets);
-			connections.set(newConnections);
+			assets.set(assetPage.assets);
+			connections.set(connPage.connections);
 			topology.set(newTopology);
 			protocolStats.set(newStats);
+			assetCount.set(counts.asset_count);
+			connectionCount.set(counts.connection_count);
 			sessionMessage = `Session "${info.name}" loaded`;
 			sessionMessageType = 'success';
 		} catch (err) {
@@ -430,13 +441,15 @@
 			const info = await importSessionArchive(path);
 			currentSession.set(info);
 			// Refresh all data stores
-			const [newAssets, newConnections, newTopology, newStats] = await Promise.all([
-				getAssets(), getConnections(), getTopology(), getProtocolStats()
+			const [assetPage, connPage, newTopology, newStats, counts] = await Promise.all([
+				getAssets(0, 200), getConnections(0, 500), getTopology(), getProtocolStats(), getDataCounts()
 			]);
-			assets.set(newAssets);
-			connections.set(newConnections);
+			assets.set(assetPage.assets);
+			connections.set(connPage.connections);
 			topology.set(newTopology);
 			protocolStats.set(newStats);
+			assetCount.set(counts.asset_count);
+			connectionCount.set(counts.connection_count);
 			sessionMessage = `Imported "${info.name}" (${info.asset_count} assets)`;
 			sessionMessageType = 'success';
 			await refreshSessions();
@@ -662,13 +675,15 @@
 	}
 
 	async function refreshStores() {
-		const [newAssets, newConnections, newTopology, newStats] = await Promise.all([
-			getAssets(), getConnections(), getTopology(), getProtocolStats()
+		const [assetPage, connPage, newTopology, newStats, counts] = await Promise.all([
+			getAssets(0, 200), getConnections(0, 500), getTopology(), getProtocolStats(), getDataCounts()
 		]);
-		assets.set(newAssets);
-		connections.set(newConnections);
+		assets.set(assetPage.assets);
+		connections.set(connPage.connections);
 		topology.set(newTopology);
 		protocolStats.set(newStats);
+		assetCount.set(counts.asset_count);
+		connectionCount.set(counts.connection_count);
 	}
 
 	const isCapturing = $derived($captureStatus === 'capturing' || $captureStatus === 'paused');
