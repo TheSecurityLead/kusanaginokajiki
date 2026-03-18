@@ -910,11 +910,11 @@
 						<span class="stat-label">Data</span>
 					</div>
 					<div class="stat-card">
-						<span class="stat-value">{$captureStats.active_connections}</span>
+						<span class="stat-value">{$captureStats.active_connections.toLocaleString()}</span>
 						<span class="stat-label">Connections</span>
 					</div>
 					<div class="stat-card">
-						<span class="stat-value">{$captureStats.asset_count}</span>
+						<span class="stat-value">{$captureStats.asset_count.toLocaleString()}</span>
 						<span class="stat-label">Assets</span>
 					</div>
 					<div class="stat-card">

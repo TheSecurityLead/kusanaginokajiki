@@ -362,7 +362,7 @@
 						<span class="card-icon">CSV</span>
 						<span class="card-label">Assets</span>
 					</div>
-					<p class="card-desc">{$assetCount} assets — IP, MAC, vendor, protocols, Purdue level, confidence</p>
+					<p class="card-desc">{$assetCount.toLocaleString()} assets — IP, MAC, vendor, protocols, Purdue level, confidence</p>
 					<button
 						class="action-btn primary"
 						disabled={!hasData || busyAction !== null}
@@ -377,7 +377,7 @@
 						<span class="card-icon">CSV</span>
 						<span class="card-label">Connections</span>
 					</div>
-					<p class="card-desc">{$connectionCount} connections — source, destination, protocol, packets, bytes</p>
+					<p class="card-desc">{$connectionCount.toLocaleString()} connections — source, destination, protocol, packets, bytes</p>
 					<button
 						class="action-btn primary"
 						disabled={!hasData || busyAction !== null}

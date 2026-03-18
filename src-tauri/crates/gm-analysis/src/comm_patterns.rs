@@ -5,14 +5,11 @@
 //! packet count.  No timestamp vectors are stored — intervals are computed
 //! incrementally as each packet arrives.
 //!
-//! `compute_stats()` is O(n_connections) and returns at most 500 entries
-//! (top by packet count) to prevent serialisation from overwhelming the webview.
+//! `compute_stats()` is O(n_connections) and returns all entries sorted by
+//! descending packet count.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-
-/// Maximum number of `ConnectionStats` entries returned by `compute_stats()`.
-const MAX_STATS_RETURNED: usize = 500;
 
 /// Per-connection-pair timing and traffic statistics.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -195,10 +192,9 @@ impl PatternAnalyzer {
     /// Compute statistics for all tracked connection pairs.
     ///
     /// O(n_connections) — derives stats from pre-computed Welford accumulators.
-    /// Returns at most `MAX_STATS_RETURNED` (500) entries sorted by descending
-    /// packet count to keep the serialised JSON payload manageable.
+    /// Returns all entries sorted by descending packet count.
     pub fn compute_stats(&self) -> Vec<ConnectionStats> {
-        let mut result = Vec::with_capacity(self.data.len().min(MAX_STATS_RETURNED + 1));
+        let mut result = Vec::with_capacity(self.data.len());
 
         for ((src_ip, dst_ip, port, protocol), entry) in &self.data {
             let duration_secs = entry.last_seen - entry.first_seen;
@@ -259,9 +255,8 @@ impl PatternAnalyzer {
             });
         }
 
-        // Sort descending by packet count, then cap to avoid massive JSON payloads.
+        // Sort descending by packet count.
         result.sort_by(|a, b| b.packet_count.cmp(&a.packet_count));
-        result.truncate(MAX_STATS_RETURNED);
         result
     }
 
@@ -545,8 +540,8 @@ mod tests {
     }
 
     #[test]
-    fn test_compute_stats_capped_at_500() {
-        // 600 distinct connection pairs — result must be capped at 500.
+    fn test_compute_stats_returns_all_connections() {
+        // 600 distinct connection pairs — all must be returned.
         let mut analyzer = PatternAnalyzer::new();
         for i in 0..600_u32 {
             let dst = format!("10.0.{}.{}", i / 256, i % 256);
@@ -558,8 +553,8 @@ mod tests {
         let stats = analyzer.compute_stats();
         assert_eq!(
             stats.len(),
-            500,
-            "compute_stats must cap at MAX_STATS_RETURNED"
+            600,
+            "compute_stats must return all connection pairs"
         );
         // Top entry should have the most packets (connection i=599 → 600 packets).
         assert_eq!(stats[0].packet_count, 600);

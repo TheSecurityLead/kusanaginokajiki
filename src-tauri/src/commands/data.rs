@@ -13,10 +13,6 @@ use gm_topology::TopologyGraph;
 const MAX_TOPOLOGY_NODES: usize = 5_000;
 /// Maximum edges returned by get_topology.
 const MAX_TOPOLOGY_EDGES: usize = 20_000;
-/// Maximum assets returned by get_assets.
-const MAX_ASSETS: usize = 10_000;
-/// Maximum connections returned by get_connections.
-const MAX_CONNECTIONS: usize = 10_000;
 
 /// Get the current network topology graph for visualization.
 ///
@@ -56,37 +52,22 @@ pub fn get_topology(state: State<'_, AppState>) -> Result<TopologyGraph, String>
 
 /// Get all discovered assets.
 ///
-/// Capped at MAX_ASSETS (10 000) by packet_count descending for datasets with
-/// an unusually high number of unique IPs (e.g. scan traffic in a large PCAP).
+/// Returns the full asset list without truncation so that sidebar counts and
+/// other consumers reflect the true dataset size.
 #[tauri::command]
 pub fn get_assets(state: State<'_, AppState>) -> Result<Vec<AssetInfo>, String> {
     let state_inner = state.inner.lock().map_err(|e| e.to_string())?;
-
-    if state_inner.assets.len() <= MAX_ASSETS {
-        return Ok(state_inner.assets.clone());
-    }
-
-    let mut assets = state_inner.assets.clone();
-    assets.sort_by(|a, b| b.packet_count.cmp(&a.packet_count));
-    assets.truncate(MAX_ASSETS);
-    Ok(assets)
+    Ok(state_inner.assets.clone())
 }
 
 /// Get all observed connections.
 ///
-/// Capped at MAX_CONNECTIONS (10 000) by packet_count descending.
+/// Returns the full connection list without truncation so that sidebar counts
+/// and other consumers reflect the true dataset size.
 #[tauri::command]
 pub fn get_connections(state: State<'_, AppState>) -> Result<Vec<ConnectionInfo>, String> {
     let state_inner = state.inner.lock().map_err(|e| e.to_string())?;
-
-    if state_inner.connections.len() <= MAX_CONNECTIONS {
-        return Ok(state_inner.connections.clone());
-    }
-
-    let mut conns = state_inner.connections.clone();
-    conns.sort_by(|a, b| b.packet_count.cmp(&a.packet_count));
-    conns.truncate(MAX_CONNECTIONS);
-    Ok(conns)
+    Ok(state_inner.connections.clone())
 }
 
 /// Compute protocol breakdown statistics from current connections.

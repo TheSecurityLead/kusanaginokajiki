@@ -208,7 +208,7 @@
 		<div class="toolbar-section">
 			<h2 class="view-title">Communication Patterns</h2>
 			<span class="toolbar-sep"></span>
-			<span class="row-count">{filteredRows.length} / {stats.length} connections</span>
+			<span class="row-count">{filteredRows.length.toLocaleString()} / {stats.length.toLocaleString()} connections</span>
 		</div>
 		<div class="toolbar-section">
 			<label class="filter-label">
@@ -425,8 +425,8 @@
 				<span class="page-info">
 					Page {currentPage + 1} of {totalPages}
 					&nbsp;·&nbsp;
-					rows {currentPage * PAGE_SIZE + 1}–{Math.min((currentPage + 1) * PAGE_SIZE, filteredRows.length)}
-					of {filteredRows.length}
+					rows {(currentPage * PAGE_SIZE + 1).toLocaleString()}–{Math.min((currentPage + 1) * PAGE_SIZE, filteredRows.length).toLocaleString()}
+					of {filteredRows.length.toLocaleString()}
 				</span>
 				<button
 					class="page-btn"

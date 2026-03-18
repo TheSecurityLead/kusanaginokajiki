@@ -169,11 +169,11 @@
 		<div class="sidebar-status">
 			<div class="status-row">
 				<span class="status-label">Assets</span>
-				<span class="status-value">{$assetCount}</span>
+				<span class="status-value">{$assetCount.toLocaleString()}</span>
 			</div>
 			<div class="status-row">
 				<span class="status-label">Connections</span>
-				<span class="status-value">{$connectionCount}</span>
+				<span class="status-value">{$connectionCount.toLocaleString()}</span>
 			</div>
 			<div class="status-row">
 				<span class="status-label">Status</span>

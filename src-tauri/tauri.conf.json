@@ -50,9 +50,10 @@
         "language": "en-US",
         "template": null,
         "bannerPath": null,
-        "dialogImagePath": null
-      },
-      "nsis": null
+        "dialogImagePath": null,
+        "createDesktopShortcut": true,
+        "createStartMenuShortcut": true
+      }
     }
   },
   "plugins": {

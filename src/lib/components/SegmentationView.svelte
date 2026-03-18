@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tick } from 'svelte';
 	import { segmentationReport } from '$lib/stores';
 	import type {
 		SegmentationReport,
@@ -15,6 +16,7 @@
 
 	let activeTab = $state<SubTab>('groups');
 	let isRunning = $state(false);
+	let loadingStage = $state('');
 	let error = $state<string | null>(null);
 	let report = $state<SegmentationReport | null>(null);
 
@@ -22,6 +24,10 @@
 	let selectedFormat = $state<EnforcementFormat>('cisco_ios_acl');
 	let exportedContent = $state<string>('');
 	let isExporting = $state(false);
+
+	// Simulation pagination
+	let visibleBlockCount = $state(50);
+	let visibleFpCount = $state(50);
 
 	// Subscribe to cached report from store.
 	segmentationReport.subscribe((v) => {
@@ -31,14 +37,37 @@
 	async function handleRunSegmentation() {
 		isRunning = true;
 		error = null;
+		visibleBlockCount = 50;
+		visibleFpCount = 50;
+
+		const stages = [
+			'Clustering assets into policy groups...',
+			'Generating IEC 62443 zone boundaries...',
+			'Computing least-privilege matrix...',
+			'Generating enforcement configs...',
+			'Running policy simulation...'
+		];
+
+		let stageIndex = 0;
+		const stageInterval = setInterval(() => {
+			if (stageIndex < stages.length) {
+				loadingStage = stages[stageIndex];
+				stageIndex++;
+			}
+		}, 800);
+
 		try {
+			loadingStage = stages[0];
+			await tick();
 			const result = await runSegmentation();
 			report = result;
 			segmentationReport.set(result);
 		} catch (e) {
 			error = String(e);
 		} finally {
+			clearInterval(stageInterval);
 			isRunning = false;
+			loadingStage = '';
 		}
 	}
 
@@ -119,6 +148,13 @@
 		<div class="error-banner">{error}</div>
 	{/if}
 
+	{#if isRunning}
+		<div class="loading-overlay">
+			<div class="loading-spinner"></div>
+			<p class="loading-stage">{loadingStage}</p>
+		</div>
+	{/if}
+
 	{#if report}
 		<!-- Sub-tab bar -->
 		<div class="sub-tabs">
@@ -143,8 +179,8 @@
 		{#if activeTab === 'groups'}
 			<div class="tab-content">
 				<div class="summary-row">
-					<span class="metric">{report.policy_groups.length} <small>groups</small></span>
-					<span class="metric">{new Set(report.policy_groups.flatMap(g => g.member_ips)).size} <small>classified assets</small></span>
+					<span class="metric">{report.policy_groups.length.toLocaleString()} <small>groups</small></span>
+					<span class="metric">{new Set(report.policy_groups.flatMap(g => g.member_ips)).size.toLocaleString()} <small>classified assets</small></span>
 				</div>
 				<div class="card-grid">
 					{#each report.policy_groups as group}
@@ -174,8 +210,8 @@
 		{:else if activeTab === 'zones'}
 			<div class="tab-content">
 				<div class="summary-row">
-					<span class="metric">{report.zone_model.zones.length} <small>zones</small></span>
-					<span class="metric">{report.zone_model.conduits.length} <small>conduits</small></span>
+					<span class="metric">{report.zone_model.zones.length.toLocaleString()} <small>zones</small></span>
+					<span class="metric">{report.zone_model.conduits.length.toLocaleString()} <small>conduits</small></span>
 					<span class="metric">{(report.zone_model.zone_score * 100).toFixed(0)}% <small>zone score</small></span>
 				</div>
 				{#if report.zone_model.recommendations.length > 0}
@@ -204,7 +240,7 @@
 								<td>{zone.name}</td>
 								<td><span class="sl-badge {slClass(zone.security_level)}">{slLabel(zone.security_level)}</span></td>
 								<td>{zone.purdue_levels.map(l => 'L' + l).join(', ') || '—'}</td>
-								<td>{zone.asset_count}</td>
+								<td>{zone.asset_count.toLocaleString()}</td>
 							</tr>
 						{/each}
 					</tbody>
@@ -227,7 +263,7 @@
 									<td>{zoneNameById(conduit.src_zone_id)}</td>
 									<td>{zoneNameById(conduit.dst_zone_id)}</td>
 									<td>{conduit.direction}</td>
-									<td>{conduit.rules.length}</td>
+									<td>{conduit.rules.length.toLocaleString()}</td>
 									<td>{conduit.cross_purdue_risk ? '⚠ Yes' : '—'}</td>
 								</tr>
 							{/each}
@@ -240,7 +276,7 @@
 		{:else if activeTab === 'matrix'}
 			<div class="tab-content">
 				<div class="summary-row">
-					<span class="metric">{report.communication_matrix.zone_pairs.length} <small>zone pairs</small></span>
+					<span class="metric">{report.communication_matrix.zone_pairs.length.toLocaleString()} <small>zone pairs</small></span>
 					<span class="metric">{report.communication_matrix.coverage_percent.toFixed(1)}% <small>coverage</small></span>
 					<span class="metric">{report.communication_matrix.default_action} <small>default</small></span>
 				</div>
@@ -252,22 +288,24 @@
 							<span class="zone-name">{zoneNameById(pair.dst_zone_id)}</span>
 							<span class="rule-count">{pair.rules.length} rule{pair.rules.length !== 1 ? 's' : ''}</span>
 						</div>
-						<table class="rule-table">
-							<thead>
-								<tr><th>Protocol</th><th>Port</th><th>Risk</th><th>Justification</th><th>Packets</th></tr>
-							</thead>
-							<tbody>
-								{#each pair.rules as rule}
-									<tr>
-										<td>{rule.protocol}</td>
-										<td>{rule.dst_port ?? 'any'}</td>
-										<td><span class="risk-badge {riskClass(rule.risk)}">{rule.risk}</span></td>
-										<td class="justification">{rule.justification}</td>
-										<td>{rule.packet_count.toLocaleString()}</td>
-									</tr>
-								{/each}
-							</tbody>
-						</table>
+						<div class="rule-table-container">
+							<table class="rule-table">
+								<thead>
+									<tr><th>Protocol</th><th>Port</th><th>Risk</th><th>Justification</th><th>Packets</th></tr>
+								</thead>
+								<tbody>
+									{#each pair.rules as rule}
+										<tr>
+											<td>{rule.protocol}</td>
+											<td>{rule.dst_port ?? 'any'}</td>
+											<td><span class="risk-badge {riskClass(rule.risk)}">{rule.risk}</span></td>
+											<td class="justification">{rule.justification}</td>
+											<td>{rule.packet_count.toLocaleString()}</td>
+										</tr>
+									{/each}
+								</tbody>
+							</table>
+						</div>
 					</div>
 				{/each}
 			</div>
@@ -295,7 +333,7 @@
 					{#each report.enforcement_configs as cfg}
 						<div class="cfg-chip" class:active={cfg.format === selectedFormat}>
 							<span>{cfg.format.replace(/_/g, ' ')}</span>
-							<span class="rule-count">{cfg.rule_count} rules</span>
+							<span class="rule-count">{cfg.rule_count.toLocaleString()} rules</span>
 						</div>
 					{/each}
 				</div>
@@ -338,7 +376,7 @@
 								<tr>
 									<td>{zoneNameById(zbs.src_zone_id)}</td>
 									<td>{zoneNameById(zbs.dst_zone_id)}</td>
-									<td class="count">{zbs.blocked_count}</td>
+									<td class="count">{zbs.blocked_count.toLocaleString()}</td>
 								</tr>
 							{/each}
 						</tbody>
@@ -346,41 +384,69 @@
 				{/if}
 
 				{#if sim.critical_blocks.length > 0}
-					<h3>Critical Blocks <span class="count-badge">{sim.critical_blocks.length}</span></h3>
-					<table class="data-table">
-						<thead>
-							<tr><th>Source</th><th>Destination</th><th>Protocol:Port</th><th>Reason</th></tr>
-						</thead>
-						<tbody>
-							{#each sim.critical_blocks as block}
-								<tr>
-									<td>{block.src_ip}</td>
-									<td>{block.dst_ip}</td>
-									<td>{block.protocol}:{block.dst_port}</td>
-									<td class="reason">{block.reason}</td>
-								</tr>
-							{/each}
-						</tbody>
-					</table>
+					<h3>Critical Blocks <span class="count-badge">{sim.critical_blocks.length.toLocaleString()}</span></h3>
+					<div class="paginated-table-container">
+						<table class="data-table">
+							<thead>
+								<tr><th>Source</th><th>Destination</th><th>Protocol:Port</th><th>Reason</th></tr>
+							</thead>
+							<tbody>
+								{#each sim.critical_blocks.slice(0, visibleBlockCount) as block}
+									<tr>
+										<td>{block.src_ip}</td>
+										<td>{block.dst_ip}</td>
+										<td>{block.protocol}:{block.dst_port}</td>
+										<td class="reason">{block.reason}</td>
+									</tr>
+								{/each}
+								{#if sim.critical_blocks.length > visibleBlockCount}
+									<tr>
+										<td colspan="4" class="show-more-row">
+											<button class="show-more-btn" onclick={() => visibleBlockCount += 50}>
+												Show more ({(sim.critical_blocks.length - visibleBlockCount).toLocaleString()} remaining)
+											</button>
+										</td>
+									</tr>
+								{/if}
+							</tbody>
+						</table>
+						{#if sim.critical_blocks.length > 50}
+							<p class="table-count">Showing {Math.min(visibleBlockCount, sim.critical_blocks.length).toLocaleString()} of {sim.critical_blocks.length.toLocaleString()}</p>
+						{/if}
+					</div>
 				{/if}
 
 				{#if sim.false_positive_candidates.length > 0}
-					<h3>False Positive Candidates <span class="count-badge fp">{sim.false_positive_candidates.length}</span></h3>
+					<h3>False Positive Candidates <span class="count-badge fp">{sim.false_positive_candidates.length.toLocaleString()}</span></h3>
 					<p class="hint">These periodic, read-only, allowlisted connections are likely safe — review before enforcement.</p>
-					<table class="data-table">
-						<thead>
-							<tr><th>Source</th><th>Destination</th><th>Protocol:Port</th></tr>
-						</thead>
-						<tbody>
-							{#each sim.false_positive_candidates as fp}
-								<tr>
-									<td>{fp.src_ip}</td>
-									<td>{fp.dst_ip}</td>
-									<td>{fp.protocol}:{fp.dst_port}</td>
-								</tr>
-							{/each}
-						</tbody>
-					</table>
+					<div class="paginated-table-container">
+						<table class="data-table">
+							<thead>
+								<tr><th>Source</th><th>Destination</th><th>Protocol:Port</th></tr>
+							</thead>
+							<tbody>
+								{#each sim.false_positive_candidates.slice(0, visibleFpCount) as fp}
+									<tr>
+										<td>{fp.src_ip}</td>
+										<td>{fp.dst_ip}</td>
+										<td>{fp.protocol}:{fp.dst_port}</td>
+									</tr>
+								{/each}
+								{#if sim.false_positive_candidates.length > visibleFpCount}
+									<tr>
+										<td colspan="3" class="show-more-row">
+											<button class="show-more-btn" onclick={() => visibleFpCount += 50}>
+												Show more ({(sim.false_positive_candidates.length - visibleFpCount).toLocaleString()} remaining)
+											</button>
+										</td>
+									</tr>
+								{/if}
+							</tbody>
+						</table>
+						{#if sim.false_positive_candidates.length > 50}
+							<p class="table-count">Showing {Math.min(visibleFpCount, sim.false_positive_candidates.length).toLocaleString()} of {sim.false_positive_candidates.length.toLocaleString()}</p>
+						{/if}
+					</div>
 				{/if}
 
 				{#if sim.allowed === 0 && sim.blocked === 0}
@@ -403,10 +469,15 @@
 	.segmentation-view {
 		padding: 1.5rem;
 		max-width: 1200px;
+		height: 100%;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
 	}
 
 	.view-header {
 		margin-bottom: 1.5rem;
+		flex-shrink: 0;
 	}
 
 	.view-header h2 {
@@ -442,13 +513,54 @@
 		padding: 0.75rem 1rem;
 		margin-bottom: 1rem;
 		color: var(--severity-critical, #ef4444);
+		flex-shrink: 0;
 	}
+
+	/* ── Loading Indicator ───────────────────────────── */
+
+	.loading-overlay {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 1rem;
+		padding: 3rem 2rem;
+		flex: 1;
+	}
+
+	.loading-spinner {
+		width: 28px;
+		height: 28px;
+		border: 3px solid var(--gm-border, #333);
+		border-top-color: #10b981;
+		border-radius: 50%;
+		animation: spin 0.8s linear infinite;
+	}
+
+	@keyframes spin {
+		to { transform: rotate(360deg); }
+	}
+
+	.loading-stage {
+		font-size: 0.9rem;
+		color: var(--text-muted, #888);
+		margin: 0;
+		animation: pulse 1.5s ease-in-out infinite;
+	}
+
+	@keyframes pulse {
+		0%, 100% { opacity: 0.6; }
+		50% { opacity: 1; }
+	}
+
+	/* ── Sub-tabs ────────────────────────────────────── */
 
 	.sub-tabs {
 		display: flex;
 		gap: 0.25rem;
 		border-bottom: 1px solid var(--border, #333);
 		margin-bottom: 1.5rem;
+		flex-shrink: 0;
 	}
 
 	.sub-tab {
@@ -469,6 +581,9 @@
 
 	.tab-content {
 		animation: fadeIn 0.15s ease;
+		flex: 1;
+		overflow-y: auto;
+		min-height: 0;
 	}
 
 	@keyframes fadeIn {
@@ -532,6 +647,8 @@
 		display: flex;
 		flex-wrap: wrap;
 		gap: 0.3rem;
+		max-height: 200px;
+		overflow-y: auto;
 	}
 
 	.ip-pill {
@@ -599,6 +716,10 @@
 		border-bottom: 1px solid var(--border, #333);
 		color: var(--text-muted, #888);
 		font-weight: 500;
+		position: sticky;
+		top: 0;
+		background: var(--gm-bg-secondary, #1a2332);
+		z-index: 1;
 	}
 
 	.data-table td {
@@ -631,6 +752,11 @@
 	.arrow { color: var(--text-muted, #888); }
 	.rule-count { margin-left: auto; color: var(--text-muted, #888); font-size: 0.8rem; }
 
+	.rule-table-container {
+		max-height: 400px;
+		overflow-y: auto;
+	}
+
 	.rule-table {
 		width: 100%;
 		border-collapse: collapse;
@@ -643,6 +769,10 @@
 		border-bottom: 1px solid var(--border, #333);
 		color: var(--text-muted, #888);
 		font-weight: 500;
+		position: sticky;
+		top: 0;
+		background: var(--gm-bg-secondary, #1a2332);
+		z-index: 1;
 	}
 
 	.rule-table td {
@@ -760,6 +890,39 @@
 	}
 
 	.reason { color: var(--text-muted, #888); font-size: 0.82rem; }
+
+	/* Pagination / Show more */
+	.paginated-table-container {
+		margin-bottom: 1.5rem;
+	}
+
+	.show-more-row {
+		text-align: center;
+		padding: 0.5rem;
+	}
+
+	.show-more-btn {
+		background: var(--surface-2, #1e1e1e);
+		border: 1px solid var(--border, #333);
+		color: var(--text-muted, #888);
+		padding: 0.4rem 1rem;
+		border-radius: 4px;
+		cursor: pointer;
+		font-size: 0.82rem;
+		transition: all 0.15s;
+	}
+
+	.show-more-btn:hover {
+		background: var(--gm-bg-hover, #252d3a);
+		color: var(--text, #eee);
+	}
+
+	.table-count {
+		font-size: 0.78rem;
+		color: var(--text-muted, #888);
+		text-align: right;
+		margin: 0.25rem 0 0;
+	}
 
 	/* Recommendations */
 	.recommendations {
