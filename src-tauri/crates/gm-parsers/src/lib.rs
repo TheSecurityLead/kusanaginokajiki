@@ -27,9 +27,11 @@ pub mod iec104;
 pub mod lldp;
 pub mod modbus;
 pub mod profinet_dcp;
+pub mod profinet_io;
 mod protocol;
 pub mod redundancy;
 pub mod s7comm;
+pub mod s7comm_plus;
 pub mod snmp;
 pub mod vendor_tables;
 
@@ -54,6 +56,10 @@ pub use profinet_dcp::{
     parse as parse_profinet_dcp, DcpDeviceInfo, DcpServiceId, DcpServiceType, ProfinetDcpInfo,
     ProfinetRole,
 };
+pub use profinet_io::{
+    parse as parse_profinet_io, ProfinetIoAlarmInfo, ProfinetIoDataStatus, ProfinetIoFrameType,
+    ProfinetIoInfo, ProfinetIoRole,
+};
 pub use protocol::{identify_by_port, identify_protocol, IcsProtocol};
 pub use redundancy::{
     detect_protocol as detect_redundancy_protocol, parse as parse_redundancy, RedundancyInfo,
@@ -62,6 +68,10 @@ pub use redundancy::{
 pub use s7comm::{
     function_code_name as s7_function_code_name, parse as parse_s7, CotpParams, CotpPduType,
     S7Function, S7Info, S7PduType, S7Role,
+};
+pub use s7comm_plus::{
+    function_code_name as s7plus_function_code_name, parse as parse_s7plus, S7PlusFunction,
+    S7PlusInfo, S7PlusOpcode, S7PlusRole, S7PlusVersion,
 };
 pub use snmp::{parse_snmp_community, parse_snmp_response, SnmpDeviceInfo, SnmpInfo};
 
@@ -84,12 +94,16 @@ pub enum DeepParseResult {
     Enip(EnipInfo),
     /// S7comm (TPKT/COTP/S7) deep parse result
     S7(S7Info),
+    /// S7comm+ (TPKT/COTP/S7+ protocol ID 0x72) deep parse result
+    S7Plus(S7PlusInfo),
     /// BACnet/IP (BVLCI/NPDU/APDU) deep parse result
     Bacnet(BacnetInfo),
     /// IEC 60870-5-104 deep parse result
     Iec104(Iec104Info),
     /// PROFINET DCP deep parse result
     ProfinetDcp(ProfinetDcpInfo),
+    /// PROFINET IO RT cyclic/alarm frame parse result
+    ProfinetIo(ProfinetIoInfo),
     /// LLDP (Link Layer Discovery Protocol) parse result
     Lldp(LldpInfo),
 }
@@ -111,11 +125,24 @@ pub fn deep_parse(packet: &ParsedPacket, protocol: IcsProtocol) -> Option<DeepPa
             parse_dnp3(&packet.payload, packet.src_port, packet.dst_port).map(DeepParseResult::Dnp3)
         }
         IcsProtocol::EthernetIp => enip::parse(&packet.payload).map(DeepParseResult::Enip),
-        IcsProtocol::S7comm => s7comm::parse(&packet.payload).map(DeepParseResult::S7),
+        IcsProtocol::S7comm => {
+            // S7comm+ uses protocol ID 0x72; classic S7comm uses 0x32.
+            // Try S7comm+ first; fall back to classic S7comm.
+            s7comm_plus::parse(&packet.payload)
+                .map(DeepParseResult::S7Plus)
+                .or_else(|| s7comm::parse(&packet.payload).map(DeepParseResult::S7))
+        }
         IcsProtocol::Bacnet => bacnet::parse(&packet.payload).map(DeepParseResult::Bacnet),
         IcsProtocol::Iec104 => iec104::parse(&packet.payload).map(DeepParseResult::Iec104),
         IcsProtocol::Profinet => {
-            profinet_dcp::parse(&packet.payload).map(DeepParseResult::ProfinetDcp)
+            // DCP uses Frame IDs 0xFEFC–0xFEFF; IO RT uses all other RT ranges.
+            // Try DCP first; fall back to IO RT parser.
+            profinet_dcp::parse(&packet.payload)
+                .map(DeepParseResult::ProfinetDcp)
+                .or_else(|| {
+                    profinet_io::parse(&packet.payload, packet.src_port, packet.dst_port)
+                        .map(DeepParseResult::ProfinetIo)
+                })
         }
         _ => None,
     }
