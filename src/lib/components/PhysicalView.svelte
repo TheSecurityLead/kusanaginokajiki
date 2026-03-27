@@ -24,7 +24,7 @@
 		getRedundancyProtocols
 	} from '$lib/utils/tauri';
 
-	let graphContainer: HTMLDivElement;
+	let graphContainer = $state<HTMLDivElement>(null!);
 	let cy: any = null;
 
 	// ── Tab State ───────────────────────────────────────

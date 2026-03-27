@@ -619,11 +619,13 @@
 
 	<!-- Context Menu -->
 	{#if ctxMenu.show}
-		<!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
 		<div
 			class="context-menu"
+			role="menu"
+			tabindex="-1"
 			style="left: {ctxMenu.x}px; top: {ctxMenu.y}px;"
 			onclick={(e) => e.stopPropagation()}
+			onkeydown={(e) => e.stopPropagation()}
 			oncontextmenu={(e) => e.preventDefault()}
 		>
 			{#if ctxMenu.nodeId}
