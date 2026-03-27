@@ -141,9 +141,7 @@ pub fn deep_parse(packet: &ParsedPacket, protocol: IcsProtocol) -> Option<DeepPa
             // are never incorrectly absorbed by the DCP parser.
             profinet_io::parse(&packet.payload, packet.src_port, packet.dst_port)
                 .map(DeepParseResult::ProfinetIo)
-                .or_else(|| {
-                    profinet_dcp::parse(&packet.payload).map(DeepParseResult::ProfinetDcp)
-                })
+                .or_else(|| profinet_dcp::parse(&packet.payload).map(DeepParseResult::ProfinetDcp))
         }
         _ => None,
     }
