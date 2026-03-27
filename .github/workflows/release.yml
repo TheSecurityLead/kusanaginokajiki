@@ -13,7 +13,6 @@ on:
 
 permissions:
   contents: write
-  id-token: write
 
 env:
   CARGO_TERM_COLOR: always
@@ -86,7 +85,6 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-    outputs: {}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -178,7 +176,7 @@ jobs:
   release:
     name: Create GitHub Release
     needs: [bump-version, build]
-    if: needs.build.result == 'success'
+    if: always() && needs.build.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - name: Download Windows installers
