@@ -149,20 +149,30 @@ pub struct ProfinetDcpInfo {
 
 /// Attempt to parse a PROFINET DCP payload.
 ///
-/// The payload should be the UDP application-layer data from port 34964,
-/// starting directly at the 10-byte DCP header. Returns None if the
-/// payload is shorter than the minimum header size.
+/// The payload must be the UDP application-layer data from port 34964,
+/// starting at the 2-byte PROFINET Frame ID followed by the 10-byte DCP
+/// header. Returns `None` if:
+/// - the payload is shorter than 12 bytes (2 Frame ID + 10 DCP header)
+/// - the Frame ID is not in the DCP range (0xFEFC–0xFEFF)
 pub fn parse(payload: &[u8]) -> Option<ProfinetDcpInfo> {
-    // Minimum: 10-byte DCP header
-    if payload.len() < 10 {
+    // Minimum: 2-byte Frame ID + 10-byte DCP header
+    if payload.len() < 12 {
         return None;
     }
 
-    let service_id = DcpServiceId::from_byte(payload[0]);
-    let service_type = DcpServiceType::from_byte(payload[1]);
-    let xid = u32::from_be_bytes([payload[2], payload[3], payload[4], payload[5]]);
-    // payload[6..8] = Response Delay — skip
-    let dcp_data_length = u16::from_be_bytes([payload[8], payload[9]]) as usize;
+    // Validate Frame ID — DCP uses 0xFEFC–0xFEFF only.
+    // Any other Frame ID belongs to the IO RT parser.
+    let frame_id = u16::from_be_bytes([payload[0], payload[1]]);
+    if !(0xFEFC..=0xFEFF).contains(&frame_id) {
+        return None;
+    }
+
+    // DCP header starts at byte 2 (after the Frame ID).
+    let service_id = DcpServiceId::from_byte(payload[2]);
+    let service_type = DcpServiceType::from_byte(payload[3]);
+    let xid = u32::from_be_bytes([payload[4], payload[5], payload[6], payload[7]]);
+    // payload[8..10] = Response Delay — skip
+    let dcp_data_length = u16::from_be_bytes([payload[10], payload[11]]) as usize;
 
     // Responses include a 2-byte BlockInfo field at the start of each block's data.
     // Requests do not have BlockInfo.
@@ -170,8 +180,8 @@ pub fn parse(payload: &[u8]) -> Option<ProfinetDcpInfo> {
 
     let mut device_info = DcpDeviceInfo::default();
 
-    let data_end = 10 + dcp_data_length;
-    let mut offset = 10;
+    let data_end = 12 + dcp_data_length;
+    let mut offset = 12;
 
     while offset + 4 <= data_end && offset + 4 <= payload.len() {
         let option = *payload.get(offset)?;
@@ -309,6 +319,7 @@ mod tests {
     /// Build a realistic DCP Identify Response with all common blocks.
     fn build_identify_response() -> Vec<u8> {
         let mut pkt = vec![
+            0xFE, 0xFF, // Frame ID = 0xFEFF (Identify)
             0x05, // Service: Identify
             0x01, // Type: Response Success
             0x00, 0x00, 0x12, 0x34, // XID = 0x00001234
@@ -394,6 +405,7 @@ mod tests {
     fn test_identify_request() {
         // Identify Request with an "All" wildcard block (option=0x00, suboption=0xFF)
         let data: &[u8] = &[
+            0xFE, 0xFF, // Frame ID = 0xFEFF (Identify)
             0x05, 0x00, // Identify Request
             0x00, 0x00, 0x00, 0x01, // XID = 1
             0x00, 0x00, // Response delay
@@ -412,6 +424,7 @@ mod tests {
     fn test_io_controller_role() {
         // Response with only a Device Role block set to 0x02 (IO-Controller)
         let mut pkt: Vec<u8> = vec![
+            0xFE, 0xFF, // Frame ID = 0xFEFF (Identify)
             0x05, 0x01, // Identify Response
             0x00, 0x00, 0xAB, 0xCD, // XID
             0x00, 0x00, // Response delay placeholder
@@ -432,8 +445,9 @@ mod tests {
 
     #[test]
     fn test_get_request() {
-        // Minimal Get Request — 10-byte header, no blocks
+        // Minimal Get Request — 2-byte Frame ID + 10-byte header, no blocks
         let data: &[u8] = &[
+            0xFE, 0xFC, // Frame ID = 0xFEFC (Get)
             0x03, 0x00, // Get Request
             0x00, 0x00, 0x00, 0x02, // XID = 2
             0x00, 0x00, // Response delay
@@ -447,8 +461,28 @@ mod tests {
 
     #[test]
     fn test_truncated() {
-        // Less than 10 bytes — should return None
-        let data: &[u8] = &[0x05, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00];
+        // Less than 12 bytes (2 Frame ID + 10 DCP header) — should return None
+        let data: &[u8] = &[0xFE, 0xFF, 0x05, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00];
+        assert!(parse(data).is_none());
+    }
+
+    #[test]
+    fn test_io_rt_frame_rejected() {
+        // IO RT cyclic frame (Frame ID 0x8001) must not be accepted by DCP parser
+        let data: &[u8] = &[
+            0x80, 0x01, // Frame ID = 0x8001 (RT_CLASS_1 cyclic)
+            0x05, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+        ];
+        assert!(parse(data).is_none());
+    }
+
+    #[test]
+    fn test_wrong_frame_id_rejected() {
+        // Frame ID outside DCP range — should return None
+        let data: &[u8] = &[
+            0xC0, 0x00, // Frame ID = 0xC000 (RT_CLASS_UDP cyclic)
+            0x05, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+        ];
         assert!(parse(data).is_none());
     }
 

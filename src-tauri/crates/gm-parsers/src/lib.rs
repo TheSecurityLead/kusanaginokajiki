@@ -135,13 +135,14 @@ pub fn deep_parse(packet: &ParsedPacket, protocol: IcsProtocol) -> Option<DeepPa
         IcsProtocol::Bacnet => bacnet::parse(&packet.payload).map(DeepParseResult::Bacnet),
         IcsProtocol::Iec104 => iec104::parse(&packet.payload).map(DeepParseResult::Iec104),
         IcsProtocol::Profinet => {
-            // DCP uses Frame IDs 0xFEFC–0xFEFF; IO RT uses all other RT ranges.
-            // Try DCP first; fall back to IO RT parser.
-            profinet_dcp::parse(&packet.payload)
-                .map(DeepParseResult::ProfinetDcp)
+            // Both parsers validate the Frame ID from bytes 0–1 of the payload.
+            // IO RT parser accepts 0x8000–0xFBFF and alarm ranges; DCP parser
+            // accepts only 0xFEFC–0xFEFF. Try IO RT first so cyclic/alarm frames
+            // are never incorrectly absorbed by the DCP parser.
+            profinet_io::parse(&packet.payload, packet.src_port, packet.dst_port)
+                .map(DeepParseResult::ProfinetIo)
                 .or_else(|| {
-                    profinet_io::parse(&packet.payload, packet.src_port, packet.dst_port)
-                        .map(DeepParseResult::ProfinetIo)
+                    profinet_dcp::parse(&packet.payload).map(DeepParseResult::ProfinetDcp)
                 })
         }
         _ => None,
