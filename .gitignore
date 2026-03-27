@@ -54,13 +54,10 @@ CLAUDE.local.md
 CLAUDE_local.md
 CLAUDE.local
 .claude/
+.claude-flow/
+.swarm/
+.mcp.json
 
-# Development prompt files
-PROMPT-*.md
+# Misc dev files
 UPDATE_README.md
-.claude/
-generate_guide.py
-Kusanagi-Kajiki-Guide.pdf
-*:Zone.Identifier
-*Zone.Identifier
 docs/

@@ -352,6 +352,11 @@ impl PacketProcessor {
                 // LLDP is handled by the early-return above; deep_parse()
                 // never returns Lldp since it's not an IP-layer protocol.
                 DeepParseResult::Lldp(_) => {}
+                // S7comm+ and PROFINET IO RT parsers are newly added; full
+                // processing support (roles, function tracking, anomaly
+                // detection) will be wired up in a follow-on pass.
+                DeepParseResult::S7Plus(_) => {}
+                DeepParseResult::ProfinetIo(_) => {}
             }
         }
 

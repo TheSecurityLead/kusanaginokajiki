@@ -166,7 +166,7 @@
 					onkeydown={(e) => { if (e.key === 'Enter') handleOpen(p); }}>
 					<div class="card-top">
 						<div class="card-icon">&#128193;</div>
-						<div class="card-actions" onclick={(e) => e.stopPropagation()} onkeydown={() => {}}>
+						<div class="card-actions" role="none" onclick={(e) => e.stopPropagation()} onkeydown={() => {}}>
 							<button class="card-btn" title="Edit project"
 								onclick={() => openEditForm(p)}>&#9998;</button>
 							<button class="card-btn card-btn-danger" title="Delete project"

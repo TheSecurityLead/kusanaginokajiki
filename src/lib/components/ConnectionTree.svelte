@@ -286,11 +286,13 @@
 
 <!-- Connection Context Menu -->
 {#if connCtxMenu.show}
-	<!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
 	<div
 		class="conn-ctx-menu"
+		role="menu"
+		tabindex="-1"
 		style="left: {connCtxMenu.x}px; top: {connCtxMenu.y}px;"
 		onclick={(e) => e.stopPropagation()}
+		onkeydown={(e) => e.stopPropagation()}
 	>
 		<button class="conn-ctx-item" onclick={() => handleViewFrames()}>
 			View Frames
@@ -305,9 +307,12 @@
 
 <!-- View Frames Dialog -->
 {#if viewFrames.show}
-	<!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
-	<div class="frames-overlay" onclick={closeViewFrames}>
-		<div class="frames-dialog" onclick={(e) => e.stopPropagation()}>
+	<div class="frames-overlay" role="presentation"
+		onclick={closeViewFrames}
+		onkeydown={(e) => { if (e.key === 'Escape') closeViewFrames(); }}>
+		<div class="frames-dialog" role="dialog" aria-modal="true" tabindex="-1"
+			onclick={(e) => e.stopPropagation()}
+			onkeydown={(e) => e.stopPropagation()}>
 			<div class="frames-header">
 				<h3 class="frames-title">View Frames</h3>
 				<span class="frames-count">{viewFrames.frames.length} packets</span>
