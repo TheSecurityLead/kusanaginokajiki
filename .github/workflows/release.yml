@@ -1,0 +1,286 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g. 1.5.1)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  id-token: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # ── Job 1: Bump version in Cargo.toml + tauri.conf.json and commit to main ─
+  bump-version:
+    name: Bump Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+      is_prerelease: ${{ steps.bump.outputs.is_prerelease }}
+      sha: ${{ steps.bump.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Checkout main so we can commit the version bump back
+          ref: main
+          fetch-depth: 0
+
+      - name: Bump version files and commit
+        id: bump
+        shell: bash
+        run: |
+          # Determine the version string from tag or manual input
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+
+          echo "Releasing version: ${VERSION}"
+
+          # Update src-tauri/Cargo.toml (first version = line only — the app binary)
+          sed -i "0,/^version = /s/^version = \".*\"/version = \"${VERSION}\"/" src-tauri/Cargo.toml
+
+          # Update src-tauri/tauri.conf.json
+          jq --arg v "${VERSION}" '.version = $v' src-tauri/tauri.conf.json > tauri.conf.tmp
+          mv tauri.conf.tmp src-tauri/tauri.conf.json
+
+          # Determine pre-release flag
+          if echo "${VERSION}" | grep -qE '-(alpha|beta|rc)'; then
+            IS_PRERELEASE="true"
+          else
+            IS_PRERELEASE="false"
+          fi
+
+          # Commit back to main (skip if nothing changed)
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src-tauri/Cargo.toml src-tauri/tauri.conf.json
+          if git diff --cached --quiet; then
+            echo "Version files already at ${VERSION} — nothing to commit"
+          else
+            git commit -m "chore: bump version to ${VERSION} [skip ci]"
+            git push origin HEAD:main
+          fi
+
+          SHA=$(git rev-parse HEAD)
+          echo "version=${VERSION}"            >> "$GITHUB_OUTPUT"
+          echo "is_prerelease=${IS_PRERELEASE}" >> "$GITHUB_OUTPUT"
+          echo "sha=${SHA}"                    >> "$GITHUB_OUTPUT"
+
+  # ── Job 2: Cross-platform build ────────────────────────────────────────────
+  build:
+    name: Build (${{ matrix.os }})
+    needs: bump-version
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    outputs:
+      # Capture the artifact-id from the Windows unsigned upload so sign-windows
+      # can reference it directly (GitHub artifact IDs are integers).
+      windows-artifact-id: ${{ steps.upload-windows-unsigned.outputs.artifact-id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Build from the version-bumped commit, not the original tag commit
+          ref: ${{ needs.bump-version.outputs.sha }}
+
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libpcap-dev \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Install system dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: brew install libpcap
+
+      - name: Install Npcap SDK (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://npcap.com/dist/npcap-sdk-1.13.zip" -OutFile npcap-sdk.zip
+          Expand-Archive -Path npcap-sdk.zip -DestinationPath npcap-sdk
+          echo "LIB=${{ github.workspace }}\npcap-sdk\Lib\x64" >> $env:GITHUB_ENV
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            src-tauri/target/
+          key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-release-
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build Tauri app
+        run: npm run tauri build
+
+      # ── Windows: upload unsigned installers ──────────────────────────────
+      - name: Upload unsigned Windows installers
+        if: runner.os == 'Windows'
+        id: upload-windows-unsigned
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-unsigned
+          path: |
+            src-tauri/target/release/bundle/msi/*.msi
+            src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: warn
+
+      # ── Linux: upload deb + AppImage ──────────────────────────────────────
+      - name: Upload Linux packages
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-packages
+          path: |
+            src-tauri/target/release/bundle/deb/*.deb
+            src-tauri/target/release/bundle/appimage/*.AppImage
+          if-no-files-found: warn
+
+      # ── macOS: upload DMG ─────────────────────────────────────────────────
+      - name: Upload macOS DMG
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: src-tauri/target/release/bundle/dmg/*.dmg
+          if-no-files-found: warn
+
+  # ── Job 3: Sign Windows installer via SignPath.io (optional) ───────────────
+  sign-windows:
+    name: Sign Windows Installer
+    needs: build
+    runs-on: ubuntu-latest
+    # Only run when the SIGNPATH_API_TOKEN secret is configured
+    if: ${{ secrets.SIGNPATH_API_TOKEN != '' }}
+    outputs:
+      signed-artifact-name: windows-signed
+    steps:
+      - name: Download unsigned Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-unsigned
+          path: unsigned-windows/
+
+      - name: Submit signing request to SignPath.io
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: kusanaginokajiki
+          signing-policy-slug: release-signing
+          github-artifact-id: ${{ needs.build.outputs.windows-artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed-windows/
+
+      - name: Upload signed Windows installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-signed
+          path: signed-windows/
+          if-no-files-found: error
+
+  # ── Job 4: Create GitHub release and attach all artifacts ──────────────────
+  release:
+    name: Create GitHub Release
+    needs: [bump-version, build, sign-windows]
+    # Run if build succeeded, regardless of whether signing ran or was skipped
+    if: >-
+      always() &&
+      needs.build.result == 'success' &&
+      (needs.sign-windows.result == 'success' || needs.sign-windows.result == 'skipped')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download signed Windows installers (when signing succeeded)
+        if: needs.sign-windows.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-signed
+          path: release-artifacts/windows/
+
+      - name: Download unsigned Windows installers (when signing was skipped)
+        if: needs.sign-windows.result == 'skipped'
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-unsigned
+          path: release-artifacts/windows/
+
+      - name: Download Linux packages
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-packages
+          path: release-artifacts/linux/
+
+      - name: Download macOS DMG
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-dmg
+          path: release-artifacts/macos/
+
+      - name: List release artifacts
+        run: find release-artifacts/ -type f | sort
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: "Kusanagi-no-Kajiki ${{ needs.bump-version.outputs.version }}"
+          draft: false
+          prerelease: ${{ needs.bump-version.outputs.is_prerelease == 'true' }}
+          generate_release_notes: true
+          files: release-artifacts/**
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Optional: delete the unsigned artifact now that the signed one is attached
+      - name: Delete unsigned Windows artifact (cleanup)
+        if: needs.sign-windows.result == 'success'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const artifacts = await github.rest.actions.listArtifactsForRepo({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              name:  'windows-unsigned',
+            });
+            for (const artifact of artifacts.data.artifacts) {
+              await github.rest.actions.deleteArtifact({
+                owner:       context.repo.owner,
+                repo:        context.repo.repo,
+                artifact_id: artifact.id,
+              });
+              core.info(`Deleted artifact: ${artifact.name} (id ${artifact.id})`);
+            }
