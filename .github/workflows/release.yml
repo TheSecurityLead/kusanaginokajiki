@@ -86,10 +86,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-    outputs:
-      # Capture the artifact-id from the Windows unsigned upload so sign-windows
-      # can reference it directly (GitHub artifact IDs are integers).
-      windows-artifact-id: ${{ steps.upload-windows-unsigned.outputs.artifact-id }}
+    outputs: {}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -147,13 +144,11 @@ jobs:
       - name: Build Tauri app
         run: npm run tauri build
 
-      # ── Windows: upload unsigned installers ──────────────────────────────
-      - name: Upload unsigned Windows installers
+      - name: Upload Windows installers
         if: runner.os == 'Windows'
-        id: upload-windows-unsigned
         uses: actions/upload-artifact@v4
         with:
-          name: windows-unsigned
+          name: windows-installer
           path: |
             src-tauri/target/release/bundle/msi/*.msi
             src-tauri/target/release/bundle/nsis/*.exe
@@ -179,63 +174,17 @@ jobs:
           path: src-tauri/target/release/bundle/dmg/*.dmg
           if-no-files-found: warn
 
-  # ── Job 3: Sign Windows installer via SignPath.io (optional) ───────────────
-  sign-windows:
-    name: Sign Windows Installer
-    needs: build
-    runs-on: ubuntu-latest
-    # Only run when the SIGNPATH_API_TOKEN secret is configured
-    if: ${{ secrets.SIGNPATH_API_TOKEN != '' }}
-    outputs:
-      signed-artifact-name: windows-signed
-    steps:
-      - name: Download unsigned Windows artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: windows-unsigned
-          path: unsigned-windows/
-
-      - name: Submit signing request to SignPath.io
-        uses: signpath/github-action-submit-signing-request@v1
-        with:
-          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
-          organization-id: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
-          project-slug: kusanaginokajiki
-          signing-policy-slug: release-signing
-          github-artifact-id: ${{ needs.build.outputs.windows-artifact-id }}
-          wait-for-completion: true
-          output-artifact-directory: signed-windows/
-
-      - name: Upload signed Windows installers
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-signed
-          path: signed-windows/
-          if-no-files-found: error
-
-  # ── Job 4: Create GitHub release and attach all artifacts ──────────────────
+  # ── Job 3: Create GitHub release and attach all artifacts ──────────────────
   release:
     name: Create GitHub Release
-    needs: [bump-version, build, sign-windows]
-    # Run if build succeeded, regardless of whether signing ran or was skipped
-    if: >-
-      always() &&
-      needs.build.result == 'success' &&
-      (needs.sign-windows.result == 'success' || needs.sign-windows.result == 'skipped')
+    needs: [bump-version, build]
+    if: needs.build.result == 'success'
     runs-on: ubuntu-latest
     steps:
-      - name: Download signed Windows installers (when signing succeeded)
-        if: needs.sign-windows.result == 'success'
+      - name: Download Windows installers
         uses: actions/download-artifact@v4
         with:
-          name: windows-signed
-          path: release-artifacts/windows/
-
-      - name: Download unsigned Windows installers (when signing was skipped)
-        if: needs.sign-windows.result == 'skipped'
-        uses: actions/download-artifact@v4
-        with:
-          name: windows-unsigned
+          name: windows-installer
           path: release-artifacts/windows/
 
       - name: Download Linux packages
@@ -265,22 +214,3 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # Optional: delete the unsigned artifact now that the signed one is attached
-      - name: Delete unsigned Windows artifact (cleanup)
-        if: needs.sign-windows.result == 'success'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const artifacts = await github.rest.actions.listArtifactsForRepo({
-              owner: context.repo.owner,
-              repo:  context.repo.repo,
-              name:  'windows-unsigned',
-            });
-            for (const artifact of artifacts.data.artifacts) {
-              await github.rest.actions.deleteArtifact({
-                owner:       context.repo.owner,
-                repo:        context.repo.repo,
-                artifact_id: artifact.id,
-              });
-              core.info(`Deleted artifact: ${artifact.name} (id ${artifact.id})`);
-            }
