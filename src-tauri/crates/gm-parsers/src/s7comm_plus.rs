@@ -283,40 +283,37 @@ pub fn parse(payload: &[u8]) -> Option<S7PlusInfo> {
     //   [5-8]  reserved
     //   [9-12] session_id (u32 LE)
     //   [13-16] function (u32 LE)
-    let (session_id, function, return_value) =
-        if payload.len() >= s7p_start + 17 {
-            let sess = u32::from_le_bytes([
-                payload[s7p_start + 9],
-                payload[s7p_start + 10],
-                payload[s7p_start + 11],
-                payload[s7p_start + 12],
-            ]);
-            let func_raw = u32::from_le_bytes([
-                payload[s7p_start + 13],
-                payload[s7p_start + 14],
-                payload[s7p_start + 15],
-                payload[s7p_start + 16],
-            ]);
-            let func = S7PlusFunction::from_u32(func_raw);
+    let (session_id, function, return_value) = if payload.len() >= s7p_start + 17 {
+        let sess = u32::from_le_bytes([
+            payload[s7p_start + 9],
+            payload[s7p_start + 10],
+            payload[s7p_start + 11],
+            payload[s7p_start + 12],
+        ]);
+        let func_raw = u32::from_le_bytes([
+            payload[s7p_start + 13],
+            payload[s7p_start + 14],
+            payload[s7p_start + 15],
+            payload[s7p_start + 16],
+        ]);
+        let func = S7PlusFunction::from_u32(func_raw);
 
-            // Response PDUs carry a return value at [17-20]
-            let ret = if matches!(opcode, S7PlusOpcode::Response)
-                && payload.len() >= s7p_start + 21
-            {
-                Some(u32::from_le_bytes([
-                    payload[s7p_start + 17],
-                    payload[s7p_start + 18],
-                    payload[s7p_start + 19],
-                    payload[s7p_start + 20],
-                ]))
-            } else {
-                None
-            };
-
-            (Some(sess), Some(func), ret)
+        // Response PDUs carry a return value at [17-20]
+        let ret = if matches!(opcode, S7PlusOpcode::Response) && payload.len() >= s7p_start + 21 {
+            Some(u32::from_le_bytes([
+                payload[s7p_start + 17],
+                payload[s7p_start + 18],
+                payload[s7p_start + 19],
+                payload[s7p_start + 20],
+            ]))
         } else {
-            (None, None, None)
+            None
         };
+
+        (Some(sess), Some(func), ret)
+    } else {
+        (None, None, None)
+    };
 
     Some(S7PlusInfo {
         version,
@@ -455,10 +452,10 @@ mod tests {
         // Packet too short to reach the function field — opcode present but no session/function
         let pkt = vec![
             0x03, 0x00, 0x00, 0x0C, // TPKT
-            0x02, 0xF0, 0x80,       // COTP DT Data
-            0x72, 0x02,             // protocol_id, version
-            0x00, 0x04,             // data_length = 4
-            0x31,                   // opcode = Request
+            0x02, 0xF0, 0x80, // COTP DT Data
+            0x72, 0x02, // protocol_id, version
+            0x00, 0x04, // data_length = 4
+            0x31, // opcode = Request
             // only 4 bytes of reserved — NOT enough to reach session_id + function
             0x00, 0x00, 0x00, 0x00,
         ];

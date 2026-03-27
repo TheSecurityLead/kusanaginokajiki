@@ -323,7 +323,10 @@ mod tests {
         ];
         let info = parse(&payload, 12345, 34962).expect("should parse RT_CLASS_1");
         assert_eq!(info.frame_id, 0x8001);
-        assert!(matches!(info.frame_type, ProfinetIoFrameType::CyclicRtClass1));
+        assert!(matches!(
+            info.frame_type,
+            ProfinetIoFrameType::CyclicRtClass1
+        ));
         assert!(matches!(info.role, ProfinetIoRole::IoController));
         assert!(!info.is_alarm);
         assert_eq!(info.cycle_counter, Some(100));
@@ -344,16 +347,17 @@ mod tests {
             0x00, // TransferStatus = OK
         ];
         let info = parse(&payload, 34963, 22222).expect("should parse RT_CLASS_UDP");
-        assert!(matches!(info.frame_type, ProfinetIoFrameType::CyclicRtClassUdp));
+        assert!(matches!(
+            info.frame_type,
+            ProfinetIoFrameType::CyclicRtClassUdp
+        ));
         assert!(matches!(info.role, ProfinetIoRole::IoDevice));
     }
 
     #[test]
     fn test_provider_stop_detected() {
         // DataStatus = 0x00: bit1=0(stop), bit2=0(invalid)
-        let payload = vec![
-            0x80, 0x01, 0xAA, 0xBB, 0x00, 0x01, 0x00, 0x00,
-        ];
+        let payload = vec![0x80, 0x01, 0xAA, 0xBB, 0x00, 0x01, 0x00, 0x00];
         let info = parse(&payload, 12345, 34962).expect("should parse");
         let ds = info.data_status.unwrap();
         assert!(!ds.data_valid);
